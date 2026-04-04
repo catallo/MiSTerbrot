@@ -8,11 +8,11 @@ A real-time Mandelbrot fractal core for MiSTer FPGA. Native 320×240, 8 parallel
 
 ## Screenshots
 
-![Vaporwave Spike](screenshots/vaporwave_spike.png)
-![Ocean Full Set](screenshots/ocean_full.png)
-![Ocean Boundary](screenshots/ocean_boundary.png)
-![Ocean Spike](screenshots/ocean_spike.png)
-![Ocean Period 2](screenshots/ocean_period2.png)
+![Starfish Ice](screenshots/starfish_ice.png)
+![Elephant Funhaus](screenshots/elephant_funhaus.png)
+![Dendrite THC](screenshots/dendrite_thc.png)
+![Double Spiral Synthwave](screenshots/spiral_synthwave.png)
+![Needle Neon](screenshots/needle_neon.png)
 
 ## Install
 
