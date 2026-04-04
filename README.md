@@ -15,7 +15,6 @@ A real-time Mandelbrot fractal core for MiSTer FPGA. Native 320×240, 8 parallel
 ![Needle Neon](screenshots/needle_neon.png)
 ![Dendrite THC Green](screenshots/dendrite_thc_green.png)
 ![Dendrite Skittles Blue](screenshots/dendrite_skittles_blue.png)
-![Dendrite Skittles Peach](screenshots/dendrite_skittles_peach.png)
 
 ## Install
 
