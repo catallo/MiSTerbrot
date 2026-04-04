@@ -1,0 +1,28 @@
+# Template reference (cloned for framework files)
+template_ref/
+
+# Verilator build artifacts
+obj_dir*/
+sim/obj_dir*/
+sim/obj_dir_iter/
+sim/obj_dir_pipe/
+
+# Quartus build artifacts
+/db/
+/incremental_db/
+/output_files/
+quartus/output_files/
+quartus/db/
+quartus/incremental_db/
+*.qws
+*.bak
+
+# Keep versioned release artifacts
+!releases/
+!releases/*.rbf
+
+# Editor
+*.swp
+*~
+*.bak-*
+timing_report.tcl

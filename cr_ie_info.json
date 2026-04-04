@@ -1,0 +1,22 @@
+{
+	"system" : {
+		"platform" : "linux64",
+		"os_name" : "Debian GNU/Linux",
+		"os_version" : "9"
+	},
+	"error" : {
+		"executable" : "quartus_map",
+		"comment" : "not_applicable",
+		"error_message" : "Unprocessable component",
+		"source_file" : "/quartus/synth/lpms/lpms_root_impl.cpp",
+		"line" : "227",
+		"stack_trace" : "\t0x728f046ffceb: synth_lpms + 0xbceb (_ZN14LPMS_ROOT_IMPL20process_netlist_onceEv + 0x48b)\n\t0x728f046f75a3: synth_lpms + 0x35a3 (_ZN9LPMS_ROOT23process_sgate_operatorsEP10CMP_FACADEP19CDB_SGATE_HIERARCHYP20BASEX_ELABORATE_INFO + 0xa1)\n\t0x728f0bbc293a: synth_sgn + 0x17e93a (_ZN13SGN_SYNTHESIS20high_level_synthesisEv + 0x20a)\n\t0x728f0bbc3762: synth_sgn + 0x17f762 (_ZN13SGN_SYNTHESIS21process_current_stageEv + 0x1c2)\n\t0x728f0bbd3df2: synth_sgn + 0x18fdf2 (_ZN13SGN_EXTRACTOR20synthesize_partitionEm + 0x432)\n\t0x728f0bbd49ec: synth_sgn + 0x1909ec (_ZN13SGN_EXTRACTOR9synthesisEv + 0x1dc)\n\t0x728f0bbe83d8: synth_sgn + 0x1a43d8 (_ZN13SGN_EXTRACTOR29synthesis_and_post_processingEv + 0x1a8)\n\t0x728f0bbe8da6: synth_sgn + 0x1a4da6 (_Z12sgn_qic_fullP10CMP_FACADERSt6vectorISsSaISsEERS1_IdSaIdEE + 0x276)\n\t   0x41c3b9: quartus_map + 0x1c3b9 (_Z16qsyn_execute_sgnP10CMP_FACADERSt6vectorISsSaISsEERKSsP14THR_NAMED_PIPES8_ + 0x159)\n\t   0x437d61: quartus_map + 0x37d61 (_ZN14QSYN_FRAMEWORK12execute_coreEP14THR_NAMED_PIPES1_ + 0x231)\n\t   0x43bcec: quartus_map + 0x3bcec (_ZN14QSYN_FRAMEWORK7executeEv + 0xc4c)\n\t0x728ef789c75b: comp_qexe + 0x1c75b (_Z18qexe_standard_mainP14QEXE_FRAMEWORKPPK22QEXE_OPTION_DEFINITIONiPPKc + 0x888)\n\t   0x43025c: quartus_map + 0x3025c (_Z9qsyn_mainiPPKc + 0x13c)\n\t0x728ed60cb720: ccl_msg + 0x40720 (_Z15msg_main_threadPv + 0x10)\n\t0x728ed342302c: ccl_thr + 0x602c (thr_final_wrapper + 0xc)\n\t0x728ed60cb7df: ccl_msg + 0x407df (_Z18msg_thread_wrapperPFPvS_ES_ + 0x62)\n\t0x728ed3a94559: ccl_mem + 0xa559 (_Z18mem_thread_wrapperPFPvS_ES_ + 0x99)\n\t0x728ed3861f92: ccl_err + 0x8f92 (_Z18err_thread_wrapperPFPvS_ES_ + 0x27)\n\t0x728ed34233f2: ccl_thr + 0x63f2 (thr_thread_wrapper + 0x15)\n\t0x728ed60cd7e2: ccl_msg + 0x427e2 (_Z12msg_exe_mainiPPKcPFiiS1_E + 0xa3)\n\t0x728ece32f2e1: c.so.6 + 0x202e1 (__libc_start_main + 0xf1)\n\t   0x415545: quartus_map + 0x15545\n",
+		"subsystem" : "LPMS"
+	},
+	"quartus" : {
+		"quartus_bits" : "64",
+		"version" : "17.0.2",
+		"build" : "602",
+		"edition" : "Lite Edition"
+	}
+}
