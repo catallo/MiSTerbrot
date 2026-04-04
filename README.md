@@ -2,9 +2,9 @@
 
 **Mandelbrot Eye Candy for MiSTer FPGA in 240p**
 
-Spiritual successor to 90s digital eye candy.
+A real-time Mandelbrot fractal core for MiSTer FPGA. Native 320×240, 8 parallel hardware iterators, 47 palettes, attract mode with 25 Points of Interest. Color cycling.
 
-A real-time Mandelbrot fractal core for MiSTer FPGA. Native 320×240, 8 parallel hardware iterators, 47 palettes, attract mode with 25 Points of Interest.
+A spiritual successor to digital eye candy from the 90s.
 
 ## Screenshots
 
