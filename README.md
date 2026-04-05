@@ -38,8 +38,8 @@ Output is 320×240 pixel-doubled to 640×480 for VGA, then the MiSTer scaler han
 
 ## Resource Utilization (Cyclone V, DE10-Nano)
 
-ALMs: ~46%
-DSP blocks: 100% (fully saturated by the fixed-point multipliers)
-Block RAM (M9K): ~44% (framebuffer + color LUTs)
+- ALMs: ~46%
+- DSP blocks: 100% (fully saturated by the fixed-point multipliers)
+- Block RAM (M9K): ~44% (framebuffer + color LUTs)
 
 Frame Rate Frame rate is highly scene-dependent — it ranges from ~4 fps in deeply zoomed, high-iteration areas down to ~60 fps in simple regions near the escape boundary. The bottleneck is purely computational: every pixel must iterate z = z² + c until either |z| > 2 or the iteration limit (up to 2048) is hit.
