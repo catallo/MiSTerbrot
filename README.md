@@ -34,7 +34,7 @@ The complex multiply z² uses a truncated 64×64 approach — split into 32-bit 
 
 Pixels are dispatched round-robin from a coordinate generator (scanning left-to-right, top-to-bottom) to whichever iterator is free. Results are collected in order and written to a BRAM double-framebuffer (320×240, ~184 M9K blocks total). Buffer swaps happen only on the VBLANK rising edge — zero tearing.
 
-Output is 320×240 pixel-doubled to 640×480 for VGA, then the MiSTer scaler handles the rest.
+Output is native 320×240 @ ~59.7 Hz (240p, 15kHz). The MiSTer framework handles upscaling for HDMI output.
 
 ## Resource Utilization (Cyclone V, DE10-Nano)
 
