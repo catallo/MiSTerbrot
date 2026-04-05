@@ -43,4 +43,4 @@ Output is native 320×240 @ ~59.7 Hz (240p, 15kHz). The MiSTer framework handles
 - Block RAM (M9K): ~44% (245 of 553 blocks — framebuffer + color LUTs)
 - PLLs: 50% (3 of 6)
 
-Frame Rate Frame rate is highly scene-dependent — it ranges from ~4 fps in deeply zoomed, high-iteration areas up to ~60 fps in simple regions near the escape boundary. The bottleneck is purely computational: every pixel must iterate z = z² + c until either |z| > 2 or the iteration limit (up to 2048) is hit.
+Frame rate is highly scene-dependent — it ranges from ~4 fps in deeply zoomed, high-iteration areas up to ~60 fps in simple regions near the escape boundary. The bottleneck is purely computational: every pixel must iterate z = z² + c until either |z| > 2 or the iteration limit (up to 2048) is hit.
