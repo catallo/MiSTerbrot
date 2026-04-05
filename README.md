@@ -20,7 +20,7 @@ A spiritual successor to digital eye candy from the 90s.
 
 1. Download [`MiSTerbrot_20260404.rbf`](https://github.com/catallo/MiSTerbrot/releases/latest) from the latest release
 2. Copy to `/media/fat/_Other/` on your MiSTer SD card
-3. Launch from the MiSTer menu under _Other
+3. Launch from the MiSTer menu under Other
 
 ## Controls
 
