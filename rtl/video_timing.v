@@ -39,11 +39,18 @@ localparam H_SYNC_640   = 11'd64;
 localparam H_BP_640     = 11'd80;
 localparam H_TOTAL_640  = H_ACTIVE_640 + H_FP_640 + H_SYNC_640 + H_BP_640; // 800
 
-// Vertical constants (same both modes)
+// Vertical constants (same both modes).
+// V_FP=10 (was 3) so the scandoubler's 4-stage vbo[3:0] VBlank-delay
+// pipeline propagates BEFORE VSync rises. With V_FP=3, VSync was firing
+// at vc=243 while the scandoubler's delayed VBlank didn't reach the
+// frame-reset logic until vc=244 — leading to a misaligned frame
+// reset that left stale line-buffer content visible as a "top 15%
+// shows bottom 15%" artifact in 640 mode.
+// V_TOTAL stays at 262: V_FP+V_SYNC+V_BP = 10+3+9 = 22 lines blanking.
 localparam V_ACTIVE = 10'd240;
-localparam V_FP     = 10'd3;
+localparam V_FP     = 10'd10;
 localparam V_SYNC   = 10'd3;
-localparam V_BP     = 10'd16;
+localparam V_BP     = 10'd9;
 localparam V_TOTAL  = V_ACTIVE + V_FP + V_SYNC + V_BP; // 262
 
 // Runtime-muxed horizontal constants
