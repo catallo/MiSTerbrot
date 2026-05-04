@@ -22,8 +22,9 @@ module fractal_top #(
     parameter FRAC_BITS   = 56
 )(
     input  wire        clk,       // 50 MHz (clk_sys: video, framebuffer, control)
-    input  wire        clk_iter,  // 75 MHz (iter_quad math)
+    input  wire        clk_iter,  // 100 MHz (iter_quad math)
     input  wire        rst_n,
+    input  wire        mode_640,  // 0 = 320×240, 1 = 640×240 (runtime selectable)
 
     // MiSTer interface
     input  wire [15:0] joystick,
@@ -45,13 +46,17 @@ module fractal_top #(
     output wire        rendering
 );
 
-// ---- Pixel clock: 50 MHz / 8 = 6.25 MHz ----
+// ---- Pixel clock ----
+//   320 mode: 50 MHz / 8 = 6.25 MHz dot clock (15.625 kHz line rate)
+//   640 mode: 50 MHz / 4 = 12.5 MHz dot clock (15.625 kHz line rate at 800 H_TOTAL)
+// Both modes hold 15 kHz line rate / native 240p / 60 Hz.
 reg [2:0] ce_pix_cnt;
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n) ce_pix_cnt <= 3'd0;
     else        ce_pix_cnt <= ce_pix_cnt + 3'd1;
 end
-assign ce_pix = (ce_pix_cnt == 3'd0);
+assign ce_pix = mode_640 ? (ce_pix_cnt[1:0] == 2'd0)
+                         : (ce_pix_cnt       == 3'd0);
 
 // ---- OSD Parameter Decoding ----
 wire [1:0] osd_fractal_type;
@@ -382,14 +387,13 @@ wire        pipe_result_escaped;
 
 pixel_pipeline #(
     .N_ITERATORS(N_ITERATORS),
-    .H_RES(H_RES),
-    .V_RES(V_RES),
     .WIDTH(WIDTH),
     .FRAC_BITS(FRAC_BITS)
 ) u_pipeline (
     .clk(clk),
     .clk_iter(clk_iter),
     .rst_n(rst_n),
+    .mode_640(mode_640),
     .start_frame(start_render),
     .frame_done(frame_done),
     .fractal_type(fractal_type),
@@ -407,18 +411,24 @@ pixel_pipeline #(
 );
 
 // ---- Framebuffer ----
-// Write address: y*320 + x = (y<<8) + (y<<6) + x
-wire [FB_ADDR_WIDTH-1:0] wr_y = {9'd0, pipe_result_y[7:0]};
-wire [FB_ADDR_WIDTH-1:0] wr_x = {8'd0, pipe_result_x[8:0]};
-wire [FB_ADDR_WIDTH-1:0] wr_addr = (wr_y << 8) + (wr_y << 6) + wr_x;
+// Write addr: y*H_RES + x.
+//   320 mode: y*320 + x = (y<<8) + (y<<6) + x
+//   640 mode: y*640 + x = (y<<9) + (y<<7) + x
+wire [FB_ADDR_WIDTH-1:0] wr_y = {10'd0, pipe_result_y[7:0]};
+wire [FB_ADDR_WIDTH-1:0] wr_x = {7'd0,  pipe_result_x[10:0]};
+wire [FB_ADDR_WIDTH-1:0] wr_addr = mode_640
+                                   ? ((wr_y << 9) + (wr_y << 7) + wr_x)
+                                   : ((wr_y << 8) + (wr_y << 6) + wr_x);
 wire [FB_DATA_WIDTH-1:0] wr_data = {pipe_result_escaped, pipe_result_iter};
 
-// Read address: native 320x240 — no pixel doubling needed
+// Read address: same formula
 wire [10:0] vid_pixel_x;
 wire [9:0]  vid_pixel_y;
-wire [FB_ADDR_WIDTH-1:0] rd_y = {9'd0, vid_pixel_y[7:0]};
-wire [FB_ADDR_WIDTH-1:0] rd_x = {8'd0, vid_pixel_x[8:0]};
-wire [FB_ADDR_WIDTH-1:0] vid_rd_addr = (rd_y << 8) + (rd_y << 6) + rd_x;
+wire [FB_ADDR_WIDTH-1:0] rd_y = {10'd0, vid_pixel_y[7:0]};
+wire [FB_ADDR_WIDTH-1:0] rd_x = {7'd0,  vid_pixel_x[10:0]};
+wire [FB_ADDR_WIDTH-1:0] vid_rd_addr = mode_640
+                                       ? ((rd_y << 9) + (rd_y << 7) + rd_x)
+                                       : ((rd_y << 8) + (rd_y << 6) + rd_x);
 
 // Mux read address: auto_zoom sampling during VBLANK, video display otherwise
 wire [FB_ADDR_WIDTH-1:0] rd_addr = az_fb_sampling ? az_fb_rd_addr : vid_rd_addr;
@@ -447,6 +457,7 @@ video_timing u_video_timing (
     .clk(clk),
     .rst_n(rst_n),
     .ce_pix(ce_pix),
+    .mode_640(mode_640),
     .hsync(hsync),
     .vsync(vsync),
     .hblank(hblank),
@@ -498,6 +509,7 @@ text_overlay #(
     .FRAC_BITS(FRAC_BITS)
 ) u_text_overlay (
     .clk(clk),
+    .mode_640(mode_640),
     .overlay_enable(overlay_enable),
     .overlay_visible(overlay_visible),
     .blank_text_enable(blank_text_enable),

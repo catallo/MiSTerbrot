@@ -12,6 +12,7 @@ module text_overlay #(
     parameter FRAC_BITS = 56
 ) (
     input  wire                    clk,
+    input  wire                    mode_640,         // 0 = 320×240, 1 = 640×240
     input  wire                    overlay_enable,
     input  wire                    overlay_visible,
     input  wire                    blank_text_enable,
@@ -40,7 +41,8 @@ module text_overlay #(
 );
 
 // ---- Screen and Region Constants (5x5 font, 10px line height) ----
-localparam [10:0] SCREEN_W = 11'd320;
+// Screen width for layout reference (mode-dependent)
+wire [10:0] SCREEN_W = mode_640 ? 11'd640 : 11'd320;
 
 // Info region: top-left, 3 lines
 localparam [10:0] INFO_X = 11'd5;
@@ -67,7 +69,10 @@ localparam [10:0] TARGET_W = 11'd244; // 48*5 + 4
 localparam [9:0]  TARGET_H = 10'd24;  // 2*10 + 4
 
 // GitHub region: bottom-right, 2 lines (same Y as target)
-localparam [10:0] GITHUB_X = 11'd221; // right-aligned: 313 - 18*5
+// Right-aligned X depends on resolution mode (320 vs 640).
+localparam [10:0] GITHUB_X_320 = 11'd221; // right-aligned for 320: 313 - 18*5 = 223 (using 221)
+localparam [10:0] GITHUB_X_640 = 11'd541; // right-aligned for 640: 633 - 18*5 = 543 (using 541)
+wire       [10:0] GITHUB_X = mode_640 ? GITHUB_X_640 : GITHUB_X_320;
 localparam [9:0]  GITHUB_Y = 10'd216; // same as TARGET_Y
 localparam [10:0] GITHUB_W = 11'd94;  // 18*5 + 4
 localparam [9:0]  GITHUB_H = 10'd24;
@@ -95,7 +100,10 @@ localparam [5:0]  HELP_LINE_LEN = 6'd16;
 localparam [5:0]  GITHUB_LINE_LEN = 6'd18;
 localparam [10:0] HELP_PIX_W = 11'd80;         // HELP_LINE_LEN * 5
 // Status region: top-right, 2 lines (color cycling mode + iterations)
-localparam [10:0] STATUS_X = 11'd261;   // right-aligned for 10 chars: 313 - 10*5 - 2
+// Right-aligned X depends on resolution mode.
+localparam [10:0] STATUS_X_320 = 11'd261;   // right-aligned for 320: 313 - 10*5 - 2
+localparam [10:0] STATUS_X_640 = 11'd581;   // right-aligned for 640: 633 - 10*5 - 2
+wire       [10:0] STATUS_X     = mode_640 ? STATUS_X_640 : STATUS_X_320;
 localparam [9:0]  STATUS_Y = 10'd3;
 localparam [10:0] STATUS_W = 11'd54;    // 10*5 + 4
 localparam [9:0]  STATUS_H = 10'd24;    // 2*10 + 4

@@ -151,6 +151,7 @@ localparam CONF_STR = {
 	"O[19],Blank Text,On,Off;",
 	"O[20],Always Show FPS,Off,On;",
 	"O[21],Always Show POI/Palette,On,Off;",
+	"O[22],Resolution,320x240,640x240;",
 	"O[17:15],Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
 		"-;",
 	"-, Arrows/WASD/D-Pad: Pan;",
@@ -219,6 +220,7 @@ fractal_top #(
 	.clk(clk_sys),
 	.clk_iter(clk_iter),
 	.rst_n(rst_n),
+	.mode_640(status[22]),
 	.joystick(joystick_0),
 	.ps2_key(ps2_key),
 	.status(status),
@@ -234,7 +236,8 @@ fractal_top #(
 	.rendering(core_rendering)
 );
 
-arcade_video #(.WIDTH(320), .DW(24)) u_arcade_video
+// WIDTH sized for max resolution (640) — line buffer absorbs unused space in 320 mode.
+arcade_video #(.WIDTH(640), .DW(24)) u_arcade_video
 (
 	.clk_video(clk_sys),
 	.ce_pix(ce_pix),

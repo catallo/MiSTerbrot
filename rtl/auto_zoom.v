@@ -22,7 +22,7 @@ module auto_zoom #(
 
     // BRAM framebuffer sampling (held inactive in deterministic zoom mode)
     input  wire [12:0]             fb_rd_data,
-    output wire [16:0]             fb_rd_addr,
+    output wire [17:0]             fb_rd_addr,
     output wire                    fb_sampling,
 
     output reg  signed [WIDTH-1:0] center_x,
@@ -269,7 +269,7 @@ wire [5:0] palette_hi_val = palette_playlist[shuffle_idx];
 wire [5:0] palette_lo_val = palette_shuffle_accept ? palette_playlist[shuffle_palette_j] : 6'd0;
 wire [5:0] palette_first_val = (shuffle_idx == 6'd1 && shuffle_palette_j == 6'd0) ? palette_hi_val : palette_playlist[0];
 
-assign fb_rd_addr = 17'd0;
+assign fb_rd_addr = 18'd0;
 assign fb_sampling = 1'b0;
 assign target_idx_out = target_idx;
 

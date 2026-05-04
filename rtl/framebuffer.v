@@ -9,13 +9,15 @@
 // bank_sel=0: front=A (display), back=B (render)
 // bank_sel=1: front=B (display), back=A (render)
 //
-// 320x240 @ 13-bit: 76,800 entries per bank
-// ~92 M9K blocks per bank, ~184 total (of 553 available on 5CSEBA6U23I7)
+// 640x240 @ 13-bit: 153,600 entries per bank (sized for max resolution)
+// ~184 M9K blocks per bank, ~368 total. In 320×240 mode only the lower
+// half (76,800 entries) is addressed; upper half stays unused but the
+// allocation is the same since BRAM cost is at the bank-config level.
 //============================================================================
 
 module framebuffer #(
     parameter DATA_WIDTH = 13,      // 12-bit iteration + 1-bit escaped
-    parameter ADDR_WIDTH = 17       // ceil(log2(320*240)) = 17
+    parameter ADDR_WIDTH = 18       // ceil(log2(640*240)) = 18
 )(
     input  wire                    clk,
 
@@ -33,7 +35,7 @@ module framebuffer #(
     input  wire                    display_bank_sel
 );
 
-localparam MEM_SIZE = 320 * 240; // 76800
+localparam MEM_SIZE = 640 * 240; // 153600
 
 // ---- Bank A ----
 reg [DATA_WIDTH-1:0] mem_a [0:MEM_SIZE-1];

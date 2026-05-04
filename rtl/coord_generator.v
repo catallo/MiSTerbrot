@@ -1,25 +1,28 @@
 //============================================================================
-// Coordinate Generator (v0.8 - 320x240 only)
+// Coordinate Generator (mode-selectable 320 / 640 wide)
 //
 // Scans pixels left-to-right, top-to-bottom and maps each pixel (x,y) to
 // complex plane coordinates (cr, ci) based on center/step (zoom) registers.
 //
-// Uses accumulation (no per-pixel multiply): adds step for each x increment,
-// adds step for each row increment.
+// mode_640=0: 320×240 grid, step_x = step
+// mode_640=1: 640×240 grid, step_x = step/2 (so the same horizontal extent
+//             of the complex plane is sampled at twice the density — square
+//             pixels in 8:3-source-into-4:3-output ascaler config)
 //
-// Fixed at 320x240 resolution for BRAM double-buffer mode.
+// Uses accumulation (no per-pixel multiply): adds step_x for each x increment,
+// adds step (vertical) for each row increment.
 //
 // Valid/ready handshake: outputs a new coordinate when valid=1 and ready=1.
 //============================================================================
 
 module coord_generator #(
-    parameter H_RES    = 320,
-    parameter V_RES    = 240,
     parameter WIDTH    = 64,
     parameter FRAC_BITS = 56
 )(
     input  wire                    clk,
     input  wire                    rst_n,
+
+    input  wire                    mode_640,
 
     // Control
     input  wire                    start_frame,
@@ -39,9 +42,13 @@ module coord_generator #(
     output reg                     frame_done
 );
 
-// Fixed 320x240 resolution
-localparam [10:0] H_PIXELS = 11'd320;
+// Per-mode resolution
+wire [10:0] H_PIXELS = mode_640 ? 11'd640 : 11'd320;
 localparam [9:0]  V_PIXELS = 10'd240;
+
+// step_x: in 640 mode, halve step so 640 pixels cover same complex-plane
+// horizontal extent as 320 pixels did. Vertical step stays at `step`.
+wire signed [WIDTH-1:0] step_x = mode_640 ? (step >>> 1) : step;
 
 // Internal pixel counters
 reg [10:0] px;
@@ -53,8 +60,10 @@ reg signed [WIDTH-1:0] ci_accum;
 reg signed [WIDTH-1:0] cr_row_start;
 
 // Starting coordinates using shift-add (no 64-bit multiplies)
-// cr_start = center_x - 160 * step = center_x - (step<<7) - (step<<5)
-// ci_start = center_y - 120 * step = center_y - (step<<7) + (step<<3)
+// cr_start = center_x - (H_PIXELS/2) * step_x. Both modes evaluate to 160*step:
+//   320 mode: 160 * step
+//   640 mode: 320 * (step/2) = 160 * step
+// → identical formula in both modes (160*step), no mux needed.
 wire signed [WIDTH-1:0] half_h_offset = (step <<< 7) + (step <<< 5);  // 160 * step
 wire signed [WIDTH-1:0] half_v_offset = (step <<< 7) - (step <<< 3);  // 120 * step
 wire signed [WIDTH-1:0] cr_start = center_x - half_h_offset;
@@ -120,7 +129,7 @@ always @(posedge clk or negedge rst_n) begin
                 end else begin
                     // Next pixel in row
                     px       <= px + 11'd1;
-                    cr_accum <= cr_accum + step;
+                    cr_accum <= cr_accum + step_x;
                 end
             end
         end

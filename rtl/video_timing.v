@@ -1,27 +1,20 @@
 //============================================================================
 // Video Timing Generator
 //
-// Generates native 240p timing signals for 320x240 @ ~59.7Hz (15kHz).
-// Active region, sync pulses, blanking intervals.
+// Generates native 240p timing signals at 15 kHz line rate.
+// Mode-selectable horizontal resolution:
+//   mode_640=0 → 320×240 @ 6.25 MHz dot clock (320+8+32+40=400 H_TOTAL)
+//   mode_640=1 → 640×240 @ 12.5 MHz dot clock (640+16+64+80=800 H_TOTAL)
+// Both produce ~59.7 Hz refresh, 15.625 kHz line rate.
 //
-// With clk=50MHz and ce_pix pulsing every 8th clock -> 6.25MHz pixel clock.
-// H: 320 active + 8 front porch + 32 sync + 40 back porch = 400 total
-// V: 240 active + 3 front porch + 3 sync + 16 back porch = 262 total
+// V_TOTAL = 240+3+3+16 = 262 (same in both modes).
 //============================================================================
 
-module video_timing #(
-    parameter H_ACTIVE = 320,
-    parameter H_FP     = 8,
-    parameter H_SYNC   = 32,
-    parameter H_BP     = 40,
-    parameter V_ACTIVE = 240,
-    parameter V_FP     = 3,
-    parameter V_SYNC   = 3,
-    parameter V_BP     = 16
-)(
+module video_timing (
     input  wire        clk,
     input  wire        rst_n,
     input  wire        ce_pix,
+    input  wire        mode_640,    // 0 = 320×240, 1 = 640×240
 
     output reg         hsync,
     output reg         vsync,
@@ -32,8 +25,32 @@ module video_timing #(
     output reg  [9:0]  pixel_y
 );
 
-localparam H_TOTAL = H_ACTIVE + H_FP + H_SYNC + H_BP;
-localparam V_TOTAL = V_ACTIVE + V_FP + V_SYNC + V_BP;
+// 320 mode horizontal constants
+localparam H_ACTIVE_320 = 11'd320;
+localparam H_FP_320     = 11'd8;
+localparam H_SYNC_320   = 11'd32;
+localparam H_BP_320     = 11'd40;
+localparam H_TOTAL_320  = H_ACTIVE_320 + H_FP_320 + H_SYNC_320 + H_BP_320; // 400
+
+// 640 mode horizontal constants (proportionally doubled)
+localparam H_ACTIVE_640 = 11'd640;
+localparam H_FP_640     = 11'd16;
+localparam H_SYNC_640   = 11'd64;
+localparam H_BP_640     = 11'd80;
+localparam H_TOTAL_640  = H_ACTIVE_640 + H_FP_640 + H_SYNC_640 + H_BP_640; // 800
+
+// Vertical constants (same both modes)
+localparam V_ACTIVE = 10'd240;
+localparam V_FP     = 10'd3;
+localparam V_SYNC   = 10'd3;
+localparam V_BP     = 10'd16;
+localparam V_TOTAL  = V_ACTIVE + V_FP + V_SYNC + V_BP; // 262
+
+// Runtime-muxed horizontal constants
+wire [10:0] h_active = mode_640 ? H_ACTIVE_640 : H_ACTIVE_320;
+wire [10:0] h_fp     = mode_640 ? H_FP_640     : H_FP_320;
+wire [10:0] h_sync   = mode_640 ? H_SYNC_640   : H_SYNC_320;
+wire [10:0] h_total  = mode_640 ? H_TOTAL_640  : H_TOTAL_320;
 
 reg [10:0] hc;
 reg [9:0]  vc;
@@ -52,10 +69,10 @@ always @(posedge clk or negedge rst_n) begin
         pixel_y <= 10'd0;
     end else if (ce_pix) begin
         // Horizontal counter
-        if (hc == H_TOTAL - 1) begin
+        if (hc == h_total - 11'd1) begin
             hc <= 11'd0;
             // Vertical counter
-            if (vc == V_TOTAL - 1)
+            if (vc == V_TOTAL - 10'd1)
                 vc <= 10'd0;
             else
                 vc <= vc + 10'd1;
@@ -64,8 +81,8 @@ always @(posedge clk or negedge rst_n) begin
         end
 
         // Horizontal signals
-        hblank <= (hc >= H_ACTIVE);
-        hsync  <= (hc >= H_ACTIVE + H_FP) && (hc < H_ACTIVE + H_FP + H_SYNC);
+        hblank <= (hc >= h_active);
+        hsync  <= (hc >= h_active + h_fp) && (hc < h_active + h_fp + h_sync);
 
         // Vertical signals
         vblank <= (vc >= V_ACTIVE);

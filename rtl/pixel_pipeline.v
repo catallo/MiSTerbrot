@@ -22,14 +22,13 @@
 
 module pixel_pipeline #(
     parameter N_ITERATORS = 20,
-    parameter H_RES       = 320,
-    parameter V_RES       = 240,
     parameter WIDTH       = 64,
     parameter FRAC_BITS   = 56
 )(
     input  wire                    clk,        // clk_sys (50 MHz)
-    input  wire                    clk_iter,   // clk_iter (75 MHz)
+    input  wire                    clk_iter,   // clk_iter (100 MHz)
     input  wire                    rst_n,
+    input  wire                    mode_640,   // resolution mode passed to coord_gen
     input  wire                    start_frame,
     output wire                    frame_done,
     input  wire [1:0]              fractal_type,
@@ -91,9 +90,11 @@ wire signed [WIDTH-1:0] coord_cr, coord_ci;
 wire                    coord_frame_done;
 
 coord_generator #(
-    .H_RES(H_RES), .V_RES(V_RES), .WIDTH(WIDTH), .FRAC_BITS(FRAC_BITS)
+    .WIDTH(WIDTH), .FRAC_BITS(FRAC_BITS)
 ) u_coord_gen (
-    .clk(clk), .rst_n(rst_n), .start_frame(start_frame),
+    .clk(clk), .rst_n(rst_n),
+    .mode_640(mode_640),
+    .start_frame(start_frame),
     .center_x(center_x), .center_y(center_y), .step(step),
     .ready(coord_ready), .valid(coord_valid),
     .pixel_x(coord_px), .pixel_y(coord_py),
