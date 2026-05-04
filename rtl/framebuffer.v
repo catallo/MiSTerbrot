@@ -35,7 +35,12 @@ module framebuffer #(
     input  wire                    display_bank_sel
 );
 
-localparam MEM_SIZE = 640 * 240; // 153600
+// Round up to power of 2 (2^18 = 262144). Non-power-of-2 sizes can lead
+// Quartus to stitch BRAMs with non-trivial address decoders that have
+// aliasing across address-bit boundaries (specifically bit 17 at 131072).
+// The unused upper half (153600..262143) is just empty BRAM — we never
+// address it.
+localparam MEM_SIZE = 1 << ADDR_WIDTH; // 262144 (2^18)
 
 // ---- Bank A ----
 reg [DATA_WIDTH-1:0] mem_a [0:MEM_SIZE-1];
