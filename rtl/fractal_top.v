@@ -226,9 +226,11 @@ wire [11:0] max_iter     = input_max_iter;  // keyboard-only (unified)
 reg  [1:0] fractal_type_prev;
 reg  [5:0] palette_sel_prev;
 reg  [11:0] max_iter_prev;
+reg         mode_640_prev;
 wire settings_changed = (fractal_type != fractal_type_prev) ||
                         (palette_sel != palette_sel_prev) ||
-                        (max_iter != max_iter_prev);
+                        (max_iter != max_iter_prev) ||
+                        (mode_640 != mode_640_prev);
 
 always @(*) begin
     case (input_iter_sel)
@@ -333,12 +335,14 @@ always @(posedge clk or negedge rst_n) begin
         az_target_idx_prev <= 5'd0;
         palette_sel_prev  <= 6'd0;
         max_iter_prev     <= 12'd512;
+        mode_640_prev     <= 1'b0;
     end else begin
         start_render <= 1'b0;
         fractal_type_prev <= fractal_type;
         az_target_idx_prev <= az_target_idx;
         palette_sel_prev  <= palette_sel;
         max_iter_prev     <= max_iter;
+        mode_640_prev     <= mode_640;
 
         // Latch view changes during render or wait
         if ((view_changed || settings_changed) && render_state != RS_IDLE)
