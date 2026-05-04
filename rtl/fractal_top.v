@@ -414,8 +414,8 @@ pixel_pipeline #(
 // Write addr: y*H_RES + x.
 //   320 mode: y*320 + x = (y<<8) + (y<<6) + x
 //   640 mode: y*640 + x = (y<<9) + (y<<7) + x
-wire [FB_ADDR_WIDTH-1:0] wr_y = {10'd0, pipe_result_y[7:0]};
-wire [FB_ADDR_WIDTH-1:0] wr_x = {7'd0,  pipe_result_x[10:0]};
+wire [FB_ADDR_WIDTH-1:0] wr_y = {9'd0, pipe_result_y[8:0]};
+wire [FB_ADDR_WIDTH-1:0] wr_x = {7'd0, pipe_result_x[10:0]};
 wire [FB_ADDR_WIDTH-1:0] wr_addr = mode_640
                                    ? ((wr_y << 9) + (wr_y << 7) + wr_x)
                                    : ((wr_y << 8) + (wr_y << 6) + wr_x);
@@ -424,8 +424,13 @@ wire [FB_DATA_WIDTH-1:0] wr_data = {pipe_result_escaped, pipe_result_iter};
 // Read address: same formula
 wire [10:0] vid_pixel_x;
 wire [9:0]  vid_pixel_y;
-wire [FB_ADDR_WIDTH-1:0] rd_y = {10'd0, vid_pixel_y[7:0]};
-wire [FB_ADDR_WIDTH-1:0] rd_x = {7'd0,  vid_pixel_x[10:0]};
+// Use full 9-bit y slice (covers 0..511 — far beyond our 240 active range)
+// instead of [7:0] which truncated y=256..261 during vblank back to 0..5,
+// causing rd_addr to alias into the first few rows. With a 1-cycle BRAM
+// read latency this aliased read could leak into the start of the next
+// frame as a copy of bottom-region content.
+wire [FB_ADDR_WIDTH-1:0] rd_y = {9'd0, vid_pixel_y[8:0]};
+wire [FB_ADDR_WIDTH-1:0] rd_x = {7'd0, vid_pixel_x[10:0]};
 wire [FB_ADDR_WIDTH-1:0] vid_rd_addr = mode_640
                                        ? ((rd_y << 9) + (rd_y << 7) + rd_x)
                                        : ((rd_y << 8) + (rd_y << 6) + rd_x);
