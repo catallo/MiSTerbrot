@@ -1,18 +1,25 @@
 //============================================================================
-// Iterator Quad — Four Mandelbrot/Julia iterators sharing
-// seven truncated 64×64 multiplies via 4-context DSP time-multiplexing.
+// Iterator Quad — Five Mandelbrot/Julia iterators sharing
+// seven truncated 64×64 multiplies via 5-context DSP time-multiplexing.
 //
-// 4-stage pipeline (vs. 2-stage in iter_pair.v):
+// Note: name retained for historical reasons; this version has 5 contexts
+// (A..E) per instance, not 4.
+//
+// 5-stage pipeline (vs. 2-stage in iter_pair.v):
 //   Stage 1   : DSP partial products (registered)
-//   Stage 2a  : 96-bit accumulation → registered {zr_sq, zi_sq, zr_zi, ovf}
-//   Stage 2b1 : combinational mag_sq, escape, mux on phase_d2 → registered
-//   Stage 2b2 : final adds + state machine writeback
+//   Stage 2a1 : lower-half 32-bit adds + carry → registered (NEW)
+//   Stage 2a2 : upper-half 32-bit adds + assemble → registered
+//                {zr_sq, zi_sq, zr_zi, ovf}
+//   Stage 2b1 : mag_sq, escape, compares, phase_d3 4:1-style mux → registered
+//   Stage 2b2 : final adds + state machine writeback at phase_d4
 //
-// Each context iterates every 4 clocks. Contexts share the seven multipliers
-// in round-robin via a 2-bit phase counter.
+// Each context iterates every 5 clocks. Five-stage pipeline requires
+// N_contexts ≥ N_stages to avoid the iteration loop hazard (same-cycle
+// read while writeback for the same context is happening).
 //
 // DSP usage per iter_quad: ~14 DSP blocks (7 multiply ops × ~2 DSPs each).
-// Same as iter_pair, but serves twice as many logical iterators.
+// Same multiplier count as iter_pair.v / earlier 4-context iter_quad,
+// but serves 5 logical iterators instead.
 // 12-bit iteration count supports max_iter up to 2048.
 //
 // Mandelbrot mode reuses the multiplier pipeline for an interior precheck
@@ -69,7 +76,16 @@ module iter_quad #(
     output wire                    done_d,
     output wire [11:0]             iter_count_d,
     output wire                    escaped_d,
-    output wire signed [WIDTH-1:0] final_mag_sq_d
+    output wire signed [WIDTH-1:0] final_mag_sq_d,
+
+    // Context E
+    input  wire                    start_e,
+    input  wire signed [WIDTH-1:0] cr_e,
+    input  wire signed [WIDTH-1:0] ci_e,
+    output wire                    done_e,
+    output wire [11:0]             iter_count_e,
+    output wire                    escaped_e,
+    output wire signed [WIDTH-1:0] final_mag_sq_e
 );
 
 localparam signed [WIDTH-1:0] ESCAPE_THRESHOLD = {{(WIDTH-FRAC_BITS-3){1'b0}}, 1'b1, {(FRAC_BITS+2){1'b0}}};
@@ -83,20 +99,22 @@ localparam [2:0] S_IDLE     = 3'd0,
                  S_ITER     = 3'd4,
                  S_DONE     = 3'd5;
 
+localparam [2:0] PHASE_MAX = 3'd4;  // 5 contexts: phase counts 0..4
+
 // ---- Per-context state arrays ----
-reg [2:0]              ctx_state          [0:3];
-reg signed [WIDTH-1:0] ctx_zr             [0:3];
-reg signed [WIDTH-1:0] ctx_zi             [0:3];
-reg signed [WIDTH-1:0] ctx_c_real         [0:3];
-reg signed [WIDTH-1:0] ctx_c_imag         [0:3];
-reg [11:0]             ctx_iter           [0:3];
-reg                    ctx_primed         [0:3];
-reg signed [WIDTH-1:0] ctx_cardioid_x     [0:3];
-reg signed [WIDTH-1:0] ctx_cardioid_ci_sq [0:3];
-reg                    ctx_done           [0:3];
-reg [11:0]             ctx_iter_count     [0:3];
-reg                    ctx_escaped        [0:3];
-reg signed [WIDTH-1:0] ctx_final_mag_sq   [0:3];
+reg [2:0]              ctx_state          [0:4];
+reg signed [WIDTH-1:0] ctx_zr             [0:4];
+reg signed [WIDTH-1:0] ctx_zi             [0:4];
+reg signed [WIDTH-1:0] ctx_c_real         [0:4];
+reg signed [WIDTH-1:0] ctx_c_imag         [0:4];
+reg [11:0]             ctx_iter           [0:4];
+reg                    ctx_primed         [0:4];
+reg signed [WIDTH-1:0] ctx_cardioid_x     [0:4];
+reg signed [WIDTH-1:0] ctx_cardioid_ci_sq [0:4];
+reg                    ctx_done           [0:4];
+reg [11:0]             ctx_iter_count     [0:4];
+reg                    ctx_escaped        [0:4];
+reg signed [WIDTH-1:0] ctx_final_mag_sq   [0:4];
 
 // ---- Connect output ports ----
 assign done_a         = ctx_done[0];
@@ -115,29 +133,36 @@ assign done_d         = ctx_done[3];
 assign iter_count_d   = ctx_iter_count[3];
 assign escaped_d      = ctx_escaped[3];
 assign final_mag_sq_d = ctx_final_mag_sq[3];
+assign done_e         = ctx_done[4];
+assign iter_count_e   = ctx_iter_count[4];
+assign escaped_e      = ctx_escaped[4];
+assign final_mag_sq_e = ctx_final_mag_sq[4];
 
-// ---- Per-context input fan-in (for indexing in generate) ----
-wire                    ctx_start [0:3];
+// ---- Per-context input fan-in ----
+wire                    ctx_start [0:4];
 assign ctx_start[0] = start_a;
 assign ctx_start[1] = start_b;
 assign ctx_start[2] = start_c;
 assign ctx_start[3] = start_d;
-wire signed [WIDTH-1:0] ctx_cr_in [0:3];
+assign ctx_start[4] = start_e;
+wire signed [WIDTH-1:0] ctx_cr_in [0:4];
 assign ctx_cr_in[0] = cr_a;
 assign ctx_cr_in[1] = cr_b;
 assign ctx_cr_in[2] = cr_c;
 assign ctx_cr_in[3] = cr_d;
-wire signed [WIDTH-1:0] ctx_ci_in [0:3];
+assign ctx_cr_in[4] = cr_e;
+wire signed [WIDTH-1:0] ctx_ci_in [0:4];
 assign ctx_ci_in[0] = ci_a;
 assign ctx_ci_in[1] = ci_b;
 assign ctx_ci_in[2] = ci_c;
 assign ctx_ci_in[3] = ci_d;
+assign ctx_ci_in[4] = ci_e;
 
-// ---- 2-bit phase counter (4 contexts) ----
-reg [1:0] phase;
+// ---- 3-bit phase counter (5 contexts; wraps at 5) ----
+reg [2:0] phase;
 always @(posedge clk or negedge rst_n) begin
-    if (!rst_n) phase <= 2'd0;
-    else        phase <= phase + 2'd1;
+    if (!rst_n) phase <= 3'd0;
+    else        phase <= (phase == PHASE_MAX) ? 3'd0 : phase + 3'd1;
 end
 
 // ---- Multiplier input mux (selects active context's z based on phase) ----
@@ -156,13 +181,13 @@ wire signed [32:0] zi_lo_s = {1'b0, zi_lo};
 // Stage 1: DSP partial products (registered)
 // ============================================================
 reg signed [63:0] zrsq_hh;     // zr_hi * zr_hi
-reg signed [64:0] zrsq_cross;  // zr_hi * zr_lo_s (doubled in stage 2a)
+reg signed [64:0] zrsq_cross;  // zr_hi * zr_lo_s (doubled in 2a1)
 reg signed [63:0] zisq_hh;
 reg signed [64:0] zisq_cross;
 reg signed [63:0] zrzi_hh;
 reg signed [64:0] zrzi_hl;
 reg signed [64:0] zrzi_lh;
-reg [1:0] phase_d1;
+reg [2:0] phase_d1;
 
 always @(posedge clk) begin
     zrsq_hh    <= zr_hi * zr_hi;
@@ -176,37 +201,91 @@ always @(posedge clk) begin
 end
 
 // ============================================================
-// Stage 2a: 64-bit accumulation (combinational), registered output
+// Stage 2a1: Lower-half 32-bit add of the (formerly 96-bit) accumulation
 //
-// The "96-bit add" form was misleading: bits [31:0] of {zrsq_hh, 32'd0}
-// are zero, so the lower 32 bits of the slice are pure passthrough
-// from zrsq_cross_2_w. The actual add is 64-bit on the upper portion.
-// Expressing it that way explicitly lets Quartus place the carry chain
-// without dragging fake passthrough wires through routing.
+// The accumulation slice [95:0] for each square or cross product is
+// effectively split as:
+//   bits [31:0] = passthrough (zrsq_cross_2_w[31:0] etc.; zrsq_hh has 0 here)
+//   bits [95:32] = zrsq_hh + sign_extended(zrsq_cross_2_w[65:32])
+//
+// We split that 64-bit upper-half add into two 32-bit halves with carry.
+// Stage 2a1 computes the lower 32-bit add (slice bits [63:32]) and
+// registers the result, the carry-out, and the upper-32-bit operands for
+// Stage 2a2 to finish.
 // ============================================================
 wire signed [65:0] zrsq_cross_2_w = {zrsq_cross, 1'b0};
-wire signed [33:0] zrsq_cross_hi  = $signed({{2{zrsq_cross_2_w[65]}}, zrsq_cross_2_w[65:32]});
-wire signed [63:0] zrsq_hi_sum_w  = zrsq_hh + {{30{zrsq_cross_hi[33]}}, zrsq_cross_hi};
-wire [95:0] zrsq_sum_w = {zrsq_hi_sum_w, zrsq_cross_2_w[31:0]};
-wire signed [WIDTH-1:0] zr_sq_w = zrsq_sum_w[87:24];
-wire [7:0] zr_sq_ovf_w = zrsq_sum_w[95:88];
-
 wire signed [65:0] zisq_cross_2_w = {zisq_cross, 1'b0};
-wire signed [33:0] zisq_cross_hi  = $signed({{2{zisq_cross_2_w[65]}}, zisq_cross_2_w[65:32]});
-wire signed [63:0] zisq_hi_sum_w  = zisq_hh + {{30{zisq_cross_hi[33]}}, zisq_cross_hi};
-wire [95:0] zisq_sum_w = {zisq_hi_sum_w, zisq_cross_2_w[31:0]};
-wire signed [WIDTH-1:0] zi_sq_w = zisq_sum_w[87:24];
-wire [7:0] zi_sq_ovf_w = zisq_sum_w[95:88];
-
 wire signed [65:0] zrzi_mid_w     = {zrzi_hl[64], zrzi_hl} + {zrzi_lh[64], zrzi_lh};
-wire signed [33:0] zrzi_mid_hi    = $signed({{2{zrzi_mid_w[65]}}, zrzi_mid_w[65:32]});
-wire signed [63:0] zrzi_hi_sum_w  = zrzi_hh + {{30{zrzi_mid_hi[33]}}, zrzi_mid_hi};
-wire [95:0] zrzi_sum_w = {zrzi_hi_sum_w, zrzi_mid_w[31:0]};
-wire signed [WIDTH-1:0] zr_zi_w = zrzi_sum_w[87:24];
+
+// Lower-half adds: 32-bit + 32-bit → 33-bit (low result + carry)
+wire [32:0] zrsq_lo_sum_w = {1'b0, zrsq_hh[31:0]} + {1'b0, zrsq_cross_2_w[63:32]};
+wire [32:0] zisq_lo_sum_w = {1'b0, zisq_hh[31:0]} + {1'b0, zisq_cross_2_w[63:32]};
+wire [32:0] zrzi_lo_sum_w = {1'b0, zrzi_hh[31:0]} + {1'b0, zrzi_mid_w   [63:32]};
+
+reg [31:0] zrsq_lo_r,    zisq_lo_r,    zrzi_lo_r;     // lower 32 bits of upper-half sum (slice [63:32])
+reg        zrsq_carry_r, zisq_carry_r, zrzi_carry_r;  // carry into upper-half (slice bit 64)
+reg signed [31:0] zrsq_hh_hi_r, zisq_hh_hi_r, zrzi_hh_hi_r;  // zrsq_hh[63:32] etc, queued for 2a2
+// Sign-extension source for the upper add: bit 65 of the original cross
+reg        zrsq_cross_sign_r, zisq_cross_sign_r, zrzi_mid_sign_r;
+// Actual cross-bits feeding into the upper-half add: bits [65:64] of cross_2 (only 2 actual bits)
+reg [1:0]  zrsq_cross_top_r, zisq_cross_top_r, zrzi_mid_top_r;
+// Passthrough: bits [31:0] of slice
+reg [31:0] zrsq_pass_r, zisq_pass_r, zrzi_pass_r;
+reg [2:0]  phase_d2;
+
+always @(posedge clk) begin
+    zrsq_lo_r         <= zrsq_lo_sum_w[31:0];
+    zrsq_carry_r      <= zrsq_lo_sum_w[32];
+    zrsq_hh_hi_r      <= zrsq_hh[63:32];
+    zrsq_cross_sign_r <= zrsq_cross_2_w[65];
+    zrsq_cross_top_r  <= zrsq_cross_2_w[65:64];
+    zrsq_pass_r       <= zrsq_cross_2_w[31:0];
+
+    zisq_lo_r         <= zisq_lo_sum_w[31:0];
+    zisq_carry_r      <= zisq_lo_sum_w[32];
+    zisq_hh_hi_r      <= zisq_hh[63:32];
+    zisq_cross_sign_r <= zisq_cross_2_w[65];
+    zisq_cross_top_r  <= zisq_cross_2_w[65:64];
+    zisq_pass_r       <= zisq_cross_2_w[31:0];
+
+    zrzi_lo_r         <= zrzi_lo_sum_w[31:0];
+    zrzi_carry_r      <= zrzi_lo_sum_w[32];
+    zrzi_hh_hi_r      <= zrzi_hh[63:32];
+    zrzi_mid_sign_r   <= zrzi_mid_w[65];
+    zrzi_mid_top_r    <= zrzi_mid_w[65:64];
+    zrzi_pass_r       <= zrzi_mid_w[31:0];
+
+    phase_d2          <= phase_d1;
+end
+
+// ============================================================
+// Stage 2a2: Upper-half 32-bit add (with carry from 2a1) + slice assemble
+// → registered {zr_sq, zi_sq, zr_zi, ovf}
+// ============================================================
+// Reconstruct upper-half operand B (32 bits): top 30 bits are sign-extension
+// from cross_sign, bottom 2 bits are cross_top.
+wire signed [31:0] zrsq_b_hi = $signed({{30{zrsq_cross_sign_r}}, zrsq_cross_top_r});
+wire signed [31:0] zisq_b_hi = $signed({{30{zisq_cross_sign_r}}, zisq_cross_top_r});
+wire signed [31:0] zrzi_b_hi = $signed({{30{zrzi_mid_sign_r}},   zrzi_mid_top_r});
+
+wire [32:0] zrsq_hi_sum_w = {1'b0, zrsq_hh_hi_r} + {1'b0, zrsq_b_hi} + {32'd0, zrsq_carry_r};
+wire [32:0] zisq_hi_sum_w = {1'b0, zisq_hh_hi_r} + {1'b0, zisq_b_hi} + {32'd0, zisq_carry_r};
+wire [32:0] zrzi_hi_sum_w = {1'b0, zrzi_hh_hi_r} + {1'b0, zrzi_b_hi} + {32'd0, zrzi_carry_r};
+
+// Reassemble full 96-bit slice: {hi_sum[31:0], lo_r[31:0], pass_r[31:0]}
+wire [95:0] zrsq_sum_w = {zrsq_hi_sum_w[31:0], zrsq_lo_r, zrsq_pass_r};
+wire [95:0] zisq_sum_w = {zisq_hi_sum_w[31:0], zisq_lo_r, zisq_pass_r};
+wire [95:0] zrzi_sum_w = {zrzi_hi_sum_w[31:0], zrzi_lo_r, zrzi_pass_r};
+
+wire signed [WIDTH-1:0] zr_sq_w   = zrsq_sum_w[87:24];
+wire        [7:0]       zr_sq_ovf_w = zrsq_sum_w[95:88];
+wire signed [WIDTH-1:0] zi_sq_w   = zisq_sum_w[87:24];
+wire        [7:0]       zi_sq_ovf_w = zisq_sum_w[95:88];
+wire signed [WIDTH-1:0] zr_zi_w   = zrzi_sum_w[87:24];
 
 reg signed [WIDTH-1:0] zr_sq, zi_sq, zr_zi;
 reg [7:0]              zr_sq_ovf, zi_sq_ovf;
-reg [1:0]              phase_d2;
+reg [2:0]              phase_d3;
 
 always @(posedge clk) begin
     zr_sq     <= zr_sq_w;
@@ -214,18 +293,14 @@ always @(posedge clk) begin
     zr_zi     <= zr_zi_w;
     zr_sq_ovf <= zr_sq_ovf_w;
     zi_sq_ovf <= zi_sq_ovf_w;
-    phase_d2  <= phase_d1;
+    phase_d3  <= phase_d2;
 end
 
 // ============================================================
 // Stage 2b1: pre-decision combinational + per-context mux, registered
 //
-// What moves out of the writeback critical path here:
-//   - 64-bit mag_sq add
-//   - 4-way mux on phase_d2 (selects c_real/c_imag/cardioid_x/cardioid_ci_sq
-//     of the active context for use in writeback one cycle later)
-//   - 64-bit zr_diff = zr_sq − zi_sq subtract (precomputes half of zr_next)
-//   - escape detection (overflow flags + threshold compare)
+// Now keyed on phase_d3 (since we inserted Stage 2a1, phase_d3 is the
+// new "the partials are for context k"-aligned signal).
 // ============================================================
 wire signed [WIDTH-1:0] mag_sq_w    = zr_sq + zi_sq;
 wire signed [WIDTH-1:0] two_zr_zi_w = {zr_zi[WIDTH-2:0], 1'b0};
@@ -237,23 +312,19 @@ wire sum_overflow_w   = ~zr_sq[WIDTH-1] & ~zi_sq[WIDTH-1] & mag_sq_w[WIDTH-1];
 wire escape_w = zr_sq_overflow_w | zi_sq_overflow_w | sum_overflow_w |
                 ($signed(mag_sq_w) > ESCAPE_THRESHOLD);
 
-wire signed [WIDTH-1:0] s2b1_c_real_w         = ctx_c_real        [phase_d2];
-wire signed [WIDTH-1:0] s2b1_c_imag_w         = ctx_c_imag        [phase_d2];
-wire signed [WIDTH-1:0] s2b1_cardioid_x_w     = ctx_cardioid_x    [phase_d2];
-wire signed [WIDTH-1:0] s2b1_cardioid_ci_sq_w = ctx_cardioid_ci_sq[phase_d2];
+wire signed [WIDTH-1:0] s2b1_c_real_w         = ctx_c_real        [phase_d3];
+wire signed [WIDTH-1:0] s2b1_c_imag_w         = ctx_c_imag        [phase_d3];
+wire signed [WIDTH-1:0] s2b1_cardioid_x_w     = ctx_cardioid_x    [phase_d3];
+wire signed [WIDTH-1:0] s2b1_cardioid_ci_sq_w = ctx_cardioid_ci_sq[phase_d3];
 
-// Pre-compute the S_CARDIOID and S_BULB comparator results in Stage 2b1.
-// These were the 64-bit signed compares living on the Stage 2b2 critical
-// path (4 LUT levels, ~3 ns). Registering the boolean result moves them
-// off the writeback path entirely.
 wire signed [WIDTH-1:0] s2b1_cardioid_rhs_w = s2b1_cardioid_ci_sq_w >>> 2;
 wire cardioid_check_w = $signed(zr_zi)    < $signed(s2b1_cardioid_rhs_w);
 wire bulb_check_w     = $signed(mag_sq_w) < $signed(BULB_THRESHOLD);
 
 reg signed [WIDTH-1:0] mag_sq_r;
 reg signed [WIDTH-1:0] two_zr_zi_r;
-reg signed [WIDTH-1:0] zr_zi_pl;       // pipelined zr_zi for state machine view
-reg signed [WIDTH-1:0] zi_sq_pl;       // pipelined zi_sq for S_PREP_Q write
+reg signed [WIDTH-1:0] zr_zi_pl;
+reg signed [WIDTH-1:0] zi_sq_pl;
 reg signed [WIDTH-1:0] zr_diff_r;
 reg                    escape_pl;
 reg                    cardioid_check_pl;
@@ -262,7 +333,7 @@ reg signed [WIDTH-1:0] s2_c_real;
 reg signed [WIDTH-1:0] s2_c_imag;
 reg signed [WIDTH-1:0] s2_cardioid_x;
 reg signed [WIDTH-1:0] s2_cardioid_ci_sq;
-reg [1:0]              phase_d3;
+reg [2:0]              phase_d4;
 
 always @(posedge clk) begin
     mag_sq_r          <= mag_sq_w;
@@ -277,34 +348,30 @@ always @(posedge clk) begin
     s2_c_imag         <= s2b1_c_imag_w;
     s2_cardioid_x     <= s2b1_cardioid_x_w;
     s2_cardioid_ci_sq <= s2b1_cardioid_ci_sq_w;
-    phase_d3          <= phase_d2;
+    phase_d4          <= phase_d3;
 end
 
 // ============================================================
 // Stage 2b2: Decision and writeback (final adds + state machine)
-// Operates on Stage 2b1 registered outputs at phase_d3.
-// Aliases below let the state machine code reference the original names
-// (mag_sq, zr_zi, zi_sq, escape) while actually consuming the
-// pipelined-through values.
+// Operates on Stage 2b1 registered outputs at phase_d4.
 // ============================================================
-wire signed [WIDTH-1:0] mag_sq_eff      = mag_sq_r;
-wire signed [WIDTH-1:0] two_zr_zi       = two_zr_zi_r;
-wire signed [WIDTH-1:0] zr_zi_eff       = zr_zi_pl;
-wire signed [WIDTH-1:0] zi_sq_eff       = zi_sq_pl;
-wire                    escape_eff      = escape_pl;
-wire signed [WIDTH-1:0] s2_cardioid_rhs = s2_cardioid_ci_sq >>> 2;
+wire signed [WIDTH-1:0] mag_sq_eff = mag_sq_r;
+wire signed [WIDTH-1:0] two_zr_zi  = two_zr_zi_r;
+wire signed [WIDTH-1:0] zr_zi_eff  = zr_zi_pl;
+wire signed [WIDTH-1:0] zi_sq_eff  = zi_sq_pl;
+wire                    escape_eff = escape_pl;
 
 wire signed [WIDTH-1:0] zr_next_std = zr_diff_r + s2_c_real;
 wire signed [WIDTH-1:0] zi_next_std = two_zr_zi  + s2_c_imag;
 wire signed [WIDTH-1:0] zi_next     = zi_next_std;
 
 // ============================================================
-// Per-context state machines (replicated via generate)
+// Per-context state machines (replicated via generate, 5 contexts)
 // ============================================================
 genvar k;
 generate
-for (k = 0; k < 4; k = k + 1) begin : ctx_sm
-    localparam [1:0] CTX_K = k[1:0];
+for (k = 0; k < 5; k = k + 1) begin : ctx_sm
+    localparam [2:0] CTX_K = k[2:0];
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -351,7 +418,7 @@ for (k = 0; k < 4; k = k + 1) begin : ctx_sm
                 endcase
             end
 
-            S_PREP_Q: if (phase_d3 == CTX_K) begin
+            S_PREP_Q: if (phase_d4 == CTX_K) begin
                 if (!ctx_primed[k]) begin
                     ctx_primed[k] <= 1'b1;
                 end else begin
@@ -363,7 +430,7 @@ for (k = 0; k < 4; k = k + 1) begin : ctx_sm
                 end
             end
 
-            S_CARDIOID: if (phase_d3 == CTX_K) begin
+            S_CARDIOID: if (phase_d4 == CTX_K) begin
                 if (!ctx_primed[k]) begin
                     ctx_primed[k] <= 1'b1;
                 end else begin
@@ -382,7 +449,7 @@ for (k = 0; k < 4; k = k + 1) begin : ctx_sm
                 end
             end
 
-            S_BULB: if (phase_d3 == CTX_K) begin
+            S_BULB: if (phase_d4 == CTX_K) begin
                 if (!ctx_primed[k]) begin
                     ctx_primed[k] <= 1'b1;
                 end else begin
@@ -402,7 +469,7 @@ for (k = 0; k < 4; k = k + 1) begin : ctx_sm
                 end
             end
 
-            S_ITER: if (phase_d3 == CTX_K) begin
+            S_ITER: if (phase_d4 == CTX_K) begin
                 if (!ctx_primed[k]) begin
                     ctx_primed[k] <= 1'b1;
                 end else begin

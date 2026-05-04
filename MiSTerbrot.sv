@@ -212,7 +212,7 @@ wire       core_rendering;
 fractal_top #(
 	.H_RES(320),
 	.V_RES(240),
-	.N_ITERATORS(16),
+	.N_ITERATORS(20),
 	.WIDTH(64),
 	.FRAC_BITS(56)
 ) u_fractal_top (

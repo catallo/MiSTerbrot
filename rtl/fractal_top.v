@@ -17,7 +17,7 @@
 module fractal_top #(
     parameter H_RES       = 320,
     parameter V_RES       = 240,
-    parameter N_ITERATORS = 16,
+    parameter N_ITERATORS = 20,
     parameter WIDTH       = 64,
     parameter FRAC_BITS   = 56
 )(
