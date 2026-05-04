@@ -312,16 +312,46 @@ always @(posedge clk) begin
     coord_x_frac <= frac_to_4dp(abs_x[FRAC_BITS-1:FRAC_BITS-14]);
     coord_y_frac <= frac_to_4dp(abs_y[FRAC_BITS-1:FRAC_BITS-14]);
 
-    coord_x_d3 <= digit_ascii((coord_x_frac / 14'd1000) % 10);
-    coord_x_d2 <= digit_ascii((coord_x_frac / 14'd100) % 10);
-    coord_x_d1 <= digit_ascii((coord_x_frac / 14'd10) % 10);
-    coord_x_d0 <= digit_ascii(coord_x_frac % 10);
+    // BCD digit values come from continuously-running bcd_serial converters
+    // (instantiated below). They updated every (BIN_W+2) clocks; the coord
+    // display only needs to update once per frame, so the lag is invisible.
+    coord_x_d3 <= digit_ascii(coord_x_d3_bcd);
+    coord_x_d2 <= digit_ascii(coord_x_d2_bcd);
+    coord_x_d1 <= digit_ascii(coord_x_d1_bcd);
+    coord_x_d0 <= digit_ascii(coord_x_d0_bcd);
 
-    coord_y_d3 <= digit_ascii((coord_y_frac / 14'd1000) % 10);
-    coord_y_d2 <= digit_ascii((coord_y_frac / 14'd100) % 10);
-    coord_y_d1 <= digit_ascii((coord_y_frac / 14'd10) % 10);
-    coord_y_d0 <= digit_ascii(coord_y_frac % 10);
+    coord_y_d3 <= digit_ascii(coord_y_d3_bcd);
+    coord_y_d2 <= digit_ascii(coord_y_d2_bcd);
+    coord_y_d1 <= digit_ascii(coord_y_d1_bcd);
+    coord_y_d0 <= digit_ascii(coord_y_d0_bcd);
 end
+
+// ---- BCD converters: replace combinational LPM_divide chains.
+// The /1000, /100, /10 and %10 operations on a 14-bit value were
+// synthesizing to ~19 ns of LPM_divide on clk_sys's worst-case path
+// (the design's overall timing-closure binder). Here we run a serial
+// double-dabble converter for each of x and y, producing 4 BCD digits
+// in a fixed 16-cycle loop.
+wire [3:0] coord_x_d3_bcd, coord_x_d2_bcd, coord_x_d1_bcd, coord_x_d0_bcd;
+wire [3:0] coord_y_d3_bcd, coord_y_d2_bcd, coord_y_d1_bcd, coord_y_d0_bcd;
+
+bcd_serial #(.BIN_W(14)) u_bcd_x (
+    .clk(clk),
+    .bin_in(coord_x_frac),
+    .d3(coord_x_d3_bcd),
+    .d2(coord_x_d2_bcd),
+    .d1(coord_x_d1_bcd),
+    .d0(coord_x_d0_bcd)
+);
+
+bcd_serial #(.BIN_W(14)) u_bcd_y (
+    .clk(clk),
+    .bin_in(coord_y_frac),
+    .d3(coord_y_d3_bcd),
+    .d2(coord_y_d2_bcd),
+    .d1(coord_y_d1_bcd),
+    .d0(coord_y_d0_bcd)
+);
 
 // ---- Target name functions ----
 function [159:0] target_name_full;
