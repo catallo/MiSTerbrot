@@ -428,16 +428,19 @@ wire [FB_DATA_WIDTH-1:0] wr_data = {pipe_result_escaped, pipe_result_iter};
 // Read address: same formula
 wire [10:0] vid_pixel_x;
 wire [9:0]  vid_pixel_y;
-// Use full 9-bit y slice (covers 0..511 — far beyond our 240 active range)
-// instead of [7:0] which truncated y=256..261 during vblank back to 0..5,
-// causing rd_addr to alias into the first few rows. With a 1-cycle BRAM
-// read latency this aliased read could leak into the start of the next
-// frame as a copy of bottom-region content.
+
+// Clamp x and y to the active region — outside, force address 0 to avoid
+// out-of-bounds BRAM reads during hblank/vblank that could leak through
+// the 1-cycle BRAM-read latency into the next active pixel.
+wire vid_in_range = (vid_pixel_y < 10'd240) &&
+                    (vid_pixel_x < (mode_640 ? 11'd640 : 11'd320));
 wire [FB_ADDR_WIDTH-1:0] rd_y = {9'd0, vid_pixel_y[8:0]};
 wire [FB_ADDR_WIDTH-1:0] rd_x = {7'd0, vid_pixel_x[10:0]};
-wire [FB_ADDR_WIDTH-1:0] vid_rd_addr = mode_640
+wire [FB_ADDR_WIDTH-1:0] vid_rd_addr_raw = mode_640
                                        ? ((rd_y << 9) + (rd_y << 7) + rd_x)
                                        : ((rd_y << 8) + (rd_y << 6) + rd_x);
+wire [FB_ADDR_WIDTH-1:0] vid_rd_addr = vid_in_range ? vid_rd_addr_raw
+                                                    : {FB_ADDR_WIDTH{1'b0}};
 
 // Mux read address: auto_zoom sampling during VBLANK, video display otherwise
 wire [FB_ADDR_WIDTH-1:0] rd_addr = az_fb_sampling ? az_fb_rd_addr : vid_rd_addr;
