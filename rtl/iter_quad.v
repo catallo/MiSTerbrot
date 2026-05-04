@@ -176,20 +176,32 @@ always @(posedge clk) begin
 end
 
 // ============================================================
-// Stage 2a: 96-bit accumulation (combinational), registered output
+// Stage 2a: 64-bit accumulation (combinational), registered output
+//
+// The "96-bit add" form was misleading: bits [31:0] of {zrsq_hh, 32'd0}
+// are zero, so the lower 32 bits of the slice are pure passthrough
+// from zrsq_cross_2_w. The actual add is 64-bit on the upper portion.
+// Expressing it that way explicitly lets Quartus place the carry chain
+// without dragging fake passthrough wires through routing.
 // ============================================================
 wire signed [65:0] zrsq_cross_2_w = {zrsq_cross, 1'b0};
-wire signed [95:0] zrsq_sum_w = {zrsq_hh, 32'd0} + {{30{zrsq_cross_2_w[65]}}, zrsq_cross_2_w};
+wire signed [33:0] zrsq_cross_hi  = $signed({{2{zrsq_cross_2_w[65]}}, zrsq_cross_2_w[65:32]});
+wire signed [63:0] zrsq_hi_sum_w  = zrsq_hh + {{30{zrsq_cross_hi[33]}}, zrsq_cross_hi};
+wire [95:0] zrsq_sum_w = {zrsq_hi_sum_w, zrsq_cross_2_w[31:0]};
 wire signed [WIDTH-1:0] zr_sq_w = zrsq_sum_w[87:24];
 wire [7:0] zr_sq_ovf_w = zrsq_sum_w[95:88];
 
 wire signed [65:0] zisq_cross_2_w = {zisq_cross, 1'b0};
-wire signed [95:0] zisq_sum_w = {zisq_hh, 32'd0} + {{30{zisq_cross_2_w[65]}}, zisq_cross_2_w};
+wire signed [33:0] zisq_cross_hi  = $signed({{2{zisq_cross_2_w[65]}}, zisq_cross_2_w[65:32]});
+wire signed [63:0] zisq_hi_sum_w  = zisq_hh + {{30{zisq_cross_hi[33]}}, zisq_cross_hi};
+wire [95:0] zisq_sum_w = {zisq_hi_sum_w, zisq_cross_2_w[31:0]};
 wire signed [WIDTH-1:0] zi_sq_w = zisq_sum_w[87:24];
 wire [7:0] zi_sq_ovf_w = zisq_sum_w[95:88];
 
-wire signed [65:0] zrzi_mid_w = {zrzi_hl[64], zrzi_hl} + {zrzi_lh[64], zrzi_lh};
-wire signed [95:0] zrzi_sum_w = {zrzi_hh, 32'd0} + {{30{zrzi_mid_w[65]}}, zrzi_mid_w};
+wire signed [65:0] zrzi_mid_w     = {zrzi_hl[64], zrzi_hl} + {zrzi_lh[64], zrzi_lh};
+wire signed [33:0] zrzi_mid_hi    = $signed({{2{zrzi_mid_w[65]}}, zrzi_mid_w[65:32]});
+wire signed [63:0] zrzi_hi_sum_w  = zrzi_hh + {{30{zrzi_mid_hi[33]}}, zrzi_mid_hi};
+wire [95:0] zrzi_sum_w = {zrzi_hi_sum_w, zrzi_mid_w[31:0]};
 wire signed [WIDTH-1:0] zr_zi_w = zrzi_sum_w[87:24];
 
 reg signed [WIDTH-1:0] zr_sq, zi_sq, zr_zi;
