@@ -230,12 +230,22 @@ wire signed [WIDTH-1:0] s2b1_c_imag_w         = ctx_c_imag        [phase_d2];
 wire signed [WIDTH-1:0] s2b1_cardioid_x_w     = ctx_cardioid_x    [phase_d2];
 wire signed [WIDTH-1:0] s2b1_cardioid_ci_sq_w = ctx_cardioid_ci_sq[phase_d2];
 
+// Pre-compute the S_CARDIOID and S_BULB comparator results in Stage 2b1.
+// These were the 64-bit signed compares living on the Stage 2b2 critical
+// path (4 LUT levels, ~3 ns). Registering the boolean result moves them
+// off the writeback path entirely.
+wire signed [WIDTH-1:0] s2b1_cardioid_rhs_w = s2b1_cardioid_ci_sq_w >>> 2;
+wire cardioid_check_w = $signed(zr_zi)    < $signed(s2b1_cardioid_rhs_w);
+wire bulb_check_w     = $signed(mag_sq_w) < $signed(BULB_THRESHOLD);
+
 reg signed [WIDTH-1:0] mag_sq_r;
 reg signed [WIDTH-1:0] two_zr_zi_r;
 reg signed [WIDTH-1:0] zr_zi_pl;       // pipelined zr_zi for state machine view
 reg signed [WIDTH-1:0] zi_sq_pl;       // pipelined zi_sq for S_PREP_Q write
 reg signed [WIDTH-1:0] zr_diff_r;
 reg                    escape_pl;
+reg                    cardioid_check_pl;
+reg                    bulb_check_pl;
 reg signed [WIDTH-1:0] s2_c_real;
 reg signed [WIDTH-1:0] s2_c_imag;
 reg signed [WIDTH-1:0] s2_cardioid_x;
@@ -249,6 +259,8 @@ always @(posedge clk) begin
     zi_sq_pl          <= zi_sq;
     zr_diff_r         <= zr_diff_w;
     escape_pl         <= escape_w;
+    cardioid_check_pl <= cardioid_check_w;
+    bulb_check_pl     <= bulb_check_w;
     s2_c_real         <= s2b1_c_real_w;
     s2_c_imag         <= s2b1_c_imag_w;
     s2_cardioid_x     <= s2b1_cardioid_x_w;
@@ -343,7 +355,7 @@ for (k = 0; k < 4; k = k + 1) begin : ctx_sm
                 if (!ctx_primed[k]) begin
                     ctx_primed[k] <= 1'b1;
                 end else begin
-                    if ($signed(zr_zi_eff) < $signed(s2_cardioid_rhs)) begin
+                    if (cardioid_check_pl) begin
                         ctx_escaped[k]      <= 1'b0;
                         ctx_iter_count[k]   <= max_iter;
                         ctx_final_mag_sq[k] <= {WIDTH{1'b0}};
@@ -362,7 +374,7 @@ for (k = 0; k < 4; k = k + 1) begin : ctx_sm
                 if (!ctx_primed[k]) begin
                     ctx_primed[k] <= 1'b1;
                 end else begin
-                    if ($signed(mag_sq_eff) < $signed(BULB_THRESHOLD)) begin
+                    if (bulb_check_pl) begin
                         ctx_escaped[k]      <= 1'b0;
                         ctx_iter_count[k]   <= max_iter;
                         ctx_final_mag_sq[k] <= {WIDTH{1'b0}};
