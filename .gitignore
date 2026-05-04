@@ -26,3 +26,7 @@ quartus/incremental_db/
 *~
 *.bak-*
 timing_report.tcl
+
+# Test/deploy artifacts
+MiSTerbrot_*.rbf
+tools/

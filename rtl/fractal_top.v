@@ -21,7 +21,8 @@ module fractal_top #(
     parameter WIDTH       = 64,
     parameter FRAC_BITS   = 56
 )(
-    input  wire        clk,       // 50 MHz
+    input  wire        clk,       // 50 MHz (clk_sys: video, framebuffer, control)
+    input  wire        clk_iter,  // 75 MHz (iter_quad math)
     input  wire        rst_n,
 
     // MiSTer interface
@@ -387,6 +388,7 @@ pixel_pipeline #(
     .FRAC_BITS(FRAC_BITS)
 ) u_pipeline (
     .clk(clk),
+    .clk_iter(clk_iter),
     .rst_n(rst_n),
     .start_frame(start_render),
     .frame_done(frame_done),

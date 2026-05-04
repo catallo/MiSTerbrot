@@ -192,11 +192,13 @@ hps_io #(.CONF_STR(CONF_STR)) hps_io
 );
 
 wire clk_sys;
+wire clk_iter;
 pll pll
 (
 	.refclk(CLK_50M),
 	.rst(0),
-	.outclk_0(clk_sys)
+	.outclk_0(clk_sys),
+	.outclk_1(clk_iter)
 );
 
 wire reset = RESET | status[0] | buttons[1];
@@ -215,6 +217,7 @@ fractal_top #(
 	.FRAC_BITS(56)
 ) u_fractal_top (
 	.clk(clk_sys),
+	.clk_iter(clk_iter),
 	.rst_n(rst_n),
 	.joystick(joystick_0),
 	.ps2_key(ps2_key),
