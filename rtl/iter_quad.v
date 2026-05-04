@@ -2,10 +2,11 @@
 // Iterator Quad — Four Mandelbrot/Julia iterators sharing
 // seven truncated 64×64 multiplies via 4-context DSP time-multiplexing.
 //
-// 3-stage pipeline (vs. 2-stage in iter_pair.v):
-//   Stage 1  : DSP partial products (registered)
-//   Stage 2a : 96-bit accumulation → registered {zr_sq, zi_sq, zr_zi, ovf}
-//   Stage 2b : escape detection + next-z + state machine writeback
+// 4-stage pipeline (vs. 2-stage in iter_pair.v):
+//   Stage 1   : DSP partial products (registered)
+//   Stage 2a  : 96-bit accumulation → registered {zr_sq, zi_sq, zr_zi, ovf}
+//   Stage 2b1 : combinational mag_sq, escape, mux on phase_d2 → registered
+//   Stage 2b2 : final adds + state machine writeback
 //
 // Each context iterates every 4 clocks. Contexts share the seven multipliers
 // in round-robin via a 2-bit phase counter.
@@ -205,25 +206,72 @@ always @(posedge clk) begin
 end
 
 // ============================================================
-// Stage 2b: Decision and writeback (combinational into ctx_* writeback)
+// Stage 2b1: pre-decision combinational + per-context mux, registered
+//
+// What moves out of the writeback critical path here:
+//   - 64-bit mag_sq add
+//   - 4-way mux on phase_d2 (selects c_real/c_imag/cardioid_x/cardioid_ci_sq
+//     of the active context for use in writeback one cycle later)
+//   - 64-bit zr_diff = zr_sq − zi_sq subtract (precomputes half of zr_next)
+//   - escape detection (overflow flags + threshold compare)
 // ============================================================
-wire signed [WIDTH-1:0] mag_sq    = zr_sq + zi_sq;
-wire signed [WIDTH-1:0] two_zr_zi = {zr_zi[WIDTH-2:0], 1'b0};
+wire signed [WIDTH-1:0] mag_sq_w    = zr_sq + zi_sq;
+wire signed [WIDTH-1:0] two_zr_zi_w = {zr_zi[WIDTH-2:0], 1'b0};
+wire signed [WIDTH-1:0] zr_diff_w   = zr_sq - zi_sq;
 
-wire zr_sq_overflow = |zr_sq_ovf | zr_sq[WIDTH-1];
-wire zi_sq_overflow = |zi_sq_ovf | zi_sq[WIDTH-1];
-wire sum_overflow   = ~zr_sq[WIDTH-1] & ~zi_sq[WIDTH-1] & mag_sq[WIDTH-1];
-wire escape = zr_sq_overflow | zi_sq_overflow | sum_overflow |
-              ($signed(mag_sq) > ESCAPE_THRESHOLD);
+wire zr_sq_overflow_w = |zr_sq_ovf | zr_sq[WIDTH-1];
+wire zi_sq_overflow_w = |zi_sq_ovf | zi_sq[WIDTH-1];
+wire sum_overflow_w   = ~zr_sq[WIDTH-1] & ~zi_sq[WIDTH-1] & mag_sq_w[WIDTH-1];
+wire escape_w = zr_sq_overflow_w | zi_sq_overflow_w | sum_overflow_w |
+                ($signed(mag_sq_w) > ESCAPE_THRESHOLD);
 
-wire signed [WIDTH-1:0] s2_c_real         = ctx_c_real[phase_d2];
-wire signed [WIDTH-1:0] s2_c_imag         = ctx_c_imag[phase_d2];
-wire signed [WIDTH-1:0] s2_cardioid_x     = ctx_cardioid_x[phase_d2];
-wire signed [WIDTH-1:0] s2_cardioid_ci_sq = ctx_cardioid_ci_sq[phase_d2];
-wire signed [WIDTH-1:0] s2_cardioid_rhs   = s2_cardioid_ci_sq >>> 2;
+wire signed [WIDTH-1:0] s2b1_c_real_w         = ctx_c_real        [phase_d2];
+wire signed [WIDTH-1:0] s2b1_c_imag_w         = ctx_c_imag        [phase_d2];
+wire signed [WIDTH-1:0] s2b1_cardioid_x_w     = ctx_cardioid_x    [phase_d2];
+wire signed [WIDTH-1:0] s2b1_cardioid_ci_sq_w = ctx_cardioid_ci_sq[phase_d2];
 
-wire signed [WIDTH-1:0] zr_next_std = zr_sq - zi_sq + s2_c_real;
-wire signed [WIDTH-1:0] zi_next_std = two_zr_zi + s2_c_imag;
+reg signed [WIDTH-1:0] mag_sq_r;
+reg signed [WIDTH-1:0] two_zr_zi_r;
+reg signed [WIDTH-1:0] zr_zi_pl;       // pipelined zr_zi for state machine view
+reg signed [WIDTH-1:0] zi_sq_pl;       // pipelined zi_sq for S_PREP_Q write
+reg signed [WIDTH-1:0] zr_diff_r;
+reg                    escape_pl;
+reg signed [WIDTH-1:0] s2_c_real;
+reg signed [WIDTH-1:0] s2_c_imag;
+reg signed [WIDTH-1:0] s2_cardioid_x;
+reg signed [WIDTH-1:0] s2_cardioid_ci_sq;
+reg [1:0]              phase_d3;
+
+always @(posedge clk) begin
+    mag_sq_r          <= mag_sq_w;
+    two_zr_zi_r       <= two_zr_zi_w;
+    zr_zi_pl          <= zr_zi;
+    zi_sq_pl          <= zi_sq;
+    zr_diff_r         <= zr_diff_w;
+    escape_pl         <= escape_w;
+    s2_c_real         <= s2b1_c_real_w;
+    s2_c_imag         <= s2b1_c_imag_w;
+    s2_cardioid_x     <= s2b1_cardioid_x_w;
+    s2_cardioid_ci_sq <= s2b1_cardioid_ci_sq_w;
+    phase_d3          <= phase_d2;
+end
+
+// ============================================================
+// Stage 2b2: Decision and writeback (final adds + state machine)
+// Operates on Stage 2b1 registered outputs at phase_d3.
+// Aliases below let the state machine code reference the original names
+// (mag_sq, zr_zi, zi_sq, escape) while actually consuming the
+// pipelined-through values.
+// ============================================================
+wire signed [WIDTH-1:0] mag_sq_eff      = mag_sq_r;
+wire signed [WIDTH-1:0] two_zr_zi       = two_zr_zi_r;
+wire signed [WIDTH-1:0] zr_zi_eff       = zr_zi_pl;
+wire signed [WIDTH-1:0] zi_sq_eff       = zi_sq_pl;
+wire                    escape_eff      = escape_pl;
+wire signed [WIDTH-1:0] s2_cardioid_rhs = s2_cardioid_ci_sq >>> 2;
+
+wire signed [WIDTH-1:0] zr_next_std = zr_diff_r + s2_c_real;
+wire signed [WIDTH-1:0] zi_next_std = two_zr_zi  + s2_c_imag;
 wire signed [WIDTH-1:0] zi_next     = zi_next_std;
 
 // ============================================================
@@ -279,23 +327,23 @@ for (k = 0; k < 4; k = k + 1) begin : ctx_sm
                 endcase
             end
 
-            S_PREP_Q: if (phase_d2 == CTX_K) begin
+            S_PREP_Q: if (phase_d3 == CTX_K) begin
                 if (!ctx_primed[k]) begin
                     ctx_primed[k] <= 1'b1;
                 end else begin
-                    ctx_cardioid_ci_sq[k] <= zi_sq;
-                    ctx_zr[k]             <= mag_sq;
-                    ctx_zi[k]             <= mag_sq + ctx_cardioid_x[k];
+                    ctx_cardioid_ci_sq[k] <= zi_sq_eff;
+                    ctx_zr[k]             <= mag_sq_eff;
+                    ctx_zi[k]             <= mag_sq_eff + ctx_cardioid_x[k];
                     ctx_primed[k]         <= 1'b0;
                     ctx_state[k]          <= S_CARDIOID;
                 end
             end
 
-            S_CARDIOID: if (phase_d2 == CTX_K) begin
+            S_CARDIOID: if (phase_d3 == CTX_K) begin
                 if (!ctx_primed[k]) begin
                     ctx_primed[k] <= 1'b1;
                 end else begin
-                    if ($signed(zr_zi) < $signed(s2_cardioid_rhs)) begin
+                    if ($signed(zr_zi_eff) < $signed(s2_cardioid_rhs)) begin
                         ctx_escaped[k]      <= 1'b0;
                         ctx_iter_count[k]   <= max_iter;
                         ctx_final_mag_sq[k] <= {WIDTH{1'b0}};
@@ -310,11 +358,11 @@ for (k = 0; k < 4; k = k + 1) begin : ctx_sm
                 end
             end
 
-            S_BULB: if (phase_d2 == CTX_K) begin
+            S_BULB: if (phase_d3 == CTX_K) begin
                 if (!ctx_primed[k]) begin
                     ctx_primed[k] <= 1'b1;
                 end else begin
-                    if ($signed(mag_sq) < $signed(BULB_THRESHOLD)) begin
+                    if ($signed(mag_sq_eff) < $signed(BULB_THRESHOLD)) begin
                         ctx_escaped[k]      <= 1'b0;
                         ctx_iter_count[k]   <= max_iter;
                         ctx_final_mag_sq[k] <= {WIDTH{1'b0}};
@@ -330,14 +378,14 @@ for (k = 0; k < 4; k = k + 1) begin : ctx_sm
                 end
             end
 
-            S_ITER: if (phase_d2 == CTX_K) begin
+            S_ITER: if (phase_d3 == CTX_K) begin
                 if (!ctx_primed[k]) begin
                     ctx_primed[k] <= 1'b1;
                 end else begin
-                    if (escape || (ctx_iter[k] >= max_iter)) begin
-                        ctx_escaped[k]      <= escape;
+                    if (escape_eff || (ctx_iter[k] >= max_iter)) begin
+                        ctx_escaped[k]      <= escape_eff;
                         ctx_iter_count[k]   <= ctx_iter[k];
-                        ctx_final_mag_sq[k] <= mag_sq;
+                        ctx_final_mag_sq[k] <= mag_sq_eff;
                         ctx_done[k]         <= 1'b1;
                         ctx_state[k]        <= S_DONE;
                     end else begin
