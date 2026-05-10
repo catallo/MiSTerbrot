@@ -2,7 +2,7 @@
 
 **Mandelbrot Eye Candy for MiSTer FPGA in 240p**
 
-Real-time Mandelbrot fractal core for MiSTer FPGA. Runtime-selectable 320×240 / 640×240 native 240p output, 20 parallel hardware iterators on a dual-clock pipeline (50 MHz / 100 MHz), 47 palettes, attract-mode zoom through 67 cross-validated canonical Mandelbrot POIs (Seahorse, Elephant, Triple Spiral, Misiurewicz, Feigenbaum, period-N bulbs and minibrots, embedded Julia sets) with color cycling.
+Real-time Mandelbrot fractal core for MiSTer FPGA. Runtime-selectable 320×240 / 640×240 native 240p output, 20 parallel hardware iterators on a dual-clock pipeline (50 MHz / 100 MHz), 47 palettes, attract-mode zoom through 67 cross-validated canonical Mandelbrot POIs (Seahorse, Elephant, Triple Spiral, Misiurewicz, Feigenbaum, period-N bulbs, minibrots, deep medallions) with color cycling.
 
 A spiritual successor to digital eye candy from the 90s.
 

@@ -45,7 +45,7 @@ The OSD overlay renders zoom as `X2^N.M` where `N.M = zoom_exp + zoom_frac_tenth
 
 Rule of thumb: **doubling `max_iter` buys ~5–7 more usable zoom levels**. Past the quality floor, interior pixels start "filling in" (escape doesn't happen within budget, so they get classified as set-interior) and the boundary becomes blocky.
 
-The deepest POI in the playlist (`JULIA ISLANDS`, Beyer step 12) sits at `X2^29.85` ≈ `10⁹×`. Comfortably inside the floor at 2048 iterations.
+The deepest POI in the playlist (Beyer step 12 in the seahorse-valley descent) sits at `X2^29.85` ≈ `10⁹×`. Comfortably inside the floor at 2048 iterations.
 
 ## 3. Acquisition workflow (the actual pipeline)
 
@@ -103,7 +103,7 @@ The biggest lesson: **most "POI lists" you find online have errors**. Coords get
 
 **Authoritative sources** (rank-ordered by trustworthiness):
 
-1. **Robert Munafo's Mu-Ency** — `mrob.com/pub/muency/`. Decades-old, mathematically rigorous, treats coords as exact mathematical objects. Best source for Misiurewicz points, period-N bulb nuclei, named features (Seahorse Valley, Elephant Valley, Triple Spiral Valley, Feigenbaum Point, embedded Julia sets, medallions).
+1. **Robert Munafo's Mu-Ency** — `mrob.com/pub/muency/`. Decades-old, mathematically rigorous, treats coords as exact mathematical objects. Best source for Misiurewicz points, period-N bulb nuclei, named features (Seahorse Valley, Elephant Valley, Triple Spiral Valley, Feigenbaum Point, medallions, deep boundary structures).
 2. **Wikipedia** — `en.wikipedia.org/wiki/Mandelbrot_set` and `Misiurewicz_point`. Beyer's zoom sequence file metadata is the canonical seahorse-valley waypoint catalog.
 3. **Wolfram MathWorld** — `mathworld.wolfram.com/SeaHorseValley.html` and `ElephantValley.html`. Concise, named-feature definitions.
 4. **Paul Bourke** — `paulbourke.net/fractals/mandelbrot/`. Published zoom-sequence waypoints with named features (Tante Renate, Spirals, Lightning, Filament).
@@ -261,7 +261,6 @@ If a new category appears (e.g., `SWIRL`, `DENDRITE`, etc.):
   - Elephant Valley: https://mrob.com/pub/muency/elephantvalley.html
   - Triple Spiral Valley: http://www.mrob.com/pub/muency/triplespiralvalley.html
   - Feigenbaum Point: http://www.mrob.com/pub/muency/feigenbaumpoint.html
-  - Embedded Julia Sets: https://mrob.com/pub/muency/embeddedjuliaset.html
   - Spiral Medallions: https://mrob.com/pub/muency/medallion.html (and `doublespiralmedallion.html`, `triplespiralmedallion.html`)
 - **MathWorld** — https://mathworld.wolfram.com/SeaHorseValley.html · https://mathworld.wolfram.com/ElephantValley.html
 - **Paul Bourke** — https://paulbourke.net/fractals/mandelbrot/
