@@ -37,9 +37,6 @@ module iter_quad #(
     input  wire                    clk,
     input  wire                    rst_n,
 
-    input  wire [1:0]              fractal_type,
-    input  wire signed [WIDTH-1:0] julia_cr,
-    input  wire signed [WIDTH-1:0] julia_ci,
     input  wire [11:0]             max_iter,
 
     // Context A
@@ -398,24 +395,13 @@ for (k = 0; k < 5; k = k + 1) begin : ctx_sm
                 ctx_final_mag_sq[k] <= {WIDTH{1'b0}};
                 ctx_iter[k]         <= 12'd0;
                 ctx_primed[k]       <= 1'b0;
-                case (fractal_type)
-                    2'd1: begin // Julia
-                        ctx_zr[k]     <= ctx_cr_in[k];
-                        ctx_zi[k]     <= ctx_ci_in[k];
-                        ctx_c_real[k] <= julia_cr;
-                        ctx_c_imag[k] <= julia_ci;
-                        ctx_state[k]  <= S_ITER;
-                    end
-                    default: begin // Mandelbrot (and unused codes)
-                        ctx_c_real[k]         <= ctx_cr_in[k];
-                        ctx_c_imag[k]         <= ctx_ci_in[k];
-                        ctx_cardioid_x[k]     <= ctx_cr_in[k] - QUARTER_FIXED;
-                        ctx_cardioid_ci_sq[k] <= {WIDTH{1'b0}};
-                        ctx_zr[k]             <= ctx_cr_in[k] - QUARTER_FIXED;
-                        ctx_zi[k]             <= ctx_ci_in[k];
-                        ctx_state[k]          <= S_PREP_Q;
-                    end
-                endcase
+                ctx_c_real[k]         <= ctx_cr_in[k];
+                ctx_c_imag[k]         <= ctx_ci_in[k];
+                ctx_cardioid_x[k]     <= ctx_cr_in[k] - QUARTER_FIXED;
+                ctx_cardioid_ci_sq[k] <= {WIDTH{1'b0}};
+                ctx_zr[k]             <= ctx_cr_in[k] - QUARTER_FIXED;
+                ctx_zi[k]             <= ctx_ci_in[k];
+                ctx_state[k]          <= S_PREP_Q;
             end
 
             S_PREP_Q: if (phase_d4 == CTX_K) begin
@@ -494,24 +480,13 @@ for (k = 0; k < 5; k = k + 1) begin : ctx_sm
                 ctx_final_mag_sq[k] <= {WIDTH{1'b0}};
                 ctx_iter[k]         <= 12'd0;
                 ctx_primed[k]       <= 1'b0;
-                case (fractal_type)
-                    2'd1: begin
-                        ctx_zr[k]     <= ctx_cr_in[k];
-                        ctx_zi[k]     <= ctx_ci_in[k];
-                        ctx_c_real[k] <= julia_cr;
-                        ctx_c_imag[k] <= julia_ci;
-                        ctx_state[k]  <= S_ITER;
-                    end
-                    default: begin
-                        ctx_c_real[k]         <= ctx_cr_in[k];
-                        ctx_c_imag[k]         <= ctx_ci_in[k];
-                        ctx_cardioid_x[k]     <= ctx_cr_in[k] - QUARTER_FIXED;
-                        ctx_cardioid_ci_sq[k] <= {WIDTH{1'b0}};
-                        ctx_zr[k]             <= ctx_cr_in[k] - QUARTER_FIXED;
-                        ctx_zi[k]             <= ctx_ci_in[k];
-                        ctx_state[k]          <= S_PREP_Q;
-                    end
-                endcase
+                ctx_c_real[k]         <= ctx_cr_in[k];
+                ctx_c_imag[k]         <= ctx_ci_in[k];
+                ctx_cardioid_x[k]     <= ctx_cr_in[k] - QUARTER_FIXED;
+                ctx_cardioid_ci_sq[k] <= {WIDTH{1'b0}};
+                ctx_zr[k]             <= ctx_cr_in[k] - QUARTER_FIXED;
+                ctx_zi[k]             <= ctx_ci_in[k];
+                ctx_state[k]          <= S_PREP_Q;
             end
 
             default: ctx_state[k] <= S_IDLE;

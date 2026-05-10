@@ -14,7 +14,7 @@
 //               sampled by iter_quad when synchronized start fires (no sync needed)
 //   iter_count, escaped buses (clk_iter → clk_sys): static when done fires,
 //               sampled by collect logic on synchronized done pulse
-//   max_iter, fractal_type, julia_*: 2-FF synchronizers (rare changes;
+//   max_iter: 2-FF synchronizer (rare changes;
 //               settling glitches harmless — view_changed forces a clean restart)
 //
 // Round-robin dispatch and collection in clk_sys. 12-bit iter count. 16 slots.
@@ -31,9 +31,6 @@ module pixel_pipeline #(
     input  wire                    mode_640,   // resolution mode passed to coord_gen
     input  wire                    start_frame,
     output wire                    frame_done,
-    input  wire [1:0]              fractal_type,
-    input  wire signed [WIDTH-1:0] julia_cr,
-    input  wire signed [WIDTH-1:0] julia_ci,
     input  wire [11:0]             max_iter,
     input  wire signed [WIDTH-1:0] center_x,
     input  wire signed [WIDTH-1:0] center_y,
@@ -53,28 +50,13 @@ localparam IDX_W = $clog2(N_ITERATORS);
 // during a transition is harmless because input_handler triggers a frame
 // restart (start_frame) that clears all in-flight contexts.
 // =====================================================================
-reg [1:0] fractal_type_iter_meta, fractal_type_iter;
-reg signed [WIDTH-1:0] julia_cr_iter_meta, julia_cr_iter;
-reg signed [WIDTH-1:0] julia_ci_iter_meta, julia_ci_iter;
 reg [11:0] max_iter_iter_meta, max_iter_iter;
 
 always @(posedge clk_iter or negedge rst_n) begin
     if (!rst_n) begin
-        fractal_type_iter_meta <= 2'd0;
-        fractal_type_iter      <= 2'd0;
-        julia_cr_iter_meta     <= {WIDTH{1'b0}};
-        julia_cr_iter          <= {WIDTH{1'b0}};
-        julia_ci_iter_meta     <= {WIDTH{1'b0}};
-        julia_ci_iter          <= {WIDTH{1'b0}};
         max_iter_iter_meta     <= 12'd0;
         max_iter_iter          <= 12'd0;
     end else begin
-        fractal_type_iter_meta <= fractal_type;
-        fractal_type_iter      <= fractal_type_iter_meta;
-        julia_cr_iter_meta     <= julia_cr;
-        julia_cr_iter          <= julia_cr_iter_meta;
-        julia_ci_iter_meta     <= julia_ci;
-        julia_ci_iter          <= julia_ci_iter_meta;
         max_iter_iter_meta     <= max_iter;
         max_iter_iter          <= max_iter_iter_meta;
     end
@@ -175,9 +157,6 @@ generate
     for (gq = 0; gq < N_ITERATORS/5; gq = gq + 1) begin : gen_quad
         iter_quad #(.WIDTH(WIDTH), .FRAC_BITS(FRAC_BITS)) u_quad (
             .clk(clk_iter), .rst_n(rst_n),
-            .fractal_type(fractal_type_iter),
-            .julia_cr(julia_cr_iter),
-            .julia_ci(julia_ci_iter),
             .max_iter(max_iter_iter),
 
             .start_a       (iter_start_pulse_iter [5*gq+0]),

@@ -26,7 +26,6 @@ module text_overlay #(
     input  wire [10:0]             pixel_x,
     input  wire [9:0]              pixel_y,
     input  wire                    video_active,
-    input  wire [1:0]              fractal_type,
     input  wire [5:0]              palette_sel,
     input  wire [11:0]             max_iter,
     input  wire [6:0]              fps_value,
@@ -368,7 +367,6 @@ bcd_serial #(.BIN_W(14)) u_bcd_y (
 
 // ---- Target name functions (data from rtl/poi_generated.vh) ----
 function [159:0] target_name_full;
-    input [1:0] ftype;
     input [`POI_IDX_BITS-1:0] idx;
     begin
         case (idx)
@@ -514,20 +512,6 @@ function [7:0] fps_ones_ascii;
 endfunction
 
 // ---- Text content functions ----
-function [255:0] fractal_line;
-    input [1:0] ftype;
-    begin
-        fractal_line = "TYPE: MANDELBROT                ";
-    end
-endfunction
-
-function [95:0] fractal_name;
-    input [1:0] ftype;
-    begin
-        fractal_name = "Mandelbrot  ";
-    end
-endfunction
-
 function [255:0] palette_line;
     input [5:0] pal;
     begin
@@ -641,11 +625,10 @@ function [95:0] palette_name;
 endfunction
 
 function [255:0] target_line;
-    input [1:0] ftype;
     input [`POI_IDX_BITS-1:0] idx;
     begin
         // 20-char POI name + 12-char trailing padding = 32 chars
-        target_line = {target_name_full(ftype, idx), "            "};
+        target_line = {target_name_full(idx), "            "};
     end
 endfunction
 
@@ -656,7 +639,7 @@ function [255:0] line_data;
         case (line)
             3'd0: line_data = {"ITER: ", iter_digit_3, iter_digit_2, iter_digit_1, iter_digit_0,
                                "                      "};
-            3'd1: line_data = {"Type: ", fractal_name(fractal_type), "          "};
+            3'd1: line_data = BLANK_LINE;
             3'd2: line_data = BLANK_LINE;
             default: line_data = BLANK_LINE;
         endcase
@@ -685,12 +668,11 @@ endfunction
 
 // ---- Combined POI | Palette string (48 chars) ----
 function [383:0] target_poi_palette;
-    input [1:0] ftype;
     input [`POI_IDX_BITS-1:0] idx;
     input [5:0] pal;
     begin
         // 20-char POI name + " | " + 12-char palette + 13-char padding = 48 chars
-        target_poi_palette = {target_name_full(ftype, idx), " | ", palette_name(pal), "             "};
+        target_poi_palette = {target_name_full(idx), " | ", palette_name(pal), "             "};
     end
 endfunction
 
@@ -701,7 +683,7 @@ function [383:0] target_line_data;
         case (line)
             3'd0: target_line_data = (overlay_visible || always_show_poi) ?
                   (auto_zoom_active ?
-                  target_poi_palette(fractal_type, target_idx, palette_sel) :
+                  target_poi_palette(target_idx, palette_sel) :
                   {palette_name(palette_sel), "                                    "}) :
                   TARGET_BLANK_LINE;
             3'd1: target_line_data = overlay_visible ?

@@ -59,7 +59,6 @@ assign ce_pix = mode_640 ? (ce_pix_cnt[1:0] == 2'd0)
                          : (ce_pix_cnt       == 3'd0);
 
 // ---- OSD Parameter Decoding ----
-wire [1:0] osd_fractal_type;
 wire [5:0] osd_palette_sel;
 wire [2:0] osd_iter_sel;
 wire       osd_iter_changed;
@@ -77,7 +76,6 @@ fractal_osd #(
     .clk(clk),
     .rst_n(rst_n),
     .status(status),
-    .fractal_type(osd_fractal_type),
     .palette_sel(osd_palette_sel),
     .osd_iter_sel(osd_iter_sel),
     .osd_iter_changed(osd_iter_changed),
@@ -94,7 +92,6 @@ fractal_osd #(
 wire signed [WIDTH-1:0] input_center_x;
 wire signed [WIDTH-1:0] input_center_y;
 wire signed [WIDTH-1:0] input_step;
-wire [1:0]              input_fractal_type;
 wire [5:0]              input_palette_sel;
 wire                    input_palette_override;
 wire [2:0]              input_iter_sel;
@@ -139,7 +136,6 @@ input_handler #(
     .center_x(input_center_x),
     .center_y(input_center_y),
     .step(input_step),
-    .fractal_type(input_fractal_type),
     .palette_sel(input_palette_sel),
     .palette_override_active(input_palette_override),
     .osd_iter_sel(osd_iter_sel),
@@ -166,7 +162,6 @@ localparam FB_ADDR_WIDTH = 18;  // ceil(log2(640*240))
 localparam FB_DATA_WIDTH = 13;  // 12-bit iter + 1-bit escaped
 
 // ---- Auto-Zoom Screensaver ----
-wire [1:0]              selected_fractal_type = (|osd_fractal_type) ? osd_fractal_type : input_fractal_type;
 
 // Enable: toggle on Z/Space press, force off on deactivate, start enabled
 always @(posedge clk or negedge rst_n) begin
@@ -197,7 +192,6 @@ auto_zoom #(
     .frame_done(vblank_rise),
     .vblank(vblank),
     .entropy_seed(entropy_seed),
-    .fractal_type(selected_fractal_type),
     .fb_rd_data(rd_data),
     .fb_rd_addr(az_fb_rd_addr),
     .fb_sampling(az_fb_sampling),
@@ -216,8 +210,7 @@ wire signed [WIDTH-1:0] center_y    = auto_zoom_active ? az_center_y : input_cen
 wire signed [WIDTH-1:0] step        = auto_zoom_active ? az_step        : input_step;
 wire                    view_changed = auto_zoom_active ? az_view_changed : input_view_changed;
 
-// OSD overrides for fractal_type/palette; iterations can come from OSD or keyboard.
-wire [1:0] fractal_type = selected_fractal_type;
+// OSD overrides for palette; iterations can come from OSD or keyboard.
 wire       osd_palette_override = (osd_palette_sel != 6'd0);
 wire [5:0] osd_palette_idx_full = osd_palette_sel - 6'd1;
 wire [5:0] osd_palette_idx = osd_palette_idx_full;
@@ -226,12 +219,10 @@ wire [5:0] palette_sel  = osd_palette_override ? osd_palette_idx :
                           auto_zoom_active       ? az_palette_idx  : input_palette_sel;
 reg  [11:0] input_max_iter;
 wire [11:0] max_iter     = input_max_iter;  // keyboard-only (unified)
-reg  [1:0] fractal_type_prev;
 reg  [5:0] palette_sel_prev;
 reg  [11:0] max_iter_prev;
 reg         mode_640_prev;
-wire settings_changed = (fractal_type != fractal_type_prev) ||
-                        (palette_sel != palette_sel_prev) ||
+wire settings_changed = (palette_sel != palette_sel_prev) ||
                         (max_iter != max_iter_prev) ||
                         (mode_640 != mode_640_prev);
 
@@ -245,9 +236,6 @@ always @(*) begin
     endcase
 end
 
-// Julia set parameter: c = -0.7269 + 0.1889i (8.56 fixed-point)
-wire signed [WIDTH-1:0] julia_cr = 64'shFF45A5A5A0000000;
-wire signed [WIDTH-1:0] julia_ci = 64'sh003058D670000000;
 localparam [24:0] FPS_SAMPLE_TICKS = 25'd25000000;
 
 // ======================================================================
@@ -334,14 +322,12 @@ always @(posedge clk or negedge rst_n) begin
         render_state <= RS_RENDER;
         start_render <= 1'b1;  // Render first frame on startup
         need_rerender <= 1'b0;
-        fractal_type_prev <= 2'd0;
         az_target_idx_prev <= 7'd0;
         palette_sel_prev  <= 6'd0;
         max_iter_prev     <= 12'd512;
         mode_640_prev     <= 1'b0;
     end else begin
         start_render <= 1'b0;
-        fractal_type_prev <= fractal_type;
         az_target_idx_prev <= az_target_idx;
         palette_sel_prev  <= palette_sel;
         max_iter_prev     <= max_iter;
@@ -403,9 +389,6 @@ pixel_pipeline #(
     .mode_640(mode_640),
     .start_frame(start_render),
     .frame_done(frame_done),
-    .fractal_type(fractal_type),
-    .julia_cr(julia_cr),
-    .julia_ci(julia_ci),
     .max_iter(max_iter),
     .center_x(center_x),
     .center_y(center_y),
@@ -536,7 +519,6 @@ text_overlay #(
     .pixel_x(vid_pixel_x_d),
     .pixel_y(vid_pixel_y_d),
     .video_active(vid_active_d),
-    .fractal_type(fractal_type),
     .palette_sel(palette_sel),
     .max_iter(max_iter),
     .fps_value(fps_value),

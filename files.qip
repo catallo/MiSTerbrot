@@ -1,6 +1,5 @@
 set_global_assignment -name SYSTEMVERILOG_FILE MiSTerbrot.sv
 set_global_assignment -name VERILOG_FILE rtl/fractal_top.v
-set_global_assignment -name VERILOG_FILE rtl/mandelbrot_iterator.v
 set_global_assignment -name VERILOG_FILE rtl/pixel_pipeline.v
 set_global_assignment -name VERILOG_FILE rtl/coord_generator.v
 set_global_assignment -name VERILOG_FILE rtl/color_mapper.v
@@ -11,7 +10,6 @@ set_global_assignment -name VERILOG_FILE rtl/auto_zoom.v
 set_global_assignment -name VERILOG_FILE rtl/text_overlay.v
 set_global_assignment -name VERILOG_INCLUDE_FILE rtl/poi_generated.vh
 set_global_assignment -name SEARCH_PATH rtl
-set_global_assignment -name VERILOG_FILE rtl/iter_pair.v
 set_global_assignment -name VERILOG_FILE rtl/iter_quad.v
 set_global_assignment -name VERILOG_FILE rtl/bcd_serial.v
 set_global_assignment -name VERILOG_FILE rtl/fractal_osd.v

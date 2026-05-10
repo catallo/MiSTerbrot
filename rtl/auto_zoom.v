@@ -26,7 +26,6 @@ module auto_zoom #(
     input  wire                    frame_done,
     input  wire                    vblank,
     input  wire [32:0]             entropy_seed,
-    input  wire [1:0]              fractal_type,
 
     // BRAM framebuffer sampling (held inactive in deterministic zoom mode)
     input  wire [12:0]             fb_rd_data,

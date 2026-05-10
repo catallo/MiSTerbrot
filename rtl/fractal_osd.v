@@ -25,7 +25,6 @@ module fractal_osd #(
     input  wire         rst_n,
     input  wire [127:0] status,
 
-    output wire [1:0]   fractal_type,
     output wire [5:0]   palette_sel,
     output wire         iter_override,
     output wire [11:0]  max_iter,
@@ -60,7 +59,6 @@ assign single_buffer = status[18];
 assign blank_text_enable = ~status[19];  // On=0=blank after 10s
 assign always_show_fps = status[20];     // Off=0=default, On=1
 assign always_show_poi = ~status[21];    // On=0=always show
-assign fractal_type  = 2'd0;  // Mandelbrot only (Julia removed)
 assign palette_sel   = status[9:4];
 // Color Cycling: 0=Auto (keyboard), 1=Force On, 2=Force Off
 assign color_cycle_enable = ~status[10];  // 0=On, 1=Off

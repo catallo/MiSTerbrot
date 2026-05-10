@@ -36,7 +36,6 @@ module input_handler #(
     output reg  signed [WIDTH-1:0] center_x,
     output reg  signed [WIDTH-1:0] center_y,
     output reg  signed [WIDTH-1:0] step,
-    output reg  [1:0]              fractal_type,
     output reg  [5:0]              palette_sel,
     output reg                     palette_override_active,
     output reg  [2:0]              iter_sel,
@@ -102,7 +101,6 @@ always @(posedge clk or negedge rst_n) begin
         center_x        <= DEFAULT_CENTER_X;
         center_y        <= DEFAULT_CENTER_Y;
         step            <= DEFAULT_STEP;
-        fractal_type    <= 2'd0;
         palette_sel     <= 6'd0;
         palette_override_active <= 1'b0;
         iter_sel        <= 3'd2;
@@ -164,7 +162,6 @@ always @(posedge clk or negedge rst_n) begin
                             center_x     <= DEFAULT_CENTER_X;
                             center_y     <= DEFAULT_CENTER_Y;
                             step         <= DEFAULT_STEP;
-                            fractal_type <= 2'd0;
                             palette_sel  <= 6'd0;
                             palette_override_active <= 1'b0;
                             iter_sel     <= 3'd2;
@@ -189,14 +186,6 @@ always @(posedge clk or negedge rst_n) begin
                 // Edge-triggered actions
                 if (ps2_pressed) begin
                     case (ps2_scancode)
-                        8'h16: begin // 1 = Mandelbrot
-                            fractal_type <= 2'd0;
-                            view_changed <= 1'b1;
-                        end
-                        8'h1E: begin // 2 = Julia (disabled — Julia mode hangs the core)
-                        end
-                        8'h2C: begin // T = Toggle fractal type (disabled — Julia removed)
-                        end
                         8'h4D: begin // P = Cycle palette (does NOT stop auto-zoom)
                             palette_sel <= (palette_sel == 6'd46) ? 6'd0 : palette_sel + 6'd1;
                             palette_override_active <= 1'b1;
@@ -216,7 +205,6 @@ always @(posedge clk or negedge rst_n) begin
                             center_x     <= DEFAULT_CENTER_X;
                             center_y     <= DEFAULT_CENTER_Y;
                             step         <= DEFAULT_STEP;
-                            fractal_type <= 2'd0;
                             palette_sel  <= 6'd0;
                             palette_override_active <= 1'b0;
                             iter_sel     <= 3'd2;
