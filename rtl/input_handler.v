@@ -190,13 +190,9 @@ always @(posedge clk or negedge rst_n) begin
                             fractal_type <= 2'd0;
                             view_changed <= 1'b1;
                         end
-                        8'h1E: begin // 2 = Julia
-                            fractal_type <= 2'd1;
-                            view_changed <= 1'b1;
+                        8'h1E: begin // 2 = Julia (disabled — Julia mode hangs the core)
                         end
-                        8'h2C: begin // T = Toggle fractal type
-                            // fractal_type toggle removed (Julia disabled)
-                            view_changed <= 1'b1;
+                        8'h2C: begin // T = Toggle fractal type (disabled — Julia removed)
                         end
                         8'h4D: begin // P = Cycle palette (does NOT stop auto-zoom)
                             palette_sel <= (palette_sel == 6'd46) ? 6'd0 : palette_sel + 6'd1;
