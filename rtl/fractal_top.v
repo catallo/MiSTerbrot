@@ -104,6 +104,7 @@ wire                    input_view_changed;
 wire                    auto_zoom_toggle;
 wire                    auto_zoom_deactivate;
 wire                    auto_zoom_skip_next;
+wire                    auto_zoom_snap_next;
 wire                    auto_zoom_active;
 wire signed [WIDTH-1:0] az_center_x;
 wire signed [WIDTH-1:0] az_center_y;
@@ -112,8 +113,8 @@ wire                    az_view_changed;
 wire [5:0]              az_palette_idx;
 wire [17:0]             az_fb_rd_addr;
 wire                    az_fb_sampling;
-wire [4:0]              az_target_idx;
-reg  [4:0]              az_target_idx_prev;
+wire [6:0]              az_target_idx;
+reg  [6:0]              az_target_idx_prev;
 reg                     az_enable;
 reg                     az_enable_prev;
 wire                    auto_zoom_handoff = az_enable_prev & ~az_enable;
@@ -151,6 +152,7 @@ input_handler #(
     .auto_zoom_toggle(auto_zoom_toggle),
     .auto_zoom_deactivate(auto_zoom_deactivate),
     .auto_zoom_skip_next(auto_zoom_skip_next),
+    .auto_zoom_snap_next(auto_zoom_snap_next),
     .auto_zoom_active(auto_zoom_active),
     .sync_from_auto_zoom(auto_zoom_handoff),
     .sync_center_x(az_center_x),
@@ -191,6 +193,7 @@ auto_zoom #(
     .rst_n(rst_n),
     .enable(az_enable),
     .skip_next(auto_zoom_skip_next),
+    .snap_next(auto_zoom_snap_next),
     .frame_done(vblank_rise),
     .vblank(vblank),
     .entropy_seed(entropy_seed),
@@ -332,7 +335,7 @@ always @(posedge clk or negedge rst_n) begin
         start_render <= 1'b1;  // Render first frame on startup
         need_rerender <= 1'b0;
         fractal_type_prev <= 2'd0;
-        az_target_idx_prev <= 5'd0;
+        az_target_idx_prev <= 7'd0;
         palette_sel_prev  <= 6'd0;
         max_iter_prev     <= 12'd512;
         mode_640_prev     <= 1'b0;

@@ -5,7 +5,12 @@
 // and bottom-right version/GitHub link rendered directly into the video stream.
 // Uses a hardcoded 5x5 monochrome font and fixed 32-char lines.
 // 5x5 glyphs with 10px line height (5px glyph + 5px gap).
+//
+// POI name table comes from rtl/poi_generated.vh (auto-generated from
+// tools/poi_master.json by tools/poi_encode.py).
 //============================================================================
+
+`include "poi_generated.vh"
 
 module text_overlay #(
     parameter WIDTH     = 64,
@@ -31,7 +36,7 @@ module text_overlay #(
     input  wire                    auto_zoom_active,
     input  wire                    color_cycle_active,
     input  wire [1:0]               color_cycle_mode,
-    input  wire [4:0]              target_idx,
+    input  wire [`POI_IDX_BITS-1:0] target_idx,
     input  wire [7:0]              in_r,
     input  wire [7:0]              in_g,
     input  wire [7:0]              in_b,
@@ -361,41 +366,15 @@ bcd_serial #(.BIN_W(14)) u_bcd_y (
     .d0(coord_y_d0_bcd)
 );
 
-// ---- Target name functions ----
+// ---- Target name functions (data from rtl/poi_generated.vh) ----
 function [159:0] target_name_full;
     input [1:0] ftype;
-    input [4:0] idx;
+    input [`POI_IDX_BITS-1:0] idx;
     begin
-        // Julia removed - Mandelbrot only
-        begin
-            case (idx)
-                5'd0:  target_name_full = "SEAHORSE ENTRY      ";
-                5'd1:  target_name_full = "CARDIOID INTERIOR   ";
-                5'd2:  target_name_full = "UPPER BOUNDARY      ";
-                5'd3:  target_name_full = "SEAHORSE VALLEY     ";
-                5'd4:  target_name_full = "UPPER DENDRITE      ";
-                5'd5:  target_name_full = "PERIOD-2 NECK       ";
-                5'd6:  target_name_full = "DEEP SEAHORSE       ";
-                5'd7:  target_name_full = "ELEPHANT EDGE       ";
-                5'd8:  target_name_full = "FILAMENT CROWN      ";
-                5'd9:  target_name_full = "NEEDLE CORRIDOR     ";
-                5'd10: target_name_full = "DEEP ELEPHANT       ";
-                5'd11: target_name_full = "HALO FILAMENTS      ";
-                5'd12: target_name_full = "CARDIOID EDGE       ";
-                5'd13: target_name_full = "SPIRAL VALLEY       ";
-                5'd14: target_name_full = "MINI-BROT           ";
-                5'd15: target_name_full = "DOUBLE SPIRAL       ";
-                5'd16: target_name_full = "ANTENNA TIP         ";
-                5'd17: target_name_full = "BABY MANDELBROT     ";
-                5'd18: target_name_full = "SEAHORSE TAIL       ";
-                5'd19: target_name_full = "ELEPHANT TRUNK      ";
-                5'd20: target_name_full = "TRIPLE SPIRAL       ";
-                5'd21: target_name_full = "DENDRITE JUNCTION   ";
-                5'd22: target_name_full = "SWIRL               ";
-                5'd23: target_name_full = "LIGHTNING           ";
-                default: target_name_full = "STARFISH            ";
-            endcase
-        end
+        case (idx)
+            `POI_NAME_CASES
+            default: target_name_full = "                    ";
+        endcase
     end
 endfunction
 
@@ -663,38 +642,10 @@ endfunction
 
 function [255:0] target_line;
     input [1:0] ftype;
-    input [4:0] idx;
+    input [`POI_IDX_BITS-1:0] idx;
     begin
-        // Julia removed - Mandelbrot only
-        begin
-            case (idx)
-                5'd0:  target_line = "SEAHORSE ENTRY                  ";
-                5'd1:  target_line = "CARDIOID INTERIOR               ";
-                5'd2:  target_line = "UPPER BOUNDARY                  ";
-                5'd3:  target_line = "SEAHORSE VALLEY                 ";
-                5'd4:  target_line = "UPPER DENDRITE                  ";
-                5'd5:  target_line = "PERIOD-2 NECK                   ";
-                5'd6:  target_line = "DEEP SEAHORSE                   ";
-                5'd7:  target_line = "ELEPHANT EDGE                   ";
-                5'd8:  target_line = "FILAMENT CROWN                  ";
-                5'd9:  target_line = "NEEDLE CORRIDOR                 ";
-                5'd10: target_line = "DEEP ELEPHANT                   ";
-                5'd11: target_line = "HALO FILAMENTS                  ";
-                5'd12: target_line = "CARDIOID EDGE                   ";
-                5'd13: target_line = "SPIRAL VALLEY                   ";
-                5'd14: target_line = "MINI-BROT                       ";
-                5'd15: target_line = "DOUBLE SPIRAL                   ";
-                5'd16: target_line = "ANTENNA TIP                     ";
-                5'd17: target_line = "BABY MANDELBROT                 ";
-                5'd18: target_line = "SEAHORSE TAIL                   ";
-                5'd19: target_line = "ELEPHANT TRUNK                  ";
-                5'd20: target_line = "TRIPLE SPIRAL                   ";
-                5'd21: target_line = "DENDRITE JUNCTION               ";
-                5'd22: target_line = "SWIRL                           ";
-                5'd23: target_line = "LIGHTNING                       ";
-                default: target_line = "STARFISH                        ";
-            endcase
-        end
+        // 20-char POI name + 12-char trailing padding = 32 chars
+        target_line = {target_name_full(ftype, idx), "            "};
     end
 endfunction
 
@@ -735,58 +686,11 @@ endfunction
 // ---- Combined POI | Palette string (48 chars) ----
 function [383:0] target_poi_palette;
     input [1:0] ftype;
-    input [4:0] idx;
+    input [`POI_IDX_BITS-1:0] idx;
     input [5:0] pal;
-    reg [383:0] result;
     begin
-        if (ftype == 2'd1) begin
-            case (idx)
-                5'd0:  result = {"ORIGIN | ",              palette_name(pal), "                           "};
-                5'd1:  result = {"LEFT CORE | ",           palette_name(pal), "                        "};
-                5'd2:  result = {"RIGHT CORE | ",          palette_name(pal), "                       "};
-                5'd3:  result = {"NORTH LOBE | ",          palette_name(pal), "                       "};
-                5'd4:  result = {"SOUTH LOBE | ",          palette_name(pal), "                       "};
-                5'd5:  result = {"NORTHWEST FILAMENT | ",  palette_name(pal), "               "};
-                5'd6:  result = {"SOUTHWEST FILAMENT | ",  palette_name(pal), "               "};
-                5'd7:  result = {"INNER NORTHEAST | ",     palette_name(pal), "                  "};
-                5'd8:  result = {"INNER SOUTHEAST | ",     palette_name(pal), "                  "};
-                5'd9:  result = {"OUTER EAST | ",          palette_name(pal), "                       "};
-                5'd10: result = {"OUTER WEST | ",          palette_name(pal), "                       "};
-                5'd11: result = {"FAR NORTH | ",           palette_name(pal), "                        "};
-                5'd12: result = {"FAR SOUTH | ",           palette_name(pal), "                        "};
-                5'd13: result = {"NORTHEAST BRANCH | ",    palette_name(pal), "                 "};
-                default: result = {"SOUTHEAST BRANCH | ",  palette_name(pal), "                 "};
-            endcase
-        end else begin
-            case (idx)
-                5'd0:  result = {"SEAHORSE ENTRY | ",      palette_name(pal), "                   "};
-                5'd1:  result = {"CARDIOID INTERIOR | ",   palette_name(pal), "                "};
-                5'd2:  result = {"UPPER BOUNDARY | ",      palette_name(pal), "                   "};
-                5'd3:  result = {"SEAHORSE VALLEY | ",     palette_name(pal), "                  "};
-                5'd4:  result = {"UPPER DENDRITE | ",      palette_name(pal), "                   "};
-                5'd5:  result = {"PERIOD-2 NECK | ",       palette_name(pal), "                    "};
-                5'd6:  result = {"DEEP SEAHORSE | ",       palette_name(pal), "                    "};
-                5'd7:  result = {"ELEPHANT EDGE | ",       palette_name(pal), "                    "};
-                5'd8:  result = {"FILAMENT CROWN | ",      palette_name(pal), "                   "};
-                5'd9:  result = {"NEEDLE CORRIDOR | ",     palette_name(pal), "                  "};
-                5'd10: result = {"DEEP ELEPHANT | ",       palette_name(pal), "                    "};
-                5'd11: result = {"HALO FILAMENTS | ",      palette_name(pal), "                   "};
-                5'd12: result = {"CARDIOID EDGE | ",       palette_name(pal), "                    "};
-                5'd13: result = {"SPIRAL VALLEY | ",       palette_name(pal), "                    "};
-                5'd14: result = {"MINI-BROT | ",           palette_name(pal), "                        "};
-                5'd15: result = {"DOUBLE SPIRAL | ",       palette_name(pal), "                    "};
-                5'd16: result = {"ANTENNA TIP | ",         palette_name(pal), "                      "};
-                5'd17: result = {"BABY MANDELBROT | ",     palette_name(pal), "                  "};
-                5'd18: result = {"SEAHORSE TAIL | ",       palette_name(pal), "                    "};
-                5'd19: result = {"ELEPHANT TRUNK | ",      palette_name(pal), "                   "};
-                5'd20: result = {"TRIPLE SPIRAL | ",       palette_name(pal), "                    "};
-                5'd21: result = {"DENDRITE JUNCTION | ",   palette_name(pal), "                "};
-                5'd22: result = {"SWIRL | ",               palette_name(pal), "                            "};
-                5'd23: result = {"LIGHTNING | ",            palette_name(pal), "                        "};
-                default: result = {"STARFISH | ",           palette_name(pal), "                         "};
-            endcase
-        end
-        target_poi_palette = result;
+        // 20-char POI name + " | " + 12-char palette + 13-char padding = 48 chars
+        target_poi_palette = {target_name_full(ftype, idx), " | ", palette_name(pal), "             "};
     end
 endfunction
 

@@ -48,6 +48,7 @@ module input_handler #(
     output reg                     auto_zoom_toggle,
     output reg                     auto_zoom_deactivate,
     output reg                     auto_zoom_skip_next,
+    output reg                     auto_zoom_snap_next,  // M key / X button: snap to next POI canonical view
     input  wire                    auto_zoom_active,
     input  wire                    sync_from_auto_zoom,
     input  wire signed [WIDTH-1:0] sync_center_x,
@@ -120,10 +121,12 @@ always @(posedge clk or negedge rst_n) begin
         auto_zoom_toggle     <= 1'b0;
         auto_zoom_deactivate <= 1'b0;
         auto_zoom_skip_next  <= 1'b0;
+        auto_zoom_snap_next  <= 1'b0;
     end else begin
         auto_zoom_toggle     <= 1'b0;
         auto_zoom_deactivate <= 1'b0;
         auto_zoom_skip_next  <= 1'b0;
+        auto_zoom_snap_next  <= 1'b0;
         joy_prev        <= joystick;
         ps2_strobe_prev <= ps2_key[10];
         view_changed    <= 1'b0;
@@ -223,6 +226,9 @@ always @(posedge clk or negedge rst_n) begin
                         8'h31: begin // N = Skip to next in playlist
                             if (auto_zoom_active) auto_zoom_skip_next <= 1'b1;
                         end
+                        8'h3A: begin // M = Snap to next POI canonical view (verification mode)
+                            auto_zoom_snap_next <= 1'b1;
+                        end
                         8'h1A, // Z = Toggle auto-zoom screensaver
                         8'h29: begin // Space = Toggle auto-zoom screensaver
                             auto_zoom_toggle <= 1'b1;
@@ -280,9 +286,8 @@ always @(posedge clk or negedge rst_n) begin
         if (joy_press[5]) begin // B = Toggle color cycling
             color_cycle_enable <= ~color_cycle_enable;
         end
-        if (joy_press[6]) begin // X = Cycle iterations
-            iter_sel <= (iter_sel == 3'd4) ? 3'd0 : iter_sel + 3'd1;
-            view_changed <= 1'b1;
+        if (joy_press[6]) begin // X = Snap to next POI canonical view (verification mode)
+            auto_zoom_snap_next <= 1'b1;
         end
         if (joy_press[10]) begin // Select = Toggle text overlay
             overlay_enable <= ~overlay_enable;

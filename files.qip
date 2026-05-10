@@ -9,6 +9,8 @@ set_global_assignment -name VERILOG_FILE rtl/framebuffer.v
 set_global_assignment -name VERILOG_FILE rtl/input_handler.v
 set_global_assignment -name VERILOG_FILE rtl/auto_zoom.v
 set_global_assignment -name VERILOG_FILE rtl/text_overlay.v
+set_global_assignment -name VERILOG_INCLUDE_FILE rtl/poi_generated.vh
+set_global_assignment -name SEARCH_PATH rtl
 set_global_assignment -name VERILOG_FILE rtl/iter_pair.v
 set_global_assignment -name VERILOG_FILE rtl/iter_quad.v
 set_global_assignment -name VERILOG_FILE rtl/bcd_serial.v
