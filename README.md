@@ -38,7 +38,7 @@ Output is native 240p @ ~59.7 Hz (15.6 kHz line rate), 320×240 or 640×240 sele
 
 ## Resource Utilization (Cyclone V, DE10-Nano)
 
-- ALMs: 57% (24,002 of 41,910)
+- ALMs: 58% (24,155 of 41,910)
 - DSP blocks: 100% (fully saturated by the fixed-point multipliers)
 - Block RAM (M9K): 77% (427 of 553 blocks — framebuffer sized for 640×240 + color LUTs)
 - PLLs: 50% (3 of 6)

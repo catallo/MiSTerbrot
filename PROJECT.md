@@ -15,8 +15,8 @@ MiSTerbrot is a MiSTer FPGA core for real-time Mandelbrot set rendering on the D
 - Quartus target flow: `17.0.2 Lite` / standard MiSTer build environment
 - Video path: native 240p core timing into the MiSTer framework, with MiSTer scaler/ascaler handling display upscaling
 - Current fitted build resource usage from `output_files/MiSTerbrot.fit.summary`:
-  - `24,002 / 41,910` ALMs (`57%`)
-  - `30,521` registers
+  - `24,155 / 41,910` ALMs (`58%`)
+  - `30,560` registers
   - `3,309,893 / 5,662,720` block memory bits (`58%`)
   - `427 / 553` RAM blocks (`77%`)
   - `112 / 112` DSP blocks (`100%`)
