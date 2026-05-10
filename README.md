@@ -2,7 +2,7 @@
 
 **Mandelbrot Eye Candy for MiSTer FPGA in 240p**
 
-Real-time Mandelbrot fractal core for MiSTer FPGA. Runtime-selectable 320×240 / 640×240 native 240p output, 20 parallel hardware iterators on a dual-clock pipeline (50 MHz / 100 MHz), 47 palettes, attract-mode zoom through 73 cross-validated canonical Mandelbrot POIs (Seahorse, Elephant, Triple Spiral, Misiurewicz, Feigenbaum, period-N bulbs and minibrots, embedded Julia sets) with color cycling.
+Real-time Mandelbrot fractal core for MiSTer FPGA. Runtime-selectable 320×240 / 640×240 native 240p output, 20 parallel hardware iterators on a dual-clock pipeline (50 MHz / 100 MHz), 47 palettes, attract-mode zoom through 74 cross-validated canonical Mandelbrot POIs (Seahorse, Elephant, Triple Spiral, Misiurewicz, Feigenbaum, period-N bulbs and minibrots, embedded Julia sets) with color cycling.
 
 A spiritual successor to digital eye candy from the 90s.
 
@@ -60,7 +60,7 @@ Default credentials are `root`/`1`.
 
 ### Regenerating the POI playlist
 
-The 73-POI auto-zoom playlist is generated from `tools/poi_master.json`:
+The 74-POI auto-zoom playlist is generated from `tools/poi_master.json`:
 
 ```bash
 # 1. Edit tools/poi_master.json (add/remove/retune POIs)

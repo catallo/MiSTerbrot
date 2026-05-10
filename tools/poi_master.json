@@ -71,5 +71,6 @@
   {"name": "TANTE RENATE", "cx": -0.7746806106, "cy": -0.1374168856, "zoom_level": 6.0, "category": "SEAHORSE", "note": "Famous Tante Renate location"},
   {"name": "LOVE CANAL", "cx": -0.235125, "cy": 0.827225, "zoom_level": 12.0, "category": "MINIBROT", "note": "Dewdney 1989 Sci-Am Love Canal feature"},
   {"name": "P5 ISLAND DEEP", "cx": 0.359259225, "cy": 0.642513737, "zoom_level": 8.0, "category": "MINIBROT", "note": "Period-5 island detailed center"},
-  {"name": "ELEPHANT MED", "cx": 0.259899594, "cy": 0.001612614, "zoom_level": 14.0, "category": "ELEPHANT", "note": "Deep elephant valley with medallions"}
+  {"name": "ELEPHANT MED", "cx": 0.259899594, "cy": 0.001612614, "zoom_level": 14.0, "category": "ELEPHANT", "note": "Deep elephant valley with medallions"},
+  {"name": "STARFISH", "cx": -0.374004139, "cy": 0.659792175, "zoom_level": 16.0, "category": "FILAMENT", "note": "Sunburst/starfish radial pattern (original v0.10 POI)"}
 ]

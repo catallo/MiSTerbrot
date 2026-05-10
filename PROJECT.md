@@ -141,7 +141,7 @@ RTL:
 - `rtl/video_timing.v`: native 240p timing generator (mode-aware)
 - `rtl/text_overlay.v`: in-frame text overlay
 - `rtl/bcd_serial.v`: serial BCD converter for overlay coordinates
-- `rtl/auto_zoom.v`: screensaver / playlist-driven auto-zoom controller (73 POIs, snap-mode S_HOLD/S_SNAP_LOAD states)
+- `rtl/auto_zoom.v`: screensaver / playlist-driven auto-zoom controller (74 POIs, snap-mode S_HOLD/S_SNAP_LOAD states)
 - `rtl/poi_generated.vh`: auto-generated POI data (rom_cx/cy, target_max_zoom_x10, target_zoom_int, target_name_full case bodies). Source: `tools/poi_master.json` via `tools/poi_encode.py`. Do not hand-edit.
 - `rtl/fractal_osd.v`: decodes MiSTer OSD status bits into core parameters
 
