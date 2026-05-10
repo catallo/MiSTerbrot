@@ -110,7 +110,7 @@ wire signed [WIDTH-1:0] az_center_y;
 wire signed [WIDTH-1:0] az_step;
 wire                    az_view_changed;
 wire [5:0]              az_palette_idx;
-wire [16:0]             az_fb_rd_addr;
+wire [17:0]             az_fb_rd_addr;
 wire                    az_fb_sampling;
 wire [4:0]              az_target_idx;
 reg  [4:0]              az_target_idx_prev;
@@ -160,7 +160,7 @@ input_handler #(
 );
 
 // ---- Framebuffer parameters (needed by auto_zoom and framebuffer) ----
-localparam FB_ADDR_WIDTH = 17;  // ceil(log2(320*240))
+localparam FB_ADDR_WIDTH = 18;  // ceil(log2(640*240))
 localparam FB_DATA_WIDTH = 13;  // 12-bit iter + 1-bit escaped
 
 // ---- Auto-Zoom Screensaver ----
@@ -505,7 +505,10 @@ color_mapper u_color_mapper (
     .clk(clk),
     .rst_n(rst_n),
     .vblank_rise(vblank_rise),
-    .pixel_valid_in(vid_active_d & ce_pix),
+    // Keep the RGB pipeline warm through blanking. During blanking the read
+    // address is clamped to pixel 0, so the first visible clocks of the next
+    // line no longer expose the previous line's held color.
+    .pixel_valid_in(ce_pix),
     .iter_count(fb_iter),
     .escaped(fb_escaped),
     .palette_sel(palette_sel),
