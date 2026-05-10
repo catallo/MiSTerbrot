@@ -36,4 +36,5 @@ tools/*
 !tools/poi_encode.py
 !tools/poi_flag_bad.py
 !tools/poi_autotune.py
+!tools/poi_pdf.py
 !tools/poi_master.json
