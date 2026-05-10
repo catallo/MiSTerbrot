@@ -29,4 +29,11 @@ timing_report.tcl
 
 # Test/deploy artifacts
 MiSTerbrot_*.rbf
-tools/
+# tools/ — ignore-by-default but allowlist the POI pipeline (regenerates rtl/poi_generated.vh)
+tools/*
+!tools/misterclaw-send
+!tools/poi_render.py
+!tools/poi_encode.py
+!tools/poi_flag_bad.py
+!tools/poi_autotune.py
+!tools/poi_master.json
