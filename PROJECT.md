@@ -110,9 +110,10 @@ The Julia parameter is hard-coded in `rtl/fractal_top.v` and is not user-adjusta
 
 ### Auto-zoom target system
 
-- `25` POIs with individual zoom endpoints stored as `target_max_zoom_x10` (10-bit fixed point, value = zoom_level × 10).
+- `73` cross-validated canonical POIs (Seahorse, Elephant, Triple-Spiral, Misiurewicz, Feigenbaum, Period-N bulbs/minibrots, Embedded Julia sets, Bourke waypoints). Coords + canonical zoom levels live in `tools/poi_master.json`; `tools/poi_encode.py` generates `rtl/poi_generated.vh` (four `\`define case-body macros consumed by `auto_zoom.v` and `text_overlay.v`). Each POI has a `target_max_zoom_x10` zoom endpoint (10-bit fixed point, value = zoom_level × 10) plus a `target_zoom_int` shift amount used by snap mode.
 - Comparison uses `zoom_level_x10 = zoom_exp * 10 + zoom_frac_tenth` for sub-integer precision.
 - `skip_next` input allows jumping to next target mid-zoom (`N` key / `Y` button).
+- `snap_next` input (`M` key / `X` button) jumps the view directly to a POI's canonical center + zoom (verification mode); state machine enters `S_HOLD` and stays there until snap_next pulses again (advances + re-snaps) or auto-zoom is disabled with Z.
 - Manual palette overrides clear automatically on POI transition (`sync_clear_palette_override` from `fractal_top.v`).
 
 ## File Structure
@@ -140,7 +141,8 @@ RTL:
 - `rtl/video_timing.v`: native 240p timing generator (mode-aware)
 - `rtl/text_overlay.v`: in-frame text overlay
 - `rtl/bcd_serial.v`: serial BCD converter for overlay coordinates
-- `rtl/auto_zoom.v`: screensaver / playlist-driven auto-zoom controller (25 POIs)
+- `rtl/auto_zoom.v`: screensaver / playlist-driven auto-zoom controller (73 POIs, snap-mode S_HOLD/S_SNAP_LOAD states)
+- `rtl/poi_generated.vh`: auto-generated POI data (rom_cx/cy, target_max_zoom_x10, target_zoom_int, target_name_full case bodies). Source: `tools/poi_master.json` via `tools/poi_encode.py`. Do not hand-edit.
 - `rtl/fractal_osd.v`: decodes MiSTer OSD status bits into core parameters
 
 MiSTer framework support:
@@ -200,6 +202,18 @@ A full compile is ~17 minutes.
 
 The Verilator harness under `sim/` is version-stamped to the older `iter_pair` / `mandelbrot_iterator` paths and is **not** current with the active `iter_quad` pipeline. Treat it as historical.
 
+### Regenerating the POI playlist
+
+```bash
+# 1. Edit tools/poi_master.json (add/move/retune POIs)
+python3 tools/poi_render.py    # render 200x150 thumbnails -> screenshots/poi/
+python3 tools/poi_flag_bad.py  # flag obviously-bad renders (solid color, etc.)
+python3 tools/poi_encode.py    # write rtl/poi_generated.vh (the four case-body macros)
+# 2. Rebuild the core via Docker (see above)
+```
+
+Requires Python 3 with `numpy` and `Pillow`. The pipeline is the source of truth — never hand-edit `rtl/poi_generated.vh`.
+
 ## Current Status
 
 ### What currently works
@@ -211,7 +225,7 @@ The Verilator harness under `sim/` is version-stamped to the older `iter_pair` /
 - Manual pan and zoom from controller/keyboard
 - Manual palette cycling (47 palettes)
 - Configurable max iterations up to `2048`
-- Auto-zoom screensaver with 25 shuffled POIs and shuffled palette playlist
+- Auto-zoom screensaver with 73 shuffled POIs and 47 shuffled palettes (independent playlist positions)
 - `N` key / `Y` joystick button = skip to next POI in auto-zoom playlist
 - Double-buffered tear-free framebuffer swap on VBLANK edge (single-buffer mode optional)
 - In-frame text overlay with current bottom-left coordinates and zoom display
