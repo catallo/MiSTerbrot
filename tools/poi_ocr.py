@@ -72,7 +72,7 @@ def _to_char(code):
     return chr(code) if 32 <= code < 127 else "?"
 
 
-def _binarise_text(arr_rgb, white_min=200, chroma_spread_max=40):
+def _binarise_text(arr_rgb, white_min=230, chroma_spread_max=15):
     """Per-pixel 'is near-white' classifier — overlay text is RGB ~(255,255,255).
 
     Tolerates the slightly off-white pixels at glyph stroke edges (from PNG
