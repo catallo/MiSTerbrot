@@ -165,7 +165,37 @@ Build artifacts and release notes:
 | `O[20]`   | Always Show FPS               |
 | `O[21]`   | Always Show POI/Palette       |
 | `O[22]`   | Resolution (320×240 / 640×240)|
+| `O[23]`   | Overlay BG (Transparent/Dimmed) |
 | `O[122:121]` | Aspect ratio               |
+
+### Keyboard verification-mode overrides
+
+Four PS/2 keys let an automated verification flow force the overlay
+state regardless of the OSD setting (cleared on reset, otherwise
+last-key-wins):
+
+| Key | Effect |
+|-----|--------|
+| `G` | Force Overlay BG = Dimmed (fractal under text strip → 50% brightness) |
+| `H` | Force Overlay BG = Transparent (OSD default) |
+| `K` | Force overlay blanking timer ON (text auto-hides after 10s) |
+| `L` | Force overlay blanking timer OFF (text always visible) |
+| `M` | Snap to next POI's canonical zoom (auto-zoom hold) |
+| `N` | Skip to next POI in playlist (normal slow-zoom) |
+
+The OSD bit `O[23] Overlay BG` controls the same dim flag as `G`/`H`;
+`O[19] Blank Text` controls the same blanking flag as `K`/`L`. Keys
+override the OSD setting once pressed; before any key is pressed, the
+OSD value wins. There is no "follow OSD again" reset — once a key has
+been pressed, the override is sticky until the core resets.
+
+The dim path right-shifts each RGB byte by 1 (`out = in >> 1`) inside
+any active overlay-text bounding box. White text glyphs (`8'hFF`) sit
+unchanged on top. Net effect: text becomes readable on every palette,
+including the bright Skittles / Barbie / Acid backgrounds where the
+chroma-based OCR filter in `tools/poi_walkthrough.py` previously
+struggled. Cost: a 6-way OR for `in_overlay_region`, three muxes, and
+two 2-bit override registers — under 10 ALMs.
 
 ## Build Instructions
 
