@@ -143,10 +143,6 @@ MiSTer framework support:
 
 - `sys/`: MiSTer platform glue, video, PLLs, HPS I/O, scaler/scandoubler support
 
-Simulation and testbenches:
-
-- `sim/Makefile`, `sim/tb_*.cpp` — Verilator harnesses, version-stamped to older RTL (not current)
-
 Build artifacts and release notes:
 
 - `output_files/`: Quartus fit/timing reports and generated `.rbf`
@@ -315,10 +311,6 @@ change is to POI data. (The Docker `rm -rf` above is the canonical
 way — run as root inside the container, since the cache files are
 root-owned.)
 
-### Simulation
-
-The Verilator harness under `sim/` was written against the older `iter_pair` / `mandelbrot_iterator` paths (now deleted from the RTL) and is **not** current with the active `iter_quad` pipeline. Treat it as historical.
-
 ### Regenerating the POI playlist
 
 ```bash
@@ -363,13 +355,9 @@ Current fit uses `112 / 112` DSP blocks (`100%`). Any new DSP-based math is effe
 
 The fitted reports include latch-related warnings. `output_files/MiSTerbrot.fit.rpt` reports latch analysis; these need proper root-cause analysis and should not be normalized away as harmless noise.
 
-### Stale simulation
-
-`sim/Makefile` and its testbench sources predate the `iter_quad` pipeline — they referenced the now-deleted `iter_pair.v` / `mandelbrot_iterator.v` modules. Existing simulation is not a reliable regression suite; needs a rewrite against `iter_quad.v` to be useful again.
-
 ### Missing / TODO
 
-- Simulation needs to be updated to the current `iter_quad` pipeline (legacy harness referenced deleted modules).
+- No active simulation. The previous `sim/` tree (Verilator harnesses for the deleted `iter_pair` / `mandelbrot_iterator` modules) was deleted; see `docs/SIMULATION.md` for what a future testbench should cover.
 
 ## Design Constraints
 
