@@ -84,6 +84,17 @@ def press_m():
     )
 
 
+def prepare_overlay():
+    """Press G + L so the overlay is dim-backed (readable on any palette)
+    and stays visible (auto-hide disabled). Both are sticky keyboard
+    overrides until core reset. Must run before any screenshot loop."""
+    for key in ("G", "L"):
+        subprocess.run(
+            [MISTERCLAW, "--host", HOST, "input", "type", key],
+            check=True, capture_output=True, timeout=10,
+        )
+
+
 def screenshot_to(path):
     subprocess.run(
         [MISTERCLAW, "--host", HOST, "screenshot", "--output", str(path)],
@@ -199,6 +210,17 @@ def main():
     print(f"POIs to capture: {n}")
     print(f"Pause per snap : {PAUSE_SEC}s")
     print(f"Output         : {OUT_DIR}/")
+    print()
+
+    # Force overlay to dim BG + always-visible. Without this, captures on
+    # bright palettes are unreadable and the auto-hide timer kills the overlay
+    # between snaps.
+    try:
+        prepare_overlay()
+        print("Pressed G (dim BG) + L (disable auto-hide).")
+    except Exception as e:
+        print(f"WARN: prepare_overlay failed ({e}); captures may be unreadable.",
+              file=sys.stderr)
     print()
 
     seen = set()

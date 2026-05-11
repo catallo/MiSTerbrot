@@ -23,7 +23,12 @@ ROOT = Path(__file__).resolve().parent.parent
 MASTER_JSON = ROOT / "tools" / "poi_master.json"
 OUT_DIR = ROOT / "screenshots" / "poi"
 
-W, H = 640, 240  # matches the FPGA core's 640×240 native output (8:3 aspect)
+W, H = 640, 240  # matches FPGA's 640-mode native output (640×240 px)
+# FPGA's coord_generator covers a 4:3 complex-plane region regardless of mode:
+#   320 mode → 320 px × step horiz, 240 px × step vert
+#   640 mode → 640 px × (step/2) horiz, 240 px × step vert  (same complex extent, 2× h oversampling)
+# So at W=640 we mirror 640 mode: horizontal pixel pitch is step/2, vertical is step.
+H_OVERSAMPLE = 2  # 1 if W=320, 2 if W=640 — keep in sync with W
 DEFAULT_STEP = 0.0125  # matches DEFAULT_STEP in auto_zoom.v (8.56 hex 0x0003333333333333)
 MAX_ITER = 1024
 
@@ -60,8 +65,8 @@ def render(cx, cy, zoom_level, w=W, h=H, max_iter=None):
     to the default view (DEFAULT_STEP = 0.0125 / pixel at zoom_level=0).
     """
     step = DEFAULT_STEP / (2.0 ** zoom_level)
-    # Pixel grid centered on (cx, cy)
-    xs = cx + (np.arange(w) - w / 2 + 0.5) * step
+    step_x = step / H_OVERSAMPLE  # matches FPGA's step_x = step >>> 1 in 640 mode
+    xs = cx + (np.arange(w) - w / 2 + 0.5) * step_x
     ys = cy + (np.arange(h) - h / 2 + 0.5) * step
     X, Y = np.meshgrid(xs, ys)
     C = X + 1j * Y
