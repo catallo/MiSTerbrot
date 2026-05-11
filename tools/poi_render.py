@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parent.parent
 MASTER_JSON = ROOT / "tools" / "poi_master.json"
 OUT_DIR = ROOT / "screenshots" / "poi"
 
-W, H = 200, 150  # thumbnail size; 4:3 to match core aspect
+W, H = 640, 240  # matches the FPGA core's 640×240 native output (8:3 aspect)
 DEFAULT_STEP = 0.0125  # matches DEFAULT_STEP in auto_zoom.v (8.56 hex 0x0003333333333333)
 MAX_ITER = 1024
 
