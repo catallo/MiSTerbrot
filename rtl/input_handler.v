@@ -48,6 +48,10 @@ module input_handler #(
     output reg                     auto_zoom_deactivate,
     output reg                     auto_zoom_skip_next,
     output reg                     auto_zoom_snap_next,  // M key / X button: snap to next POI canonical view
+    output reg                     key_bg_dim_on,        // G key: force overlay BG to Dimmed
+    output reg                     key_bg_dim_off,       // H key: force overlay BG to Transparent
+    output reg                     key_blank_text_on,    // K key: force overlay blanking timer ON
+    output reg                     key_blank_text_off,   // L key: force overlay blanking timer OFF
     input  wire                    auto_zoom_active,
     input  wire                    sync_from_auto_zoom,
     input  wire signed [WIDTH-1:0] sync_center_x,
@@ -120,11 +124,19 @@ always @(posedge clk or negedge rst_n) begin
         auto_zoom_deactivate <= 1'b0;
         auto_zoom_skip_next  <= 1'b0;
         auto_zoom_snap_next  <= 1'b0;
+        key_bg_dim_on        <= 1'b0;
+        key_bg_dim_off       <= 1'b0;
+        key_blank_text_on    <= 1'b0;
+        key_blank_text_off   <= 1'b0;
     end else begin
         auto_zoom_toggle     <= 1'b0;
         auto_zoom_deactivate <= 1'b0;
         auto_zoom_skip_next  <= 1'b0;
         auto_zoom_snap_next  <= 1'b0;
+        key_bg_dim_on        <= 1'b0;
+        key_bg_dim_off       <= 1'b0;
+        key_blank_text_on    <= 1'b0;
+        key_blank_text_off   <= 1'b0;
         joy_prev        <= joystick;
         ps2_strobe_prev <= ps2_key[10];
         view_changed    <= 1'b0;
@@ -216,6 +228,18 @@ always @(posedge clk or negedge rst_n) begin
                         end
                         8'h3A: begin // M = Snap to next POI canonical view (verification mode)
                             auto_zoom_snap_next <= 1'b1;
+                        end
+                        8'h34: begin // G = Force overlay BG to Dimmed (verification helper)
+                            key_bg_dim_on <= 1'b1;
+                        end
+                        8'h33: begin // H = Force overlay BG to Transparent
+                            key_bg_dim_off <= 1'b1;
+                        end
+                        8'h42: begin // K = Force overlay blanking timer ON (text auto-hides)
+                            key_blank_text_on <= 1'b1;
+                        end
+                        8'h4B: begin // L = Force overlay blanking timer OFF (always visible)
+                            key_blank_text_off <= 1'b1;
                         end
                         8'h1A, // Z = Toggle auto-zoom screensaver
                         8'h29: begin // Space = Toggle auto-zoom screensaver

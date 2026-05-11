@@ -65,9 +65,12 @@ wire       osd_iter_changed;
 wire       osd_color_cycle_enable;
 wire       osd_reset;
 wire       single_buffer;
-wire       blank_text_enable;
+wire       osd_blank_text_enable;
 wire       always_show_fps;
 wire       always_show_poi;
+wire       osd_overlay_bg_dim;
+wire       key_bg_dim_on, key_bg_dim_off;
+wire       key_blank_text_on, key_blank_text_off;
 
 fractal_osd #(
     .WIDTH(WIDTH),
@@ -83,10 +86,34 @@ fractal_osd #(
     
     .osd_reset(osd_reset),
     .single_buffer(single_buffer),
-    .blank_text_enable(blank_text_enable),
+    .blank_text_enable(osd_blank_text_enable),
     .always_show_fps(always_show_fps),
-    .always_show_poi(always_show_poi)
+    .always_show_poi(always_show_poi),
+    .overlay_bg_dim(osd_overlay_bg_dim)
 );
+
+// ---- Verification-mode overrides (keys force on/off, default = follow OSD) ----
+// blank_text_override: 2'b00=follow OSD, 2'b01=force OFF (always visible), 2'b10=force ON (auto-blank)
+// bg_dim_override   : same encoding for the Overlay BG bit.
+reg [1:0] blank_text_override;
+reg [1:0] bg_dim_override;
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        blank_text_override <= 2'b00;
+        bg_dim_override     <= 2'b00;
+    end else begin
+        if (key_blank_text_on)  blank_text_override <= 2'b10;
+        if (key_blank_text_off) blank_text_override <= 2'b01;
+        if (key_bg_dim_on)      bg_dim_override     <= 2'b10;
+        if (key_bg_dim_off)     bg_dim_override     <= 2'b01;
+    end
+end
+wire blank_text_enable = (blank_text_override == 2'b10) ? 1'b1 :
+                         (blank_text_override == 2'b01) ? 1'b0 :
+                         osd_blank_text_enable;
+wire overlay_bg_dim    = (bg_dim_override == 2'b10) ? 1'b1 :
+                         (bg_dim_override == 2'b01) ? 1'b0 :
+                         osd_overlay_bg_dim;
 
 // ---- Input Handler ----
 wire signed [WIDTH-1:0] input_center_x;
@@ -149,6 +176,10 @@ input_handler #(
     .auto_zoom_deactivate(auto_zoom_deactivate),
     .auto_zoom_skip_next(auto_zoom_skip_next),
     .auto_zoom_snap_next(auto_zoom_snap_next),
+    .key_bg_dim_on(key_bg_dim_on),
+    .key_bg_dim_off(key_bg_dim_off),
+    .key_blank_text_on(key_blank_text_on),
+    .key_blank_text_off(key_blank_text_off),
     .auto_zoom_active(auto_zoom_active),
     .sync_from_auto_zoom(auto_zoom_handoff),
     .sync_center_x(az_center_x),
@@ -516,6 +547,7 @@ text_overlay #(
     .blank_text_enable(blank_text_enable),
     .always_show_fps(always_show_fps),
     .always_show_poi(always_show_poi),
+    .overlay_bg_dim(overlay_bg_dim),
     .pixel_x(vid_pixel_x_d),
     .pixel_y(vid_pixel_y_d),
     .video_active(vid_active_d),

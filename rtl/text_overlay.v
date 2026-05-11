@@ -23,6 +23,8 @@ module text_overlay #(
     input  wire                    blank_text_enable,
     input  wire                    always_show_fps,
     input  wire                    always_show_poi,
+    input  wire                    overlay_bg_dim,    // when 1, halve fractal RGB under overlay text regions
+
     input  wire [10:0]             pixel_x,
     input  wire [9:0]              pixel_y,
     input  wire                    video_active,
@@ -989,8 +991,16 @@ wire glyph_pixel = (show_status_text && status_glyph_pixel) ||
                    (show_help_text && help_glyph_pixel) ||
                    (show_target_text && target_glyph_pixel) ||
                    (show_github_text && github_glyph_pixel);
-assign out_r = glyph_pixel ? 8'd255 : in_r;
-assign out_g = glyph_pixel ? 8'd255 : in_g;
-assign out_b = glyph_pixel ? 8'd255 : in_b;
+// Dim the fractal pixel inside any active overlay-text bounding box when
+// overlay_bg_dim is asserted. The text glyph itself stays pure white.
+wire in_overlay_region = help_region_active | meta_region_active | target_region_active
+                       | status_region_active | github_region_active | info_region_active;
+wire dim_active = overlay_bg_dim & in_overlay_region;
+wire [7:0] bg_r = dim_active ? {1'b0, in_r[7:1]} : in_r;
+wire [7:0] bg_g = dim_active ? {1'b0, in_g[7:1]} : in_g;
+wire [7:0] bg_b = dim_active ? {1'b0, in_b[7:1]} : in_b;
+assign out_r = glyph_pixel ? 8'd255 : bg_r;
+assign out_g = glyph_pixel ? 8'd255 : bg_g;
+assign out_b = glyph_pixel ? 8'd255 : bg_b;
 
 endmodule
