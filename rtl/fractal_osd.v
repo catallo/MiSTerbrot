@@ -7,7 +7,7 @@
 //   [0]       = Reset
 //   [3:2]     = Type: 0=Mandelbrot, 1=Julia
 //   [9:4]     = Theme override: 0=Auto, 1-32=fixed theme
-//   [12:10]   = Iterations: 0=Keyboard, 1=128, 2=256, 3=512, 4=1024, 5=2048
+//   [14:12]   = Iterations: 0=Auto (zoom-adaptive), 1=512, 2=128, 3=256, 4=1024, 5=2048
 //   [13]      = Color Cycling: 0=Off, 1=On
 //   [17]      = V-Sync disable: 0=On (default), 1=Off
 //   [17]      = Buffer: 0=Double, 1=Single
@@ -39,19 +39,21 @@ module fractal_osd #(
     output wire         overlay_bg_dim
 );
 
-// Iterations: OSD order 512,128,256,1024,2048 → remap to iter_sel (0=128,1=256,2=512,3=1024,4=2048)
+// Iterations: OSD order Auto,512,128,256,1024,2048 → remap to canonical iter_sel
+// (0=128, 1=256, 2=512, 3=1024, 4=2048, 5=Auto). Auto is the OSD default.
 wire [2:0] raw_iter = status[14:12];
-assign osd_iter_sel = (raw_iter == 3'd0) ? 3'd2 :  // 512
-                      (raw_iter == 3'd1) ? 3'd0 :  // 128
-                      (raw_iter == 3'd2) ? 3'd1 :  // 256
-                      (raw_iter == 3'd3) ? 3'd3 :  // 1024
+assign osd_iter_sel = (raw_iter == 3'd0) ? 3'd5 :  // Auto (default)
+                      (raw_iter == 3'd1) ? 3'd2 :  // 512
+                      (raw_iter == 3'd2) ? 3'd0 :  // 128
+                      (raw_iter == 3'd3) ? 3'd1 :  // 256
+                      (raw_iter == 3'd4) ? 3'd3 :  // 1024
                                           3'd4;    // 2048
 reg [2:0] osd_iter_sel_prev;
 assign osd_iter_changed = (osd_iter_sel != osd_iter_sel_prev);
 
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n)
-        osd_iter_sel_prev <= 3'd2;  // match default (512)
+        osd_iter_sel_prev <= 3'd5;  // match default (Auto)
     else
         osd_iter_sel_prev <= osd_iter_sel;
 end

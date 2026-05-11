@@ -107,7 +107,7 @@ always @(posedge clk or negedge rst_n) begin
         step            <= DEFAULT_STEP;
         palette_sel     <= 6'd0;
         palette_override_active <= 1'b0;
-        iter_sel        <= 3'd2;
+        iter_sel        <= 3'd5;  // Auto
         overlay_enable  <= 1'b1;
         color_cycle_enable <= 1'b1;  // Auto
         view_changed    <= 1'b1;
@@ -176,7 +176,7 @@ always @(posedge clk or negedge rst_n) begin
                             step         <= DEFAULT_STEP;
                             palette_sel  <= 6'd0;
                             palette_override_active <= 1'b0;
-                            iter_sel     <= 3'd2;
+                            iter_sel     <= 3'd5;  // Auto
                             view_changed <= 1'b1;
                             if (auto_zoom_active) auto_zoom_deactivate <= 1'b1;
                         end
@@ -203,8 +203,8 @@ always @(posedge clk or negedge rst_n) begin
                             palette_override_active <= 1'b1;
                             view_changed <= 1'b1;
                         end
-                        8'h43: begin // I = Cycle iterations
-                            iter_sel <= (iter_sel == 3'd4) ? 3'd0 : iter_sel + 3'd1;
+                        8'h43: begin // I = Cycle iterations (0=128 .. 4=2048, 5=Auto)
+                            iter_sel <= (iter_sel == 3'd5) ? 3'd0 : iter_sel + 3'd1;
                             view_changed <= 1'b1;
                         end
                         8'h18: begin // O = Toggle text overlay
@@ -219,7 +219,7 @@ always @(posedge clk or negedge rst_n) begin
                             step         <= DEFAULT_STEP;
                             palette_sel  <= 6'd0;
                             palette_override_active <= 1'b0;
-                            iter_sel     <= 3'd2;
+                            iter_sel     <= 3'd5;  // Auto
                             view_changed <= 1'b1;
                             if (auto_zoom_active) auto_zoom_deactivate <= 1'b1;
                         end

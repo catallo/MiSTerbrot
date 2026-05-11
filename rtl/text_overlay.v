@@ -30,6 +30,7 @@ module text_overlay #(
     input  wire                    video_active,
     input  wire [5:0]              palette_sel,
     input  wire [11:0]             max_iter,
+    input  wire                    iter_auto_mode,
     input  wire [6:0]              fps_value,
     input  wire signed [WIDTH-1:0] center_x,
     input  wire signed [WIDTH-1:0] center_y,
@@ -56,10 +57,10 @@ localparam [9:0]  INFO_Y = 10'd3;
 localparam [10:0] INFO_W = 11'd164;  // 32*5 + 4 padding
 localparam [9:0]  INFO_H = 10'd34;   // 3*10 + 4 padding
 
-// Help region: top-right, 2 lines (auto zoom + color cycling status)
-localparam [10:0] HELP_X = 11'd5;    // top-left (was top-right)
-localparam [9:0]  HELP_Y = 10'd3;    // top-left
-localparam [10:0] HELP_W = 11'd18;   // 2 chars * 5 + 4 padding + 4
+// Help region: top-left, 1 line (FPS — 2 digits)
+localparam [10:0] HELP_X = 11'd5;
+localparam [9:0]  HELP_Y = 10'd3;
+localparam [10:0] HELP_W = 11'd14;   // 2 chars * 5 + 4 padding
 localparam [9:0]  HELP_H = 10'd14;   // 1*10 + 4
 
 // Meta region: overlaps info origin, 1 line (currently unused content)
@@ -102,20 +103,20 @@ localparam [9:0]  GITHUB_TEXT_H = 10'd20; // 2*10
 localparam [10:0] LINE_PIX_W = 11'd160;        // LINE_LEN * 5
 localparam [10:0] TARGET_PIX_W = 11'd240;       // TARGET_LINE_LEN * 5
 
-localparam [5:0]  HELP_LINE_LEN = 6'd16;
+localparam [5:0]  HELP_LINE_LEN = 6'd2;
 localparam [5:0]  GITHUB_LINE_LEN = 6'd18;
-localparam [10:0] HELP_PIX_W = 11'd80;         // HELP_LINE_LEN * 5
-// Status region: top-right, 2 lines (color cycling mode + iterations)
+localparam [10:0] HELP_PIX_W = 11'd10;         // HELP_LINE_LEN * 5
+// Status region: top-right, 1 line (CC only; IT moved to bottom-left target).
 // Right-aligned X depends on resolution mode.
-localparam [10:0] STATUS_X_320 = 11'd261;   // right-aligned for 320: 313 - 10*5 - 2
-localparam [10:0] STATUS_X_640 = 11'd581;   // right-aligned for 640: 633 - 10*5 - 2
+localparam [10:0] STATUS_X_320 = 11'd276;   // right-aligned for 320: 313 - 7*5 - 2
+localparam [10:0] STATUS_X_640 = 11'd596;   // right-aligned for 640: 633 - 7*5 - 2
 wire       [10:0] STATUS_X     = mode_640 ? STATUS_X_640 : STATUS_X_320;
 localparam [9:0]  STATUS_Y = 10'd3;
-localparam [10:0] STATUS_W = 11'd54;    // 10*5 + 4
-localparam [9:0]  STATUS_H = 10'd24;    // 2*10 + 4
-localparam [2:0]  STATUS_LINES = 3'd2;
-localparam [5:0]  STATUS_LINE_LEN = 6'd10;
-localparam [10:0] STATUS_PIX_W = 11'd50;
+localparam [10:0] STATUS_W = 11'd39;    // 7*5 + 4
+localparam [9:0]  STATUS_H = 10'd14;    // 1*10 + 4
+localparam [2:0]  STATUS_LINES = 3'd1;
+localparam [5:0]  STATUS_LINE_LEN = 6'd7;
+localparam [10:0] STATUS_PIX_W = 11'd35;
 localparam [10:0] GITHUB_PIX_W = 11'd90;       // GITHUB_LINE_LEN * 5
 
 localparam [255:0] BLANK_LINE = "                                ";
@@ -274,9 +275,29 @@ always @(*) begin
         12'd256:  begin iter_digit_3 = "2"; iter_digit_2 = "5"; iter_digit_1 = "6"; iter_digit_0 = " "; end
         12'd512:  begin iter_digit_3 = "5"; iter_digit_2 = "1"; iter_digit_1 = "2"; iter_digit_0 = " "; end
         12'd1024: begin iter_digit_3 = "1"; iter_digit_2 = "0"; iter_digit_1 = "2"; iter_digit_0 = "4"; end
-        default:  begin iter_digit_3 = "2"; iter_digit_2 = "0"; iter_digit_1 = "4"; iter_digit_0 = "8"; end
+        12'd2048: begin iter_digit_3 = "2"; iter_digit_2 = "0"; iter_digit_1 = "4"; iter_digit_0 = "8"; end
+        12'd4095: begin iter_digit_3 = "4"; iter_digit_2 = "0"; iter_digit_1 = "9"; iter_digit_0 = "5"; end
+        default:  begin iter_digit_3 = "?"; iter_digit_2 = "?"; iter_digit_1 = "?"; iter_digit_0 = "?"; end
     endcase
 end
+
+// Auto-iter field: " IT: Auto(NNN)" or " IT: Auto(NNNN)" (left-aligned digits,
+// closing paren immediately after — the column jitter at tier boundaries is OK).
+// Fixed-width 15-char output keeps the surrounding target line at 48 chars.
+function [119:0] iter_auto_field;
+    input [11:0] iter;
+    begin
+        case (iter)
+            12'd128:  iter_auto_field = " IT: Auto(128) ";
+            12'd256:  iter_auto_field = " IT: Auto(256) ";
+            12'd512:  iter_auto_field = " IT: Auto(512) ";
+            12'd1024: iter_auto_field = " IT: Auto(1024)";
+            12'd2048: iter_auto_field = " IT: Auto(2048)";
+            12'd4095: iter_auto_field = " IT: Auto(4095)";
+            default:  iter_auto_field = " IT: Auto(????)";
+        endcase
+    end
+endfunction
 
 always @(*) begin
     fps_clamped = (fps_value > 7'd99) ? 7'd99 : fps_value;
@@ -658,12 +679,12 @@ function [255:0] meta_line_data;
     end
 endfunction
 
-function [127:0] help_line_data;
+function [15:0] help_line_data;
     input [2:0] line;
     begin
         case (line)
-            3'd0: help_line_data = {fps_digit_1, fps_digit_0, "              "};
-            default: help_line_data = {16{8'd32}};
+            3'd0:    help_line_data = {fps_digit_1, fps_digit_0};
+            default: help_line_data = {2{8'd32}};
         endcase
     end
 endfunction
@@ -693,31 +714,27 @@ function [383:0] target_line_data;
                    " Y:", coord_y_sign, coord_y_int, ".", coord_y_d3, coord_y_d2, coord_y_d1, coord_y_d0,
                    " Zoom: X2^", zoom_tens_ascii(zoom_exp), zoom_ones_ascii(zoom_exp), ".",
                    zoom_frac_ascii(zoom_frac_tenth),
-                   "               "} :
+                   (iter_auto_mode
+                    ? iter_auto_field(max_iter)
+                    : {" IT: ", iter_digit_3, iter_digit_2, iter_digit_1, iter_digit_0, "      "})} :
                   TARGET_BLANK_LINE;
             default: target_line_data = TARGET_BLANK_LINE;
         endcase
     end
 endfunction
 
-// ---- Status text: "C: Auto/On/Off" and "I: 512" ----
-function [79:0] status_line_data;
+// ---- Status text: "CC: Off" / "CC: On " (1 line, 7 chars) ----
+function [55:0] status_line_data;
     input [2:0] line;
     begin
         case (line)
             3'd0: begin
                 case (color_cycle_active)
-                    2'd0: status_line_data = " CC: Off  ";
-                    default: status_line_data = " CC: On   ";
+                    2'd0:    status_line_data = "CC: Off";
+                    default: status_line_data = "CC: On ";
                 endcase
             end
-            3'd1: begin
-                if (max_iter >= 12'd1000)
-                    status_line_data = {" IT: ", iter_digit_3, iter_digit_2, iter_digit_1, iter_digit_0, " "};
-                else
-                    status_line_data = {" IT: ", iter_digit_3, iter_digit_2, iter_digit_1, "  "};
-            end
-            default: status_line_data = {10{8'd32}};
+            default: status_line_data = {7{8'd32}};
         endcase
     end
 endfunction
@@ -725,7 +742,7 @@ endfunction
 function [7:0] status_line_char;
     input [2:0] line;
     input [5:0] col;
-    reg [79:0] line_bits;
+    reg [55:0] line_bits;
     begin
         line_bits = status_line_data(line);
         status_line_char = (col < STATUS_LINE_LEN) ? (line_bits >> ((STATUS_LINE_LEN - 1 - col) * 8)) : 8'd32;
@@ -757,7 +774,7 @@ endfunction
 function [7:0] help_line_char;
     input [2:0] line;
     input [5:0] col;
-    reg [127:0] line_bits;
+    reg [15:0] line_bits;
     begin
         line_bits = help_line_data(line);
         help_line_char = (col < HELP_LINE_LEN) ? (line_bits >> ((HELP_LINE_LEN - 1 - col) * 8)) : 8'd32;

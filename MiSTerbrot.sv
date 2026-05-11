@@ -146,7 +146,7 @@ localparam CONF_STR = {
 	"O[122:121],Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
 	"O[9:4],Palette,Auto,Rainbow,Fire,Ocean,Electric,Neon,Pastel,Grayscale,Sunset,Aurora,Deep Sea,Candy,Matrix,Toxic,Frozen,Lava,Earth,Indigo,70s Retro,90s Rave,C64,Miami,Gold,Starlight,Nebula,Silver,Akihabara,Colorado,XTC,Psilocybin,HDR,THC,Barbie World,Skittles,Papagaio,Bubblegum,Synthwave,Pop Art,Tropical,Vaporwave,Acid,Morning Sun,Cloudy,Aurora Borealis,Cream,Palladium Silver,Complementary,Migraine Aura;",
 	"O[10],Color Cycling,On,Off;",
-	"O[14:12],Iterations,512,128,256,1024,2048;",
+	"O[14:12],Iterations,Auto,512,128,256,1024,2048;",
 	"O[18],Buffer,Double,Single;",
 	"O[19],Blank Text,On,Off;",
 	"O[20],Always Show FPS,Off,On;",

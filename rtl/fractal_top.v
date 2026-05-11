@@ -257,13 +257,27 @@ wire settings_changed = (palette_sel != palette_sel_prev) ||
                         (max_iter != max_iter_prev) ||
                         (mode_640 != mode_640_prev);
 
+// Auto-iter: scale max_iter with zoom depth so deep zooms don't render solid
+// black for lack of iterations. Tiers match tools/poi_render.max_iter_for_zoom.
+localparam signed [WIDTH-1:0] FT_DEFAULT_STEP = 64'sh0003333333333333;
+wire signed [WIDTH-1:0] step_z6  = FT_DEFAULT_STEP >>> 6;
+wire signed [WIDTH-1:0] step_z12 = FT_DEFAULT_STEP >>> 12;
+wire signed [WIDTH-1:0] step_z18 = FT_DEFAULT_STEP >>> 18;
+wire signed [WIDTH-1:0] step_z24 = FT_DEFAULT_STEP >>> 24;
+wire [11:0] auto_max_iter = (step >= step_z6)  ? 12'd256  :
+                            (step >= step_z12) ? 12'd512  :
+                            (step >= step_z18) ? 12'd1024 :
+                            (step >= step_z24) ? 12'd2048 :
+                                                 12'd4095;
+
 always @(*) begin
     case (input_iter_sel)
         3'd0:    input_max_iter = 12'd128;
         3'd1:    input_max_iter = 12'd256;
         3'd2:    input_max_iter = 12'd512;
         3'd3:    input_max_iter = 12'd1024;
-        default: input_max_iter = 12'd2048;
+        3'd4:    input_max_iter = 12'd2048;
+        default: input_max_iter = auto_max_iter;  // 3'd5 = Auto
     endcase
 end
 
@@ -553,6 +567,7 @@ text_overlay #(
     .video_active(vid_active_d),
     .palette_sel(palette_sel),
     .max_iter(max_iter),
+    .iter_auto_mode(input_iter_sel == 3'd5),
     .fps_value(fps_value),
     .center_x(center_x),
     .center_y(center_y),
