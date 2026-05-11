@@ -188,9 +188,102 @@ A full compile is ~17 minutes.
 
 ### Deploy
 
-- **RBF filename MUST include date:** `MiSTerbrot_YYYYMMDD.rbf` — MiSTer reads the date from the filename suffix, NOT from CONF_STR `V,v`. Without the date suffix, the core list shows `--.--.--.` instead of the build date.
-- Latest in-tree builds: `MiSTerbrot_20260504.rbf`, `MiSTerbrot_20260505.rbf`.
-- Set `status[22]=1` for 640 mode by writing the appropriate byte to `/media/fat/config/MiSTerbrot.CFG` before reload.
+The MiSTer (assumed at `10.0.0.8` for this project — adjust to taste) is
+reached via `tools/misterclaw-send`, a Go binary that wraps SSH/SCP and
+a remote-control protocol on the MiSTer side. Defaults: `root` / `1`.
+
+**RBF filename rule.** `MiSTerbrot_YYYYMMDD.rbf` — MiSTer reads the build
+date from the filename suffix, NOT from CONF_STR `V,v`. Without the date
+suffix, the core list shows `--.--.--.` instead of the build date.
+
+**One-shot deploy** after a Quartus compile finishes:
+
+```bash
+DATE=$(date +%Y%m%d)
+cp output_files/MiSTerbrot.rbf MiSTerbrot_${DATE}.rbf
+sshpass -p 1 scp -o StrictHostKeyChecking=accept-new \
+  MiSTerbrot_${DATE}.rbf root@10.0.0.8:/media/fat/_Other/
+sshpass -p 1 ssh -o StrictHostKeyChecking=accept-new root@10.0.0.8 \
+  "echo 'load_core /media/fat/_Other/MiSTerbrot_${DATE}.rbf' > /dev/MiSTer_cmd"
+```
+
+(For the prior background-task pipeline used during interactive work,
+this is chained behind the `quartus_sh --flow compile` command in the
+same `docker run` invocation — see the prior session notes.)
+
+### Closing the feedback loop with `misterclaw-send`
+
+The build → deploy → verify cycle is fully scriptable once a core is
+running. `tools/misterclaw-send` exposes the parts we use:
+
+```bash
+tools/misterclaw-send --host 10.0.0.8 status
+# → "Core: MiSTerbrot_20260511" (confirms what's loaded)
+
+tools/misterclaw-send --host 10.0.0.8 screenshot --output shot.png
+# → captures the current frame at native resolution
+
+tools/misterclaw-send --host 10.0.0.8 input type "M"
+# → sends the M key as a PS/2 event (fires snap_next in auto_zoom.v)
+```
+
+**Why M-key matters for verification.** Pressing `M` enters snap mode:
+the auto-zoom state machine transitions to `S_SNAP_LOAD`, jumps `step`
+to `DEFAULT_STEP >>> target_zoom_int` (the POI's canonical zoom depth),
+and freezes in `S_HOLD`. Subsequent `M` presses advance the playlist
+and re-snap. With this we can deterministically walk all 67 POIs
+without waiting through the slow zoom-in animation. A complete
+verification walk is ~5 minutes:
+
+```bash
+python3 tools/poi_walkthrough.py
+```
+
+This script:
+1. For each POI in the shuffled playlist, presses `M`, sleeps
+   `PAUSE_SEC` (default 3) for `S_HOLD` to settle, screenshots.
+2. Matches each FPGA capture to its Python-rendered reference thumbnail
+   (`screenshots/poi/idx_NNN_*.png`) by greyscale-correlation of the
+   central fractal region — robust to palette differences.
+3. Writes per-POI folders to `screenshots/poi_compare/idx_NNN_<name>/`
+   containing `fpga.png`, `python.png`, and `compare.png` (side-by-side
+   composite). Plus `_summary.txt` with per-press match scores so
+   suspicious matches are easy to spot.
+
+**Full feedback loop in practice:**
+
+```
+edit tools/poi_master.json                                   # 1. change a POI coord/zoom
+python3 tools/poi_render.py                                  # 2. preview locally
+python3 tools/poi_encode.py                                  # 3. regen rtl/poi_generated.vh
+# Quartus smart-recompile does NOT track `include files. Force a clean build:
+docker run --rm -v $(pwd):/build ryanfb/quartus-mister sh -c \
+  "rm -rf /build/db /build/incremental_db /build/output_files"
+docker run --rm -v $(pwd):/build ryanfb/quartus-mister bash -c \
+  "export PATH=/opt/intelFPGA_lite/17.0/quartus/bin:\$PATH && \
+   export LD_LIBRARY_PATH=/opt/intelFPGA_lite/17.0/quartus/linux64:\$LD_LIBRARY_PATH && \
+   cd /build && quartus_sh --flow compile MiSTerbrot"          # 4. ~20-25 min
+DATE=$(date +%Y%m%d)
+cp output_files/MiSTerbrot.rbf MiSTerbrot_${DATE}.rbf
+sshpass -p 1 scp MiSTerbrot_${DATE}.rbf root@10.0.0.8:/media/fat/_Other/
+sshpass -p 1 ssh root@10.0.0.8 \
+  "echo 'load_core /media/fat/_Other/MiSTerbrot_${DATE}.rbf' > /dev/MiSTer_cmd"   # 5. deploy
+python3 tools/poi_walkthrough.py                             # 6. verify all 67
+```
+
+The whole loop end-to-end runs in ~30 minutes (build dominates).
+Without the M-key snap, step 6 would take ~75 minutes alone (slow zoom
+through every POI), so the snap is the difference between "iterate in
+half an hour" and "iterate every two hours".
+
+**Quartus smart-recompile gotcha.** Quartus does not track `\`include`
+files (`rtl/poi_generated.vh`) as dependencies. When only POI data
+changes, `quartus_sh --flow compile` will smart-skip everything and
+finish in 3 seconds with stale output. Always wipe `db/`,
+`incremental_db/`, and `output_files/` before building if the only
+change is to POI data. (The Docker `rm -rf` above is the canonical
+way — run as root inside the container, since the cache files are
+root-owned.)
 
 ### Simulation
 
