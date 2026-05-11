@@ -57,6 +57,7 @@ Major blocks:
   - Auto-zoom enable/deactivate handoff
 - `rtl/coord_generator.v`
   - Scans the frame in raster order and maps pixels into complex-plane coordinates from `center_x`, `center_y`, and `step`. Receives `mode_640` so the scan range matches the active resolution.
+  - **Complex-plane aspect is always 4:3, regardless of `mode_640`.** 320 mode covers `320·step × 240·step`; 640 mode covers the same complex-plane region but at 2× horizontal resolution via `step_x = step >>> 1`. Both modes evaluate `cr_start = center_x − 160·step` (no mux needed). This invariant is the source-of-truth for the Python reference renderer: `tools/poi_render.py` uses `H_OVERSAMPLE = 2` and `step_x = step / 2` when rendering at 640×240 so its complex-plane coverage matches the FPGA pixel-for-pixel.
 - `rtl/pixel_pipeline.v`
   - `20` logical iterators total (`N_ITERATORS=20`)
   - Implemented as `4` instances of `rtl/iter_quad.v`, each serving five alternating contexts (5-stage pipeline, 5 contexts per quad)
@@ -65,7 +66,7 @@ Major blocks:
   - Five Mandelbrot iterators sharing seven truncated `64×64` multiplies via 5-context DSP time-multiplexing
   - 5-stage pipeline: Stage 1 DSP partial products → Stage 2a1 lower-half adds → Stage 2a2 upper-half adds → Stage 2b1 mag_sq/escape/compares → Stage 2b2 final adds + state writeback
   - Mandelbrot interior precheck (main cardioid + period-2 bulb) reuses the multiplier pipeline; interior points return `iter_count=max_iter` immediately.
-  - Supports up to `2048` iterations with a `12-bit` iteration count
+  - Supports up to `4095` iterations with a `12-bit` iteration count (Auto mode uses up to 4095 at deep zooms; manual selection caps at 2048)
   - ~14 DSP blocks per quad × 4 quads
 - `rtl/framebuffer.v`
   - Double-buffered BRAM framebuffer
@@ -80,9 +81,9 @@ Major blocks:
   - `47` procedural palettes (indices `6'd0`..`6'd46`)
 - `rtl/text_overlay.v`
   - Rendered directly in the video stream
-  - Top-left: iterations, FPS, fractal type, palette
-  - Top-right: zoom auto/manual status and color cycling status
-  - Bottom-left: two-line target region with POI name (auto-zoom) and coordinates plus zoom line below
+  - Top-left: 2-char FPS counter (small box, no padding)
+  - Top-right: 7-char color-cycling status (`CC: On ` / `CC: Off`)
+  - Bottom-left: two-line target region. Line 1 = POI name + palette (auto-zoom). Line 2 = `X:... Y:... Zoom: X2^N.M IT: Auto(NNNN)` or `IT: NNNN` (manual). The IT field lives in this line so the upper-right panel can stay compact.
   - Bottom-right: build/date and GitHub text
   - Uses 5×5 monochrome font with 10px line height for readability at 240p
   - Coordinate digit computation is registered (synchronous pipeline stage) for timing closure
@@ -110,6 +111,24 @@ Mandelbrot only. Every iterator runs `z = z² + c` with the per-pixel `c` from t
 - `skip_next` input allows jumping to next target mid-zoom (`N` key / `Y` button).
 - `snap_next` input (`M` key / `X` button) jumps the view directly to a POI's canonical center + zoom (verification mode); state machine enters `S_HOLD` and stays there until snap_next pulses again (advances + re-snaps) or auto-zoom is disabled with Z.
 - Manual palette overrides clear automatically on POI transition (`sync_clear_palette_override` from `fractal_top.v`).
+
+### Auto-iter (zoom-adaptive max_iter)
+
+The default `Iterations` setting is `Auto`. The core picks `max_iter` from the current `step` via threshold compares against `DEFAULT_STEP >>> N`:
+
+| Zoom range | `max_iter` |
+|---|---|
+| `z < 6`    | `256`  |
+| `z < 12`   | `512`  |
+| `z < 18`   | `1024` |
+| `z < 24`   | `2048` |
+| `z ≥ 24`   | `4095` |
+
+This fixes a class of deep-zoom POIs that previously rendered solid black under a fixed 512-iter cap (every POI past `z ≈ 17`). The tiers match `tools/poi_render.max_iter_for_zoom()` so Python references and FPGA output agree.
+
+Implementation is one cascaded comparator chain in `rtl/fractal_top.v` (no leading-zero count needed — the step values are compile-time constants). The case statement selects between the fixed manual values (`3'd0`..`3'd4`) and `auto_max_iter` (`3'd5`). Manual selection still works via OSD or the I-key cycle. The overlay shows `IT: Auto(NNNN)` in auto mode so the live-adapted value is visible; in manual mode it shows `IT: NNNN`.
+
+Boundary crossings during a smooth zoom-in cause a frame restart (via `settings_changed`), so the user sees a brief re-render at `z = 6, 12, 18, 24`.
 
 ## File Structure
 
@@ -154,7 +173,7 @@ Build artifacts and release notes:
 |-----------|-------------------------------|
 | `O[9:4]`  | Palette (Auto + 47 named)     |
 | `O[10]`   | Color Cycling (On/Off)        |
-| `O[14:12]`| Iterations (128/256/512/1024/2048) |
+| `O[14:12]`| Iterations (Auto / 128 / 256 / 512 / 1024 / 2048) |
 | `O[17:15]`| Scandoubler Fx                |
 | `O[18]`   | Buffer (Double/Single)        |
 | `O[19]`   | Blank Text                    |
@@ -184,6 +203,18 @@ The OSD bit `O[23] Overlay BG` controls the same dim flag as `G`/`H`;
 override the OSD setting once pressed; before any key is pressed, the
 OSD value wins. There is no "follow OSD again" reset — once a key has
 been pressed, the override is sticky until the core resets.
+
+**Verification screenshot routine — always start with `G` then `L`.** Any
+script that captures FPGA frames for OCR or visual comparison needs to
+ensure the overlay is (a) readable on bright palettes and (b) not
+auto-hidden. Skipping these costs ~10-20 % of captures to invisible or
+illegible overlays. Canonical opening sequence:
+
+```bash
+tools/misterclaw-send --host 10.0.0.8 input type G  # dim BG
+tools/misterclaw-send --host 10.0.0.8 input type L  # disable auto-hide timer
+# … then the M-snap / screenshot loop
+```
 
 The dim path right-shifts each RGB byte by 1 (`out = in >> 1`) inside
 any active overlay-text bounding box. White text glyphs (`8'hFF`) sit
@@ -332,7 +363,7 @@ Requires Python 3 with `numpy` and `Pillow`. The pipeline is the source of truth
 - Mandelbrot rendering
 - Manual pan and zoom from controller/keyboard
 - Manual palette cycling (47 palettes)
-- Configurable max iterations up to `2048`
+- Configurable max iterations: Auto (zoom-adaptive 256–4095) or fixed (128/256/512/1024/2048)
 - Auto-zoom screensaver with 73 shuffled POIs and 47 shuffled palettes (independent playlist positions)
 - `N` key / `Y` joystick button = skip to next POI in auto-zoom playlist
 - Double-buffered tear-free framebuffer swap on VBLANK edge (single-buffer mode optional)
@@ -377,4 +408,3 @@ The fitted reports include latch-related warnings. `output_files/MiSTerbrot.fit.
 
 - Treat comments marked `v0.8` / `v0.9.0` as potentially stale until checked against the actual RTL.
 - Treat `PROJECT.md` as the maintained truth source.
-- For current branch state and the 640-mode debugging trail, see `HANDOFF.md`.

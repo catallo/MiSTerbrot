@@ -534,5 +534,233 @@
     "zoom_level": 23.79,
     "category": "MEDALLION",
     "note": "Needle medallion near island spike tip"
+  },
+  {
+    "name": "M3,1 1/3 LIMB TIP",
+    "cx": -0.2281554937,
+    "cy": 1.115142508,
+    "zoom_level": 11.0,
+    "category": "MISIUREWICZ",
+    "sources": [
+      "https://en.wikipedia.org/wiki/Misiurewicz_point",
+      "https://mrob.com/pub/muency/misiurewiczpoint.html"
+    ],
+    "note": "M(3,1) endpoint at the tip of the OTHER main branch of the 1/3 limb. Preperiod 3 period 1."
+  },
+  {
+    "name": "M_4,2 CASCADE 1",
+    "cx": -1.4303576325,
+    "cy": 0.0,
+    "zoom_level": 11.0,
+    "category": "FEIGENBAUM",
+    "sources": [
+      "https://en.wikibooks.org/wiki/Fractals/Iterations_in_the_complex_plane/misiurewicz",
+      "https://en.wikipedia.org/wiki/Misiurewicz_point"
+    ],
+    "note": "M(4,2) first primary separator on the period-doubling cascade toward Feigenbaum. Boundary between chaotic bands of period 2 and 4."
+  },
+  {
+    "name": "M_8,4 CASCADE 2",
+    "cx": -1.4074051182,
+    "cy": 0.0,
+    "zoom_level": 13.0,
+    "category": "FEIGENBAUM",
+    "sources": [
+      "https://en.wikibooks.org/wiki/Fractals/Iterations_in_the_complex_plane/misiurewicz",
+      "https://mrob.com/pub/muency/feigenbaumpoint.html"
+    ],
+    "note": "M(8,4) second primary separator on the Feigenbaum cascade. Next band-boundary below M_4,2 on the real axis."
+  },
+  {
+    "name": "M_16,8 CASCADE 3",
+    "cx": -1.4024921764,
+    "cy": 0.0,
+    "zoom_level": 14.5,
+    "category": "FEIGENBAUM",
+    "sources": [
+      "https://en.wikibooks.org/wiki/Fractals/Iterations_in_the_complex_plane/misiurewicz",
+      "https://mrob.com/pub/muency/feigenbaumpoint.html"
+    ],
+    "note": "M(16,8) third primary separator. Approaches Feigenbaum point at -1.40115518909. Sits just rightward of FEIGENBAUM DEEP."
+  },
+  {
+    "name": "EJS P47 ALPHA",
+    "cx": -1.7688720239,
+    "cy": 0.0039323033,
+    "zoom_level": 19.0,
+    "category": "JULIA_ISLAND",
+    "sources": [
+      "https://mrob.com/pub/muency/embeddedjuliaset.html",
+      "https://en.wikipedia.org/wiki/Mandelbrot_set"
+    ],
+    "note": "First-order pre-image island of period 47 in the embedded Julia ring surrounding the period-44 EJS center."
+  },
+  {
+    "name": "EJS P50 BETA",
+    "cx": -1.7688663431,
+    "cy": 0.0039289815,
+    "zoom_level": 19.5,
+    "category": "JULIA_ISLAND",
+    "sources": [
+      "https://mrob.com/pub/muency/embeddedjuliaset.html",
+      "https://mathr.co.uk/web/m-location-analysis.html"
+    ],
+    "note": "Period-50 child island in the Julia ring around EJS PERIOD 44. Different ray-position from EJS P47 ALPHA."
+  },
+  {
+    "name": "EJS WAKE 1/4",
+    "cx": -0.1601617454,
+    "cy": 1.0375719439,
+    "zoom_level": 13.0,
+    "category": "JULIA_ISLAND",
+    "sources": [
+      "https://mathr.co.uk/web/m-location-analysis.html",
+      "https://mrob.com/pub/muency/embeddedjuliaset.html"
+    ],
+    "note": "Embedded Julia set centered on the largest period-4 bulb in the longest filament near the 1/3 limb tip."
+  },
+  {
+    "name": "SH SPIRAL CONT",
+    "cx": -0.744538,
+    "cy": 0.1212,
+    "zoom_level": 11.0,
+    "category": "SEAHORSE",
+    "sources": [
+      "https://mrob.com/pub/muency/seahorsevalley.html",
+      "https://en.wikipedia.org/wiki/Mandelbrot_set"
+    ],
+    "note": "Spiral continuation in Seahorse Valley deep R2F(13/27B2). Zoom-sequence waypoint approaching JEWEL BOX/EJS NUCLEUS."
+  },
+  {
+    "name": "SH TAIL SPIRAL",
+    "cx": -0.7445366,
+    "cy": 0.1217208,
+    "zoom_level": 12.5,
+    "category": "SEAHORSE",
+    "sources": [
+      "https://mrob.com/pub/muency/seahorsevalley.html",
+      "https://mrob.com/pub/muency/embeddedjuliaset.html"
+    ],
+    "note": "Tail-spiral intermediate; same chain as EJS NUCLEUS but distinct waypoint at shallower zoom."
+  },
+  {
+    "name": "ELEPHANT MED 2",
+    "cx": -1.256841444,
+    "cy": -0.379421881,
+    "zoom_level": 22.8,
+    "category": "MEDALLION",
+    "sources": [
+      "https://mrob.com/pub/muency/embeddedjuliaset.html",
+      "https://mrob.com/pub/muency/cauliflowermedallion.html"
+    ],
+    "note": "Mu-Ency named 'elephant medallion'. Adjacent to existing CAULIFLOWER MED but distinct embedded-Julia center."
+  },
+  {
+    "name": "R2T 1/2 ISLE STEP",
+    "cx": -1.2494989,
+    "cy": 0.030333,
+    "zoom_level": 12.7,
+    "category": "MINIBROT",
+    "sources": [
+      "https://mrob.com/pub/muency/seahorsevalley.html",
+      "https://mrob.com/pub/muency/cusp.html"
+    ],
+    "note": "Intermediate spiral-tip waypoint inside the R2.1/2.C(1/2) seahorse-west region. Step before R2 HALF ISLE."
+  },
+  {
+    "name": "BEYER STEP 13",
+    "cx": -0.7436438872,
+    "cy": 0.1318259043,
+    "zoom_level": 32.3,
+    "category": "SEAHORSE",
+    "sources": [
+      "https://commons.wikimedia.org/wiki/File:Mandel_zoom_13_satellite_seehorse_tail_with_julia_island.jpg",
+      "https://en.wikipedia.org/wiki/Mandelbrot_set"
+    ],
+    "note": "Wolfgang Beyer step 13: 5.14e9x. Satellite seahorse tail with embedded Julia island. Deeper than JULIA ISLANDS."
+  },
+  {
+    "name": "BEYER STEP 14",
+    "cx": -0.743643887,
+    "cy": 0.1318259042,
+    "zoom_level": 35.8,
+    "category": "JULIA_ISLAND",
+    "sources": [
+      "https://commons.wikimedia.org/wiki/File:Mandel_zoom_14_satellite_julia_island.jpg",
+      "https://en.wikipedia.org/wiki/Mandelbrot_set"
+    ],
+    "note": "Wolfgang Beyer step 14: 5.998e10x. Two islands connected by tiny structures meeting at a satellite. Deepest published Beyer waypoint."
+  },
+  {
+    "name": "TRIPLE SPIRAL P4",
+    "cx": -0.1540378,
+    "cy": 1.03692215,
+    "zoom_level": 11.0,
+    "category": "MEDALLION",
+    "sources": [
+      "https://www.researchgate.net/figure/Examples-of-multiple-spiral-medallions-13-in-the-Mandelbrot-set-showing-the-first_fig2_258389622",
+      "https://en.wikipedia.org/wiki/Mandelbrot_set"
+    ],
+    "note": "Romera et al triple-spiral medallion. Zoom-sequence of existing TRIPLE MEDALLION at deeper magnification."
+  },
+  {
+    "name": "MERCATOR P189",
+    "cx": -1.7487645202,
+    "cy": 0.0,
+    "zoom_level": 25.0,
+    "category": "MINIBROT",
+    "sources": [
+      "https://mathr.co.uk/web/m-location-analysis.html",
+      "https://mrob.com/pub/muency/embeddedjuliaset.html"
+    ],
+    "note": "Period-189 minibrot in the EJS CAULI region (mathr reference point). Deeper than EJS CAULI."
+  },
+  {
+    "name": "MERCATOR P38",
+    "cx": -1.7487645763,
+    "cy": 0.0,
+    "zoom_level": 22.0,
+    "category": "MINIBROT",
+    "sources": [
+      "https://mathr.co.uk/web/m-location-analysis.html",
+      "https://mrob.com/pub/muency/embeddedjuliaset.html"
+    ],
+    "note": "Period-38 minibrot just beyond the EJS CAULI nucleus. Intermediate between EJS CAULI and MERCATOR P189."
+  },
+  {
+    "name": "M(3,3) WAKE 1/3 DP",
+    "cx": -0.1010963638,
+    "cy": 0.9562865108,
+    "zoom_level": 11.5,
+    "category": "MISIUREWICZ",
+    "sources": [
+      "https://en.wikibooks.org/wiki/Fractals/Iterations_in_the_complex_plane/p_misiurewicz",
+      "https://en.wikipedia.org/wiki/Misiurewicz_point"
+    ],
+    "note": "Principal Misiurewicz branch point of wake 1/3 (3-spoke junction at the bulb). Zoom-sequence of existing MISIUREWICZ M4."
+  },
+  {
+    "name": "M(7,7) WAKE 1/4 DP",
+    "cx": 0.3663629834,
+    "cy": 0.5915337733,
+    "zoom_level": 11.5,
+    "category": "MISIUREWICZ",
+    "sources": [
+      "https://en.wikibooks.org/wiki/Fractals/Iterations_in_the_complex_plane/p_misiurewicz",
+      "https://en.wikibooks.org/wiki/Fractals/Iterations_in_the_complex_plane/misiurewicz"
+    ],
+    "note": "Principal Misiurewicz point of wake 1/4 (4-spoke branch hub). Zoom-sequence of existing MISIUREWICZ M4-2."
+  },
+  {
+    "name": "EJS P47 GAMMA",
+    "cx": -1.7688635553,
+    "cy": 0.0039192692,
+    "zoom_level": 19.0,
+    "category": "JULIA_ISLAND",
+    "sources": [
+      "https://mrob.com/pub/muency/embeddedjuliaset.html",
+      "https://mathr.co.uk/web/m-location-analysis.html"
+    ],
+    "note": "Second period-47 pre-image island, mirrored across the EJS P44 center from EJS P47 ALPHA."
   }
 ]

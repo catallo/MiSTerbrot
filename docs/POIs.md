@@ -38,14 +38,15 @@ The OSD overlay renders zoom as `X2^N.M` where `N.M = zoom_exp + zoom_frac_tenth
 |---|---|---|---|
 | Theoretical floor | ~49.7 | ~9 × 10¹⁴ | `step` reaches `1 LSB` |
 | Pixel-precision floor | ~46 | ~7 × 10¹³ | Adjacent pixels stop differing (need ≥10 LSB/pixel) |
-| Quality floor @ max_iter=2048 | ~35–40 | ~10¹⁰–10¹² | Escape orbits run out of iterations near boundary |
-| Quality floor @ max_iter=1024 | ~28–33 | ~10⁸–10¹⁰ | |
-| Quality floor @ max_iter=512 | ~20–25 | ~10⁶–10⁷ | |
-| Quality floor @ max_iter=256 | ~15–18 | ~3×10⁴–3×10⁵ | |
+| Quality floor @ max_iter=4095 (Auto, `z≥24`) | ~40–45 | ~10¹²–10¹³ | Highest tier — covers all current POIs |
+| Quality floor @ max_iter=2048 (Auto, `18≤z<24`) | ~35–40 | ~10¹⁰–10¹² | Escape orbits run out of iterations near boundary |
+| Quality floor @ max_iter=1024 (Auto, `12≤z<18`) | ~28–33 | ~10⁸–10¹⁰ | |
+| Quality floor @ max_iter=512 (Auto, `6≤z<12`) | ~20–25 | ~10⁶–10⁷ | |
+| Quality floor @ max_iter=256 (Auto, `z<6`) | ~15–18 | ~3×10⁴–3×10⁵ | |
 
 Rule of thumb: **doubling `max_iter` buys ~5–7 more usable zoom levels**. Past the quality floor, interior pixels start "filling in" (escape doesn't happen within budget, so they get classified as set-interior) and the boundary becomes blocky.
 
-The deepest POI in the playlist (Beyer step 12 in the seahorse-valley descent) sits at `X2^29.85` ≈ `10⁹×`. Comfortably inside the floor at 2048 iterations.
+The deepest POI in the playlist (Julia Islands at `X2^29.85` ≈ `10⁹×`) sits comfortably inside the floor under Auto mode (4095 iters at that depth). A historical 512-iter cap is what made every POI past `z ≈ 17` render solid-black before Auto mode landed.
 
 ## 3. Acquisition workflow (the actual pipeline)
 
@@ -141,15 +142,16 @@ Source agreement guards against bad coords. **Visual verification** guards again
 
 ### `tools/poi_render.py`
 
-NumPy-vectorized Mandelbrot renderer producing 200×150 thumbnails. Key implementation notes:
+NumPy-vectorized Mandelbrot renderer producing **640×240** thumbnails matching the FPGA's 640-mode framebuffer. Key implementation notes:
 
 - Uses smooth escape coloring (`mu = n − log₂(log₂(|z|²)/ln(2))`) to approximate what the FPGA's escape-count rendering will produce.
-- `max_iter` scales with `zoom_level`:
+- `max_iter` scales with `zoom_level` (mirrors the FPGA's Auto-iter mode but at higher ceilings since Python has no DSP budget):
   - `zoom < 12`: 1024
   - `12 ≤ zoom < 18`: 2048
   - `18 ≤ zoom < 24`: 4096
   - `zoom ≥ 24`: 8192
 - Without this scaling, deep-zoom POIs render as all-black because escape doesn't happen within the budget.
+- **`step_x = step / H_OVERSAMPLE`** with `H_OVERSAMPLE = 2` at W=640. The FPGA always covers a 4:3 complex-plane region (`320·step × 240·step`) regardless of `mode_640`; in 640 mode it does 2× horizontal oversampling via `step_x = step >>> 1`. The renderer must mirror this — using the same `step` on both axes at 640×240 produces an 8:3 complex-plane region, making the Python output appear horizontally compressed vs. the FPGA. See `rtl/coord_generator.v` for the canonical formula.
 - Pixel grid is symmetric around `(cx, cy)` — the same convention the FPGA core uses.
 - Output: `screenshots/poi/idx_NNN_<safe_name>.png`. Indexed by the order in `poi_master.json`.
 
@@ -169,7 +171,7 @@ There is no substitute for **looking at every thumbnail**. Tools flag obvious fa
 
 ### Renderer aspect ratio note
 
-The Python renderer outputs `200×150` (4:3) — same aspect as the FPGA's `320×240` and `640×480` modes, so framing matches what you'll see on the actual display. Don't change the renderer's aspect ratio without re-rendering all thumbnails.
+The Python renderer outputs `640×240` (same pixel resolution as the FPGA's 640 mode framebuffer) but with `step_x = step / 2` so the complex-plane region matches the FPGA's `320·step × 240·step` 4:3 coverage. Using the same `step` on both axes at 640×240 would produce an 8:3 complex-plane region — that was a real bug in earlier versions of the renderer that made FPGA captures look horizontally stretched in side-by-side comparisons. Don't change the renderer's aspect handling without re-rendering all thumbnails.
 
 ## 7. Fixed-point encoding (`tools/poi_encode.py`)
 
@@ -226,9 +228,41 @@ Hardware verification is the gold standard. The `M` key (and gamepad X button) i
 - Press `Z`: exit snap mode (auto-zoom is now disabled — press `Z` again to re-enable normal zoom-in).
 - Press `N`: same as normal — skip to next POI but with the slow zoom-in animation.
 
+**Mandatory pre-step: press `G` and `L` before any verification screenshot loop.**
+
+- `G` forces Overlay BG = Dimmed. White overlay text on a bright palette background (Skittles, Barbie World, Acid, etc.) is unreadable to both human eyes and the chroma-based OCR filter — the dimmed background fixes both.
+- `L` forces the overlay auto-hide timer OFF, so the overlay stays visible after the 10-second inactivity timeout. Without this, single-shot screenshots taken without recent activity show no overlay at all.
+
+Both are sticky keyboard overrides (see `rtl/input_handler.v`) that hold until core reset. The OSD bits `O[19] Blank Text` and `O[23] Overlay BG` toggle the same flags, but the keys are faster from a script. Always include them:
+
+```bash
+tools/misterclaw-send --host 10.0.0.8 input type G  # dim BG (overlay readable on any palette)
+tools/misterclaw-send --host 10.0.0.8 input type L  # disable overlay auto-hide
+# then the snap loop:
+for i in $(seq 1 67); do
+    tools/misterclaw-send --host 10.0.0.8 input type M
+    sleep 3
+    tools/misterclaw-send --host 10.0.0.8 screenshot --output snap_$i.png
+done
+```
+
+Without `G`/`L`, expect captures where the overlay is missing entirely or unreadable, and downstream OCR / `poi_walkthrough.py` matching will fail on a significant fraction of POIs.
+
 This closes the verification loop: build → deploy → press `M` repeatedly → visually confirm every POI's named feature is centered and recognizable at the configured zoom. About 3 seconds per POI = ~4 minutes to walk all 74. Without this, verifying 74 POIs would mean ~30 minutes of waiting for slow zooms.
 
-## 11. Common workflow patterns
+## 11. Reading the overlay back from screenshots (`tools/poi_ocr.py`)
+
+The walkthrough script matches FPGA captures to Python references by name, so it needs to read the POI-name line from the overlay. Tesseract failed badly on the 5×5 bitmap font (≈54/67 capture rate, with frequent misreads on bright palettes). The replacement is a template-match OCR built specifically for this font:
+
+- **Parses the font at import time.** `poi_ocr.py` scrapes the `glyph_bits` case statement out of `rtl/text_overlay.v` and builds an in-memory dict `{ascii_code: 5×5 ndarray}`. The font is the ground truth.
+- **Chroma-based pixel classifier.** Overlay text is pure white (`RGB ≈ 255,255,255`). The classifier accepts pixels with `min(R,G,B) ≥ 230` AND `max−min ≤ 15` — tight enough to reject every fractal palette colour (cyan has `R ≪ G,B`; yellow has `B ≈ 0`) while tolerating the slight off-white edges that PNG re-encoding introduces. Earlier loose thresholds let pale fractal regions flood through and corrupted OCR on deep zooms.
+- **Auto-locates the text origin.** The FPGA video pipeline introduces a 1-pixel horizontal offset depending on timing. `_find_text_origin` scans the line band for the first column containing any white pixel and uses that as the cell-grid origin.
+- **Per-cell Hamming match.** For each character cell, downsample the captured glyph back to 5×5 (vertical halving since the MiSTer scaler doubles vertically) and compute Hamming distance against every template. The minimum wins. Distance > 8 is treated as a blank (likely no text in that cell).
+- **Result: 67/67 capture rate.** The font has no anti-aliasing, no kerning, no variants — template matching is essentially perfect when chroma classification is tight.
+
+Used by `tools/poi_walkthrough.py` via `from poi_ocr import read_poi_name`. The legacy tesseract path is kept inline in `poi_walkthrough.py` as `_ocr_overlay_old` for reference only.
+
+## 12. Common workflow patterns
 
 ### Adding a new POI from a known canonical source
 
@@ -243,7 +277,7 @@ This closes the verification loop: build → deploy → press `M` repeatedly →
 ### Diagnosing a "this POI looks weird on the FPGA" report
 
 1. Check the thumbnail in `screenshots/poi/`.
-2. If thumbnail is fine → likely an FPGA precision / iteration issue. Increase `max_iter` via OSD.
+2. If thumbnail is fine → likely an FPGA precision / iteration issue. With `Iterations: Auto` (default) the core picks 256/512/1024/2048/4095 based on zoom — if the POI still looks bad, force a higher manual setting via OSD or the I-key to rule out an iter-budget shortage at a tier boundary.
 3. If thumbnail is also bad → POI coord/zoom is wrong. Fix in `poi_master.json` and regenerate.
 
 ### Adding a brand-new feature category
@@ -252,7 +286,7 @@ If a new category appears (e.g., `SWIRL`, `DENDRITE`, etc.):
 - Add to the comment in `poi_master.json`'s schema preamble (this file).
 - No code change — `category` is informational, not consumed by the RTL.
 
-## 12. References
+## 13. References
 
 - **Wikipedia: Mandelbrot set** — https://en.wikipedia.org/wiki/Mandelbrot_set
 - **Wikipedia: Misiurewicz point** — https://en.wikipedia.org/wiki/Misiurewicz_point
