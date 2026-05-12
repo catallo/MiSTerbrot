@@ -358,7 +358,57 @@ for i, p in enumerate(pois):
 
 The FPGA captures are preserved; only the right-hand reference and the composite get regenerated.
 
-## 13. Common workflow patterns
+## 13. Triage: deterministic compare scoring (`tools/poi_compare_score.py`)
+
+Visual review of 86 compare.png files is the gold standard but tedious. The triage script narrows the list to the few pairs that actually warrant eyeballing.
+
+### What it measures
+
+For each `screenshots/poi_compare/idx_*/` folder it computes two **palette-independent** metrics from `fpga.png` and `python.png`:
+
+- **`frac_delta`**: `|interior_frac(fpga) − interior_frac(python)|`. Set-interior pixels are pure `RGB(0,0,0)` in both renderers — that single fact makes them findable without caring about palette or colour cycling.
+- **`IoU`** (intersection-over-union of the interior masks). Catches coordinate / zoom mismatches that move the fractal boundary even when total amount of black happens to agree.
+
+Composite score = `IoU − frac_delta`, with IoU disregarded when neither side has ≥5% interior (otherwise tiny mismatched masks at deep boundary zooms produce false LOW_IOU flags). Output is sorted worst-first.
+
+### Flags
+
+- `BOTH_SOLID` — both renders >95% interior. Probably zoomed *inside* a bulb/nucleus; IoU is a meaningless 1.0. The R2.1/3 NUCLEUS POI we dropped earlier this catalogue would trip this.
+- `FRAC_DELTA` — interior fractions differ by >10%. Typical causes: iter-budget mismatch (one side ran out and went all-black), framing error (POI off-center), or precision artefact at deep zoom dumping the boundary into the interior class.
+- `LOW_IOU` — `IoU < 0.5` *and* at least one side has substantial interior. Coord/zoom mismatch — fractal boundary in the wrong place.
+
+### Usage
+
+```bash
+python3 tools/poi_compare_score.py             # full ranked table, worst first
+python3 tools/poi_compare_score.py --top 10    # only the 10 worst pairs
+python3 tools/poi_compare_score.py --json out.json   # dump full results
+```
+
+Runs in ≈1 second over 86 pairs.
+
+### What it catches (validated against a real walkthrough)
+
+Latest 86-POI walk surfaced exactly 3 flagged pairs, all confirmed real on visual review:
+
+| Idx | POI | fpga% / py% | IoU | Cause |
+|---|---|---|---|---|
+| 032 | GEN FEIGENBAUM | 37.0 / 3.6 | 0.09 | iter-budget mismatch — FPGA over-filled interior |
+| 066 | NEEDLE MED (z23.79) | 13.3 / 0.0 | 0.00 | deep-zoom precision artefact — FPGA dumped boundary into the interior class |
+| 081 | MERCATOR P189 (z25) | 0.3 / 12.3 | 0.03 | deep-zoom artefact — FPGA shows magenta-bar pattern, Python a clean minibrot |
+
+Everything else scored within noise. That's an **86 → 3** reduction in review effort.
+
+### What it misses
+
+These need full visual review:
+
+- **Banding / striping in escaped pixels** (e.g. the `EJS P3 DEEP` artefact we caught earlier this session) — interior masks are identical even though the boundary detail is corrupted.
+- **Subtle palette-cycling smearing** at the boundary.
+- **Off-by-one-pixel framing differences** below the 5% interior threshold.
+
+For everything else the script is fast enough to run as a pre-step before every visual review.
+## 14. Common workflow patterns
 
 ### Adding a new POI from a known canonical source
 
@@ -382,7 +432,7 @@ If a new category appears (e.g., `SWIRL`, `DENDRITE`, etc.):
 - Add to the comment in `poi_master.json`'s schema preamble (this file).
 - No code change — `category` is informational, not consumed by the RTL.
 
-## 14. References
+## 15. References
 
 - **Wikipedia: Mandelbrot set** — https://en.wikipedia.org/wiki/Mandelbrot_set
 - **Wikipedia: Misiurewicz point** — https://en.wikipedia.org/wiki/Misiurewicz_point
