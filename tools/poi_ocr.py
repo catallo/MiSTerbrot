@@ -33,7 +33,7 @@ TEXT_OVERLAY_V = ROOT / "rtl" / "text_overlay.v"
 # Overlay region constants (native 320/640-mode pixel coords from text_overlay.v).
 # TARGET_X/Y are the region origin, then text starts +2 pixels in.
 TARGET_X_NATIVE = 5 + 2          # = 7
-TARGET_Y_NATIVE = 216 + 2        # = 218 (first overlay line)
+TARGET_Y_NATIVE = 211 + 2        # = 213 (first overlay line)
 TARGET_LINE_LEN = 48             # chars per line
 GLYPH_W = 5
 GLYPH_H = 5

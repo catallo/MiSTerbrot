@@ -28,7 +28,7 @@ module text_overlay #(
     input  wire [10:0]             pixel_x,
     input  wire [9:0]              pixel_y,
     input  wire                    video_active,
-    input  wire [5:0]              palette_sel,
+    input  wire [6:0]              palette_sel,
     input  wire [11:0]             max_iter,
     input  wire                    iter_auto_mode,
     input  wire [6:0]              fps_value,
@@ -58,10 +58,12 @@ localparam [10:0] INFO_W = 11'd164;  // 32*5 + 4 padding
 localparam [9:0]  INFO_H = 10'd34;   // 3*10 + 4 padding
 
 // Help region: top-left, 1 line (FPS — 2 digits)
+// Tight fit: 2px left pad (text origin offset) + 10px text (2 chars × 5) + 0px right pad.
+// Height: 2px top pad + 5px glyph + 2px bottom pad.
 localparam [10:0] HELP_X = 11'd5;
 localparam [9:0]  HELP_Y = 10'd3;
-localparam [10:0] HELP_W = 11'd14;   // 2 chars * 5 + 4 padding
-localparam [9:0]  HELP_H = 10'd14;   // 1*10 + 4
+localparam [10:0] HELP_W = 11'd12;
+localparam [9:0]  HELP_H = 10'd9;
 
 // Meta region: overlaps info origin, 1 line (currently unused content)
 localparam [10:0] META_X = INFO_X;
@@ -70,19 +72,21 @@ localparam [10:0] META_W = 11'd84;   // 16*5 + 4
 localparam [9:0]  META_H = 10'd14;
 
 // Target region: bottom-left, 2 lines
+// Tight: 2px top + line 0 glyph (5) + line gap (5) + line 1 glyph (5) + 0 bottom = 17
+// Lifted 10 native px (= 20 screen px after 2× v-scaler) off the bottom edge for breathing room.
 localparam [10:0] TARGET_X = 11'd5;
-localparam [9:0]  TARGET_Y = 10'd216; // 240 - 24
+localparam [9:0]  TARGET_Y = 10'd211; // (240 - 19) - 10
 localparam [10:0] TARGET_W = 11'd244; // 48*5 + 4
-localparam [9:0]  TARGET_H = 10'd24;  // 2*10 + 4
+localparam [9:0]  TARGET_H = 10'd19;  // 2 top + 5 + 5 gap + 5 + 2 bottom
 
 // GitHub region: bottom-right, 2 lines (same Y as target)
 // Right-aligned X depends on resolution mode (320 vs 640).
 localparam [10:0] GITHUB_X_320 = 11'd221; // right-aligned for 320: 313 - 18*5 = 223 (using 221)
 localparam [10:0] GITHUB_X_640 = 11'd541; // right-aligned for 640: 633 - 18*5 = 543 (using 541)
 wire       [10:0] GITHUB_X = mode_640 ? GITHUB_X_640 : GITHUB_X_320;
-localparam [9:0]  GITHUB_Y = 10'd216; // same as TARGET_Y
+localparam [9:0]  GITHUB_Y = 10'd211; // same as TARGET_Y
 localparam [10:0] GITHUB_W = 11'd94;  // 18*5 + 4
-localparam [9:0]  GITHUB_H = 10'd24;
+localparam [9:0]  GITHUB_H = 10'd19;
 
 localparam [5:0]  LINE_LEN = 6'd32;
 localparam [6:0]  TARGET_LINE_LEN = 7'd48;
@@ -113,7 +117,7 @@ localparam [10:0] STATUS_X_640 = 11'd596;   // right-aligned for 640: 633 - 7*5 
 wire       [10:0] STATUS_X     = mode_640 ? STATUS_X_640 : STATUS_X_320;
 localparam [9:0]  STATUS_Y = 10'd3;
 localparam [10:0] STATUS_W = 11'd39;    // 7*5 + 4
-localparam [9:0]  STATUS_H = 10'd14;    // 1*10 + 4
+localparam [9:0]  STATUS_H = 10'd9;     // 2px top + 5px glyph + 2px bottom
 localparam [2:0]  STATUS_LINES = 3'd1;
 localparam [5:0]  STATUS_LINE_LEN = 6'd7;
 localparam [10:0] STATUS_PIX_W = 11'd35;
@@ -162,12 +166,10 @@ endfunction
 
 // ---- Region active signals ----
 wire info_region_active = 1'b0;  // disabled
+wire meta_region_active = 1'b0;  // disabled — used to overlap HELP and inflate the FPS panel BG
 wire help_region_active = overlay_enable && (overlay_visible || always_show_fps) && video_active &&
                           (pixel_x >= HELP_X) && (pixel_x < HELP_X + HELP_W) &&
                           (pixel_y >= HELP_Y) && (pixel_y < HELP_Y + HELP_H);
-wire meta_region_active = overlay_enable && overlay_visible && video_active &&
-                          (pixel_x >= META_X) && (pixel_x < META_X + META_W) &&
-                          (pixel_y >= META_Y) && (pixel_y < META_Y + META_H);
 wire target_region_active = overlay_enable && video_active &&
                             (pixel_x >= TARGET_X) && (pixel_x < TARGET_X + TARGET_W) &&
                             (pixel_y >= TARGET_Y) && (pixel_y < TARGET_Y + TARGET_H);
@@ -536,13 +538,13 @@ endfunction
 
 // ---- Text content functions ----
 function [255:0] palette_line;
-    input [5:0] pal;
+    input [6:0] pal;
     begin
         case (pal)
             6'd0:  palette_line = "PAL: RAINBOW                  ";
             6'd1:  palette_line = "PAL: FIRE                     ";
             6'd2:  palette_line = "PAL: OCEAN                    ";
-            6'd3:  palette_line = "PAL: GRAYSCALE                ";
+            6'd3:  palette_line = "PAL: OIL SLICK                ";
             6'd4:  palette_line = "PAL: SMOOTH                   ";
             6'd5:  palette_line = "PAL: NEON                     ";
             6'd6:  palette_line = "PAL: EARTH                    ";
@@ -591,58 +593,101 @@ function [255:0] palette_line;
     end
 endfunction
 
-function [95:0] palette_name;
-    input [5:0] pal;
+function [199:0] palette_name;
+    input [6:0] pal;
     begin
         case (pal)
-            6'd0:  palette_name = "Rainbow     ";
-            6'd1:  palette_name = "Fire        ";
-            6'd2:  palette_name = "Ocean       ";
-            6'd3:  palette_name = "Grayscale   ";
-            6'd4:  palette_name = "Smooth      ";
-            6'd5:  palette_name = "Neon        ";
-            6'd6:  palette_name = "Earth       ";
-            6'd7:  palette_name = "Ice         ";
-            6'd8:  palette_name = "Sunset      ";
-            6'd9:  palette_name = "Electric    ";
-            6'd10: palette_name = "Matrix      ";
-            6'd11: palette_name = "Cappuccino  ";
-            6'd12: palette_name = "Psychedelic ";
-            6'd13: palette_name = "Milky Way   ";
-            6'd14: palette_name = "Funhaus     ";
-            6'd15: palette_name = "Buttermilch ";
-            6'd16: palette_name = "Indigo      ";
-            6'd17: palette_name = "70s Disco   ";
-            6'd18: palette_name = "90s Techno  ";
-            6'd19: palette_name = "C64         ";
-            6'd20: palette_name = "Miami Vice  ";
-            6'd21: palette_name = "Gold Shower ";
-            6'd22: palette_name = "Stardust    ";
-            6'd23: palette_name = "Nebula      ";
-            6'd24: palette_name = "Silverado   ";
-            6'd25: palette_name = "Akihabara   ";
-            6'd26: palette_name = "Colorado    ";
-            6'd27: palette_name = "XTC         ";
-            6'd28: palette_name = "Psilocybin  ";
-            6'd29: palette_name = "HDR         ";
-            6'd30: palette_name = "THC         ";
-            6'd31: palette_name = "Barbie World";
-            6'd32: palette_name = "Skittles    ";
-            6'd33: palette_name = "Papagaio    ";
-            6'd34: palette_name = "Bubblegum   ";
-            6'd35: palette_name = "Synthwave   ";
-            6'd36: palette_name = "Pop Art     ";
-            6'd37: palette_name = "Tropical    ";
-            6'd38: palette_name = "Vaporwave   ";
-            6'd39: palette_name = "Acid        ";
-            6'd40: palette_name = "Morning Sun ";
-            6'd41: palette_name = "Cloudy      ";
-            6'd42: palette_name = "Aurora      ";
-            6'd43: palette_name = "Cream       ";
-            6'd44: palette_name = "Palladium   ";
-            6'd45: palette_name = "Complement  ";
-            6'd46: palette_name = "Migraine    ";
-            default: palette_name = "Unused      ";
+            7'd0:  palette_name = "Rainbow                  ";
+            7'd1:  palette_name = "Fire                     ";
+            7'd2:  palette_name = "Ocean                    ";
+            7'd3:  palette_name = "Oil Slick                ";
+            7'd4:  palette_name = "Smooth                   ";
+            7'd5:  palette_name = "Neon                     ";
+            7'd6:  palette_name = "Earth                    ";
+            7'd7:  palette_name = "Ice                      ";
+            7'd8:  palette_name = "Sunset                   ";
+            7'd9:  palette_name = "Electric                 ";
+            7'd10: palette_name = "Matrix                   ";
+            7'd11: palette_name = "Cappuccino               ";
+            7'd12: palette_name = "Psychedelic              ";
+            7'd13: palette_name = "Milky Way                ";
+            7'd14: palette_name = "Funhaus                  ";
+            7'd15: palette_name = "Buttermilch              ";
+            7'd16: palette_name = "Indigo                   ";
+            7'd17: palette_name = "70s Disco                ";
+            7'd18: palette_name = "90s Techno               ";
+            7'd19: palette_name = "C64                      ";
+            7'd20: palette_name = "Miami Vice               ";
+            7'd21: palette_name = "Gold Shower              ";
+            7'd22: palette_name = "Stardust                 ";
+            7'd23: palette_name = "Nebula                   ";
+            7'd24: palette_name = "Silverado                ";
+            7'd25: palette_name = "Akihabara                ";
+            7'd26: palette_name = "Colorado                 ";
+            7'd27: palette_name = "XTC                      ";
+            7'd28: palette_name = "Psilocybin               ";
+            7'd29: palette_name = "HDR                      ";
+            7'd30: palette_name = "THC                      ";
+            7'd31: palette_name = "Barbie World             ";
+            7'd32: palette_name = "Skittles                 ";
+            7'd33: palette_name = "Papagaio                 ";
+            7'd34: palette_name = "Bubblegum                ";
+            7'd35: palette_name = "Synthwave                ";
+            7'd36: palette_name = "Pop Art                  ";
+            7'd37: palette_name = "Tropical                 ";
+            7'd38: palette_name = "Vaporwave                ";
+            7'd39: palette_name = "Acid                     ";
+            7'd40: palette_name = "Morning Sun              ";
+            7'd41: palette_name = "Cloudy                   ";
+            7'd42: palette_name = "Aurora Borealis          ";
+            7'd43: palette_name = "Cream                    ";
+            7'd44: palette_name = "Palladium Silver         ";
+            7'd45: palette_name = "Complementary            ";
+            7'd46: palette_name = "Migraine Aura            ";
+            7'd47: palette_name = "Radioactive Glass        ";
+            7'd48: palette_name = "Cathedral Window         ";
+            7'd49: palette_name = "CRT Phosphor             ";
+            7'd50: palette_name = "Deep Sea Bioluminescence ";
+            7'd51: palette_name = "Rust & Copper            ";
+            7'd52: palette_name = "Cyberpunk Noir           ";
+            7'd53: palette_name = "Bone & Ink               ";
+            7'd54: palette_name = "Solar Flare              ";
+            7'd55: palette_name = "Arctic Plasma            ";
+            7'd56: palette_name = "Toxic Candy              ";
+            7'd57: palette_name = "Old Terminal Amber       ";
+            7'd58: palette_name = "Alien Coral Reef         ";
+            7'd59: palette_name = "Black Hole Accretion     ";
+            7'd60: palette_name = "Infrared Camera          ";
+            7'd61: palette_name = "Pearlescent              ";
+            7'd62: palette_name = "Data Center Night        ";
+            7'd63: palette_name = "Lava Lamp                ";
+            7'd64: palette_name = "Monochrome Brutalist     ";
+            7'd65: palette_name = "Event Horizon            ";
+            7'd66: palette_name = "Psychedelic Circuit      ";
+            7'd67: palette_name = "Desert Mirage            ";
+            7'd68: palette_name = "Blood Moon               ";
+            7'd69: palette_name = "Quantum Foam             ";
+            7'd70: palette_name = "Hypernova Candy          ";
+            7'd71: palette_name = "Cyber Dragon             ";
+            7'd72: palette_name = "Laser Carnival           ";
+            7'd73: palette_name = "Glitch Prism             ";
+            7'd74: palette_name = "Plasma Rave              ";
+            7'd75: palette_name = "Game Boy                 ";
+            7'd76: palette_name = "NES Castlevania          ";
+            7'd77: palette_name = "Embers                   ";
+            7'd78: palette_name = "ZX Spectrum              ";
+            7'd79: palette_name = "CGA Magenta              ";
+            7'd80: palette_name = "Strobe Police            ";
+            7'd81: palette_name = "Halloween Strobe         ";
+            7'd82: palette_name = "Traffic Lights           ";
+            7'd83: palette_name = "SMPTE Color Bars         ";
+            7'd84: palette_name = "Pixel Sprite             ";
+            7'd85: palette_name = "Vintage Poster           ";
+            7'd86: palette_name = "Casino Slots             ";
+            7'd87: palette_name = "Neon Tubes               ";
+            7'd88: palette_name = "Stained Glass Hard       ";
+            7'd89: palette_name = "Disco Floor              ";
+            default: palette_name = "Unused                   ";
         endcase
     end
 endfunction
@@ -690,12 +735,69 @@ function [15:0] help_line_data;
 endfunction
 
 // ---- Combined POI | Palette string (48 chars) ----
+// Pack the palette immediately after the actual POI text — skip the trailing
+// padding spaces inside target_name_full's fixed 20-char field.
+function [4:0] poi_length_calc;
+    input [159:0] name;
+    begin
+        // Scan from the right of the 20-char field; find last non-space.
+        if      (name[7:0]    != 8'h20) poi_length_calc = 5'd20;
+        else if (name[15:8]   != 8'h20) poi_length_calc = 5'd19;
+        else if (name[23:16]  != 8'h20) poi_length_calc = 5'd18;
+        else if (name[31:24]  != 8'h20) poi_length_calc = 5'd17;
+        else if (name[39:32]  != 8'h20) poi_length_calc = 5'd16;
+        else if (name[47:40]  != 8'h20) poi_length_calc = 5'd15;
+        else if (name[55:48]  != 8'h20) poi_length_calc = 5'd14;
+        else if (name[63:56]  != 8'h20) poi_length_calc = 5'd13;
+        else if (name[71:64]  != 8'h20) poi_length_calc = 5'd12;
+        else if (name[79:72]  != 8'h20) poi_length_calc = 5'd11;
+        else if (name[87:80]  != 8'h20) poi_length_calc = 5'd10;
+        else if (name[95:88]  != 8'h20) poi_length_calc = 5'd9;
+        else if (name[103:96] != 8'h20) poi_length_calc = 5'd8;
+        else if (name[111:104]!= 8'h20) poi_length_calc = 5'd7;
+        else if (name[119:112]!= 8'h20) poi_length_calc = 5'd6;
+        else if (name[127:120]!= 8'h20) poi_length_calc = 5'd5;
+        else if (name[135:128]!= 8'h20) poi_length_calc = 5'd4;
+        else if (name[143:136]!= 8'h20) poi_length_calc = 5'd3;
+        else if (name[151:144]!= 8'h20) poi_length_calc = 5'd2;
+        else if (name[159:152]!= 8'h20) poi_length_calc = 5'd1;
+        else                            poi_length_calc = 5'd0;
+    end
+endfunction
+
 function [383:0] target_poi_palette;
     input [`POI_IDX_BITS-1:0] idx;
-    input [5:0] pal;
+    input [6:0] pal;
+    reg [159:0] poi;
+    reg [199:0] pal_name;
+    reg [4:0] poi_len;
+    integer p;
     begin
-        // 20-char POI name + " | " + 12-char palette + 13-char padding = 48 chars
-        target_poi_palette = {target_name_full(idx), " | ", palette_name(pal), "             "};
+        poi = target_name_full(idx);
+        pal_name = palette_name(pal);
+        poi_len = poi_length_calc(poi);
+
+        // Step 1: initialise all 48 char positions to space.
+        for (p = 0; p < 48; p = p + 1)
+            target_poi_palette[(47-p)*8 +: 8] = 8'h20;
+
+        // Step 2: POI chars at positions 0..poi_len-1 (p bounded to 0..19 so
+        // (19-p) is always a valid POI byte index).
+        for (p = 0; p < 20; p = p + 1)
+            if (p < poi_len)
+                target_poi_palette[(47-p)*8 +: 8] = poi[(19-p)*8 +: 8];
+
+        // Step 3: " | " separator at positions poi_len, poi_len+1, poi_len+2.
+        // The bit-select offsets are all >= 25*8 = 200, well within the 384-bit
+        // output field. Variable offset synthesises to a barrel mux.
+        target_poi_palette[(47 - poi_len)*8 +: 8]       = 8'h20;
+        target_poi_palette[(46 - poi_len)*8 +: 8]       = 8'h7C;
+        target_poi_palette[(45 - poi_len)*8 +: 8]       = 8'h20;
+
+        // Step 4: palette chars at positions poi_len+3..poi_len+27.
+        // (44 - poi_len - p) ranges over 0..44 — all valid output bit-offsets.
+        for (p = 0; p < 25; p = p + 1)
+            target_poi_palette[(44 - poi_len - p)*8 +: 8] = pal_name[(24-p)*8 +: 8];
     end
 endfunction
 
@@ -707,7 +809,7 @@ function [383:0] target_line_data;
             3'd0: target_line_data = (overlay_visible || always_show_poi) ?
                   (auto_zoom_active ?
                   target_poi_palette(target_idx, palette_sel) :
-                  {palette_name(palette_sel), "                                    "}) :
+                  {palette_name(palette_sel), "                       "}) :
                   TARGET_BLANK_LINE;
             3'd1: target_line_data = overlay_visible ?
                   {"X:", coord_x_sign, coord_x_int, ".", coord_x_d3, coord_x_d2, coord_x_d1, coord_x_d0,

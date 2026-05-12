@@ -29,7 +29,7 @@ MiSTerbrot is a MiSTer FPGA core for real-time Mandelbrot set rendering on the D
 - `clk_sys` = `50 MHz` — video timing, framebuffer, control logic, coord_generator, dispatch/collect FSMs.
 - `clk_iter` = `100 MHz` (PLL outclk_1) — iterator math (`iter_quad` instances).
 - CDC sits at the `iter_quad` boundary: per-slot `start` toggles into clk_iter via 3-FF synchronizer; `done` edges synchronized back into clk_sys. Slow-changing control buses (`max_iter`, `cr`/`ci`) are sampled when synchronized strobes fire — `view_changed` triggers a frame restart that flushes any in-flight contexts on parameter change.
-- Note: `MiSTerbrot.sdc` still labels `clk_iter` as 75 MHz in a comment; the actual PLL output is 100 MHz and timing closes there with marginal positive slack.
+- Note: `MiSTerbrot.sdc` still labels `clk_iter` as 90 MHz in a comment; the actual PLL output is 100 MHz and timing closes there with marginal positive slack.
 
 ### Core video model
 
@@ -78,7 +78,7 @@ Major blocks:
   - Integer escape-count based mapping
   - Uses only `iter_count[7:0]` as the palette index, so colors wrap every `256` iterations
   - Color cycling (On/Off toggle) uses a `12-bit` phase accumulator for palette offset plus 4-bit adjacent-entry blending. Toggled via OSD, keyboard `C`, or joystick `B`.
-  - `47` procedural palettes (indices `6'd0`..`6'd46`)
+  - `90` procedural palettes (indices `7'd0`..`7'd89`)
 - `rtl/text_overlay.v`
   - Rendered directly in the video stream
   - Top-left: 2-char FPS counter (small box, no padding)
@@ -99,10 +99,10 @@ Mandelbrot only. Every iterator runs `z = z² + c` with the per-pixel `c` from t
 
 ### Palette system
 
-- `47` procedural palettes implemented combinationally in `rtl/color_mapper.v` (indices 0..46).
-- Palette selection is `6-bit` across the active core and MiSTer menu interface.
-- The OSD palette list in `MiSTerbrot.sv` exposes `Auto` plus 47 named palettes via `O[9:4]`.
-- `rtl/auto_zoom.v` shuffles a palette playlist sized to match.
+- `90` procedural palettes implemented combinationally in `rtl/color_mapper.v` (indices 0..89). Last 15 (75-89) use hard 4/8/16-step LUTs like the C64 palette — sharp colour jumps, no smooth interpolation.
+- Palette selection is `7-bit` (`PAL_BITS = 7`) across the active core and MiSTer menu interface.
+- The OSD palette list in `MiSTerbrot.sv` exposes `Auto` plus 90 named palettes via `O[10:4]`. Color Cycling moved from `O[10]` to `O[24]` to free the bit.
+- `rtl/auto_zoom.v` shuffles a palette playlist sized to match (`N_PALETTES = 90`).
 
 ### Auto-zoom target system
 
@@ -118,8 +118,7 @@ The default `Iterations` setting is `Auto`. The core picks `max_iter` from the c
 
 | Zoom range | `max_iter` |
 |---|---|
-| `z < 6`    | `256`  |
-| `z < 12`   | `512`  |
+| `z < 12`   | `512` (floor — never below) |
 | `z < 18`   | `1024` |
 | `z < 24`   | `2048` |
 | `z ≥ 24`   | `4095` |
@@ -171,8 +170,8 @@ Build artifacts and release notes:
 
 | Bits      | Setting                       |
 |-----------|-------------------------------|
-| `O[9:4]`  | Palette (Auto + 47 named)     |
-| `O[10]`   | Color Cycling (On/Off)        |
+| `O[10:4]` | Palette (Auto + 90 named)     |
+| `O[24]`   | Color Cycling (On/Off)        |
 | `O[14:12]`| Iterations (Auto / 128 / 256 / 512 / 1024 / 2048) |
 | `O[17:15]`| Scandoubler Fx                |
 | `O[18]`   | Buffer (Double/Single)        |
@@ -329,7 +328,7 @@ python3 tools/poi_walkthrough.py                             # 6. verify all 67
 ```
 
 The whole loop end-to-end runs in ~30 minutes (build dominates).
-Without the M-key snap, step 6 would take ~75 minutes alone (slow zoom
+Without the M-key snap, step 6 would take ~90 minutes alone (slow zoom
 through every POI), so the snap is the difference between "iterate in
 half an hour" and "iterate every two hours".
 
@@ -363,7 +362,7 @@ Requires Python 3 with `numpy` and `Pillow`. The pipeline is the source of truth
 - Mandelbrot rendering
 - Manual pan and zoom from controller/keyboard
 - Manual palette cycling (47 palettes)
-- Configurable max iterations: Auto (zoom-adaptive 256–4095) or fixed (128/256/512/1024/2048)
+- Configurable max iterations: Auto (zoom-adaptive 512–4095) or fixed (128/256/512/1024/2048)
 - Auto-zoom screensaver with 73 shuffled POIs and 47 shuffled palettes (independent playlist positions)
 - `N` key / `Y` joystick button = skip to next POI in auto-zoom playlist
 - Double-buffered tear-free framebuffer swap on VBLANK edge (single-buffer mode optional)

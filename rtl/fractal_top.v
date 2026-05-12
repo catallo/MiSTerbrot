@@ -59,7 +59,7 @@ assign ce_pix = mode_640 ? (ce_pix_cnt[1:0] == 2'd0)
                          : (ce_pix_cnt       == 3'd0);
 
 // ---- OSD Parameter Decoding ----
-wire [5:0] osd_palette_sel;
+wire [6:0] osd_palette_sel;
 wire [2:0] osd_iter_sel;
 wire       osd_iter_changed;
 wire       osd_color_cycle_enable;
@@ -119,7 +119,7 @@ wire overlay_bg_dim    = (bg_dim_override == 2'b10) ? 1'b1 :
 wire signed [WIDTH-1:0] input_center_x;
 wire signed [WIDTH-1:0] input_center_y;
 wire signed [WIDTH-1:0] input_step;
-wire [5:0]              input_palette_sel;
+wire [6:0]              input_palette_sel;
 wire                    input_palette_override;
 wire [2:0]              input_iter_sel;
 wire                    overlay_enable;
@@ -134,7 +134,7 @@ wire signed [WIDTH-1:0] az_center_x;
 wire signed [WIDTH-1:0] az_center_y;
 wire signed [WIDTH-1:0] az_step;
 wire                    az_view_changed;
-wire [5:0]              az_palette_idx;
+wire [6:0]              az_palette_idx;
 wire [17:0]             az_fb_rd_addr;
 wire                    az_fb_sampling;
 wire [6:0]              az_target_idx;
@@ -242,15 +242,15 @@ wire signed [WIDTH-1:0] step        = auto_zoom_active ? az_step        : input_
 wire                    view_changed = auto_zoom_active ? az_view_changed : input_view_changed;
 
 // OSD overrides for palette; iterations can come from OSD or keyboard.
-wire       osd_palette_override = (osd_palette_sel != 6'd0);
-wire [5:0] osd_palette_idx_full = osd_palette_sel - 6'd1;
-wire [5:0] osd_palette_idx = osd_palette_idx_full;
-wire [5:0] palette_sel  = osd_palette_override ? osd_palette_idx :
+wire       osd_palette_override = (osd_palette_sel != 7'd0);
+wire [6:0] osd_palette_idx_full = osd_palette_sel - 7'd1;
+wire [6:0] osd_palette_idx = osd_palette_idx_full;
+wire [6:0] palette_sel  = osd_palette_override ? osd_palette_idx :
                           input_palette_override ? input_palette_sel :
                           auto_zoom_active       ? az_palette_idx  : input_palette_sel;
 reg  [11:0] input_max_iter;
 wire [11:0] max_iter     = input_max_iter;  // keyboard-only (unified)
-reg  [5:0] palette_sel_prev;
+reg  [6:0] palette_sel_prev;
 reg  [11:0] max_iter_prev;
 reg         mode_640_prev;
 wire settings_changed = (palette_sel != palette_sel_prev) ||
@@ -260,12 +260,10 @@ wire settings_changed = (palette_sel != palette_sel_prev) ||
 // Auto-iter: scale max_iter with zoom depth so deep zooms don't render solid
 // black for lack of iterations. Tiers match tools/poi_render.max_iter_for_zoom.
 localparam signed [WIDTH-1:0] FT_DEFAULT_STEP = 64'sh0003333333333333;
-wire signed [WIDTH-1:0] step_z6  = FT_DEFAULT_STEP >>> 6;
 wire signed [WIDTH-1:0] step_z12 = FT_DEFAULT_STEP >>> 12;
 wire signed [WIDTH-1:0] step_z18 = FT_DEFAULT_STEP >>> 18;
 wire signed [WIDTH-1:0] step_z24 = FT_DEFAULT_STEP >>> 24;
-wire [11:0] auto_max_iter = (step >= step_z6)  ? 12'd256  :
-                            (step >= step_z12) ? 12'd512  :
+wire [11:0] auto_max_iter = (step >= step_z12) ? 12'd512  :  // floor: never below 512
                             (step >= step_z18) ? 12'd1024 :
                             (step >= step_z24) ? 12'd2048 :
                                                  12'd4095;
@@ -368,7 +366,7 @@ always @(posedge clk or negedge rst_n) begin
         start_render <= 1'b1;  // Render first frame on startup
         need_rerender <= 1'b0;
         az_target_idx_prev <= 7'd0;
-        palette_sel_prev  <= 6'd0;
+        palette_sel_prev  <= 7'd0;
         max_iter_prev     <= 12'd512;
         mode_640_prev     <= 1'b0;
     end else begin

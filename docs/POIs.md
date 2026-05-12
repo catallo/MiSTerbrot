@@ -41,8 +41,7 @@ The OSD overlay renders zoom as `X2^N.M` where `N.M = zoom_exp + zoom_frac_tenth
 | Quality floor @ max_iter=4095 (Auto, `z≥24`) | ~40–45 | ~10¹²–10¹³ | Highest tier — covers all current POIs |
 | Quality floor @ max_iter=2048 (Auto, `18≤z<24`) | ~35–40 | ~10¹⁰–10¹² | Escape orbits run out of iterations near boundary |
 | Quality floor @ max_iter=1024 (Auto, `12≤z<18`) | ~28–33 | ~10⁸–10¹⁰ | |
-| Quality floor @ max_iter=512 (Auto, `6≤z<12`) | ~20–25 | ~10⁶–10⁷ | |
-| Quality floor @ max_iter=256 (Auto, `z<6`) | ~15–18 | ~3×10⁴–3×10⁵ | |
+| Quality floor @ max_iter=512 (Auto floor, `z<12`) | ~20–25 | ~10⁶–10⁷ | Auto never goes below this. |
 
 Rule of thumb: **doubling `max_iter` buys ~5–7 more usable zoom levels**. Past the quality floor, interior pixels start "filling in" (escape doesn't happen within budget, so they get classified as set-interior) and the boundary becomes blocky.
 
@@ -262,7 +261,104 @@ The walkthrough script matches FPGA captures to Python references by name, so it
 
 Used by `tools/poi_walkthrough.py` via `from poi_ocr import read_poi_name`. The legacy tesseract path is kept inline in `poi_walkthrough.py` as `_ocr_overlay_old` for reference only.
 
-## 12. Common workflow patterns
+## 12. The walkthrough script — Python ↔ FPGA side-by-side
+
+`tools/poi_walkthrough.py` is the end-to-end verification harness. It drives the FPGA through the entire POI playlist via M-key snaps, captures one screenshot per POI, OCR-matches each capture to its catalogue name, and composes a side-by-side comparison against the Python-rendered thumbnail for visual review.
+
+### Pipeline
+
+```
+        for each POI:
+        ┌─────────────────────────────────────────────────────┐
+        │ 1. press M  (misterclaw-send input type M)          │
+        │       └──► auto_zoom.v advances + S_SNAP_LOAD        │
+        │ 2. sleep PAUSE_SEC (default 3s) — let view settle    │
+        │ 3. screenshot         (misterclaw-send screenshot)   │
+        │ 4. OCR overlay bottom-left line (tools/poi_ocr.py)   │
+        │ 5. fuzzy-match name against poi_master.json          │
+        │ 6. compose side-by-side with screenshots/poi/idx_NNN │
+        │ 7. write per-POI folder to screenshots/poi_compare/  │
+        └─────────────────────────────────────────────────────┘
+```
+
+The script starts by pressing `G` and `L` (per the M-key feedback-loop section) so the overlay is dim-backed and stays visible. Then it loops up to `MAX_PRESSES` (default `2 × N_POIs`) times, stopping early once every POI has been seen.
+
+### Output layout
+
+```
+screenshots/poi_compare/
+├── idx_000_p6_sub_bulb/
+│   ├── fpga.png       ← what the FPGA captured at this POI's snap
+│   ├── python.png     ← the reference render from tools/poi_render.py
+│   └── compare.png    ← 640×240 fpga | 640×240 python (gap-separated)
+├── idx_001_p3_island/
+│   ├── fpga.png
+│   ├── python.png
+│   └── compare.png
+├── ...
+├── _unmatched/
+│   ├── press_017_fpga.png   ← captures whose OCR didn't fuzzy-match any POI
+│   └── press_017_ocr.txt    ← what the OCR actually read
+└── _summary.txt              ← per-press log: press # → idx, OCR text, score
+```
+
+`compare.png` is the gold artefact for visual review. It's produced by `make_side_by_side()` which resizes both frames to **640×240** (the FPGA's 640-mode native framebuffer, recovered by halving the 480-row HDMI output) and pastes them with a 6-px gap divider. Both halves render the same complex-plane extents at the same pixel pitch, so anything that doesn't match between FPGA and Python is a real difference — palette aside.
+
+### Matching logic
+
+OCR returns the bottom-left POI name (with `| <palette>` trimmed off). The script:
+
+1. Looks up the exact upper-case match in `name_to_idx` (built from `poi_master.json`).
+2. If no exact hit, fuzzy-matches via `difflib.get_close_matches` with `NAME_MATCH_THRESHOLD = 0.45`.
+3. If still no hit, retries by stripping all non-alphanumerics from both the OCR text and the candidate names ("squashed" match).
+4. Failed matches go to `_unmatched/` with the raw capture and the OCR text for manual review.
+
+The template-match OCR (see §11) typically achieves 67/67 captures on a recent build. Unmatched cases usually mean either an OCR misread (rare) or the snap landed on a non-canonical view (e.g., between POI transitions).
+
+### `_summary.txt`
+
+Plain-text log of every M-press, what OCR read, what idx it matched, and the fuzzy-match score. Use it to spot:
+
+- POIs that took multiple presses to land (snap retries)
+- Suspicious matches (score < 0.7 — name was barely close enough)
+- POIs that never landed (in the "MISSED" footer)
+
+```
+# press  idx  poi_name             ocr_text                 score
+  1      30  SH CUSP DEEP         SH CUSP DEEP             1.00
+  2      27  TRIPLE WEST          TRIPLE WEST              1.00
+  3      ---  ---                 GARBLED OCR HERE         0.31
+  4      57  EJS PERIOD 44        EJS PERIOD 44            1.00
+  ...
+```
+
+### Total cost
+
+A full 86-POI walk at default `PAUSE_SEC=3` runs in about **5–7 minutes**. Without M-snap, walking the same playlist by waiting for the slow auto-zoom animation would take ~30 minutes. The snap mode is what makes the loop ergonomic enough to iterate on POI coords in real time.
+
+### Re-running just the comparison composites
+
+If you change `tools/poi_render.py` (e.g., a palette tweak or aspect fix) and want to refresh the side-by-side composites *without* re-walking the FPGA:
+
+```python
+import sys, shutil; sys.path.insert(0, 'tools')
+from poi_walkthrough import make_side_by_side, safe_filename
+import json
+from pathlib import Path
+with open('tools/poi_master.json') as f: pois = json.load(f)
+thumb_dir = Path('screenshots/poi')
+out_dir = Path('screenshots/poi_compare')
+for i, p in enumerate(pois):
+    fname = f'idx_{i:03d}_{safe_filename(p["name"])}'
+    folder = out_dir / fname
+    if not folder.exists(): continue
+    shutil.copy(thumb_dir / f'{fname}.png', folder / 'python.png')
+    make_side_by_side(folder / 'fpga.png', folder / 'python.png', folder / 'compare.png')
+```
+
+The FPGA captures are preserved; only the right-hand reference and the composite get regenerated.
+
+## 13. Common workflow patterns
 
 ### Adding a new POI from a known canonical source
 
@@ -286,7 +382,7 @@ If a new category appears (e.g., `SWIRL`, `DENDRITE`, etc.):
 - Add to the comment in `poi_master.json`'s schema preamble (this file).
 - No code change — `category` is informational, not consumed by the RTL.
 
-## 13. References
+## 14. References
 
 - **Wikipedia: Mandelbrot set** — https://en.wikipedia.org/wiki/Mandelbrot_set
 - **Wikipedia: Misiurewicz point** — https://en.wikipedia.org/wiki/Misiurewicz_point

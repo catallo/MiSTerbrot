@@ -36,7 +36,7 @@ module input_handler #(
     output reg  signed [WIDTH-1:0] center_x,
     output reg  signed [WIDTH-1:0] center_y,
     output reg  signed [WIDTH-1:0] step,
-    output reg  [5:0]              palette_sel,
+    output reg  [6:0]              palette_sel,
     output reg                     palette_override_active,
     output reg  [2:0]              iter_sel,
     output reg                     overlay_enable,
@@ -57,7 +57,7 @@ module input_handler #(
     input  wire signed [WIDTH-1:0] sync_center_x,
     input  wire signed [WIDTH-1:0] sync_center_y,
     input  wire signed [WIDTH-1:0] sync_step,
-    input  wire [5:0]              sync_palette_sel
+    input  wire [6:0]              sync_palette_sel
 );
 
 // Default view parameters
@@ -105,7 +105,7 @@ always @(posedge clk or negedge rst_n) begin
         center_x        <= DEFAULT_CENTER_X;
         center_y        <= DEFAULT_CENTER_Y;
         step            <= DEFAULT_STEP;
-        palette_sel     <= 6'd0;
+        palette_sel     <= 7'd0;
         palette_override_active <= 1'b0;
         iter_sel        <= 3'd5;  // Auto
         overlay_enable  <= 1'b1;
@@ -153,6 +153,14 @@ always @(posedge clk or negedge rst_n) begin
         if (sync_clear_palette_override)
             palette_override_active <= 1'b0;
 
+        // ---- Continuous palette mirror while auto-zoom drives the view ----
+        // While auto-zoom is active and the user has not overridden the
+        // palette, keep palette_sel in lockstep with sync_palette_sel (=
+        // az_palette_idx). This way the next P-press increments from the
+        // palette the user is actually looking at, not from the reset value.
+        if (auto_zoom_active && !palette_override_active)
+            palette_sel <= sync_palette_sel;
+
         // ---- OSD Iterations sync ----
         if (osd_iter_changed) begin
             iter_sel <= osd_iter_sel;
@@ -174,7 +182,7 @@ always @(posedge clk or negedge rst_n) begin
                             center_x     <= DEFAULT_CENTER_X;
                             center_y     <= DEFAULT_CENTER_Y;
                             step         <= DEFAULT_STEP;
-                            palette_sel  <= 6'd0;
+                            palette_sel  <= 7'd0;
                             palette_override_active <= 1'b0;
                             iter_sel     <= 3'd5;  // Auto
                             view_changed <= 1'b1;
@@ -199,7 +207,7 @@ always @(posedge clk or negedge rst_n) begin
                 if (ps2_pressed) begin
                     case (ps2_scancode)
                         8'h4D: begin // P = Cycle palette (does NOT stop auto-zoom)
-                            palette_sel <= (palette_sel == 6'd46) ? 6'd0 : palette_sel + 6'd1;
+                            palette_sel <= (palette_sel == 7'd89) ? 7'd0 : palette_sel + 7'd1;
                             palette_override_active <= 1'b1;
                             view_changed <= 1'b1;
                         end
@@ -217,7 +225,7 @@ always @(posedge clk or negedge rst_n) begin
                             center_x     <= DEFAULT_CENTER_X;
                             center_y     <= DEFAULT_CENTER_Y;
                             step         <= DEFAULT_STEP;
-                            palette_sel  <= 6'd0;
+                            palette_sel  <= 7'd0;
                             palette_override_active <= 1'b0;
                             iter_sel     <= 3'd5;  // Auto
                             view_changed <= 1'b1;
@@ -291,7 +299,7 @@ always @(posedge clk or negedge rst_n) begin
 
         // ---- Face buttons ----
         if (joy_press[4]) begin // A = Cycle palette
-            palette_sel <= (palette_sel == 6'd46) ? 6'd0 : palette_sel + 6'd1;
+            palette_sel <= (palette_sel == 7'd89) ? 7'd0 : palette_sel + 7'd1;
             palette_override_active <= 1'b1;
             view_changed <= 1'b1;
         end

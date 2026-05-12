@@ -18,7 +18,7 @@ module color_mapper (
     input  wire        pixel_valid_in,
     input  wire [11:0] iter_count,
     input  wire        escaped,
-    input  wire [5:0]  palette_sel,
+    input  wire [6:0]  palette_sel,
     input  wire        cycle_enable,
 
     output reg         pixel_valid_out,
@@ -66,7 +66,7 @@ function [7:0] blend_channel;
 endfunction
 
 task palette_rgb;
-    input  [5:0] pal;
+    input  [6:0] pal;
     input  [7:0] idx;
     output [7:0] out_r;
     output [7:0] out_g;
@@ -274,8 +274,32 @@ task palette_rgb;
                     out_r = r2_t; out_g = 8'd255; out_b = 8'd255;
                 end
             end
-            6'd3: begin // Grayscale
-                out_r = idx; out_g = idx; out_b = idx;
+            6'd3: begin // Oil Slick: iridescent film — black, violet, petrol, teal, magenta, toxic green, gold
+                if (idx < 8'd42) begin                // Black -> Deep violet
+                    out_r = idx;
+                    out_g = 8'd0;
+                    out_b = idx + idx;
+                end else if (idx < 8'd86) begin       // Deep violet -> Petrol
+                    out_r = 8'd50 - (idx - 8'd42);
+                    out_g = 8'd10 + (idx - 8'd42);
+                    out_b = 8'd82;
+                end else if (idx < 8'd128) begin      // Petrol -> Teal
+                    out_r = 8'd6;
+                    out_g = 8'd54 + (idx - 8'd86) + (idx - 8'd86);
+                    out_b = 8'd82 + (idx - 8'd86);
+                end else if (idx < 8'd172) begin      // Teal -> Magenta
+                    out_r = (idx - 8'd128) + (idx - 8'd128) + (idx - 8'd128) + (idx - 8'd128);
+                    out_g = 8'd130 - (idx - 8'd128) - (idx - 8'd128) - (idx - 8'd128);
+                    out_b = 8'd124 + ((idx - 8'd128) >> 1);
+                end else if (idx < 8'd214) begin      // Magenta -> Toxic green
+                    out_r = 8'd200 - (idx - 8'd172) - (idx - 8'd172);
+                    out_g = 8'd30 + ((idx - 8'd172) << 2);
+                    out_b = 8'd150 - (idx - 8'd172) - (idx - 8'd172);
+                end else begin                         // Toxic green -> Muted gold
+                    out_r = 8'd100 + (idx - 8'd214);
+                    out_g = 8'd220 - (idx - 8'd214);
+                    out_b = 8'd50;
+                end
             end
             6'd4: begin // Electric
                 if (idx < 8'd32) begin
@@ -1396,6 +1420,762 @@ task palette_rgb;
                     out_r = 8'd250;
                     out_g = 8'd248;
                     out_b = 8'd255;
+                end
+            end
+            // ---------------------------------------------------------------------
+            // New palettes 47-74 (user-requested batch). Each is a 4-band gradient
+            // (64 idx values per band, idx[5:0] is band-local position).
+            // ---------------------------------------------------------------------
+            7'd47: begin // Radioactive Glass
+                if (idx < 8'd64) begin              // black -> dark green
+                    out_r = 8'd0;
+                    out_g = idx[5:0];
+                    out_b = 8'd0;
+                end else if (idx < 8'd128) begin    // dark green -> acid green
+                    out_r = idx[5:0] >> 1;
+                    out_g = 8'd64 + (idx[5:0] << 1);
+                    out_b = idx[5:0] >> 2;
+                end else if (idx < 8'd192) begin    // acid green -> yellow-green
+                    out_r = 8'd32 + idx[5:0] + idx[5:0];
+                    out_g = 8'd192 + (idx[5:0] >> 1);
+                    out_b = 8'd16 + (idx[5:0] >> 1);
+                end else begin                       // yellow-green -> pale white
+                    out_r = 8'd160 + idx[5:0];
+                    out_g = 8'd224 + (idx[5:0] >> 2);
+                    out_b = 8'd48 + idx[5:0] + idx[5:0];
+                end
+            end
+            7'd48: begin // Cathedral Window
+                if (idx < 8'd64) begin              // ruby -> sapphire
+                    out_r = 8'd200 - idx[5:0] - idx[5:0] - idx[5:0];
+                    out_g = idx[5:0] >> 2;
+                    out_b = idx[5:0] + idx[5:0] + idx[5:0];
+                end else if (idx < 8'd128) begin    // sapphire -> emerald
+                    out_r = idx[5:0] >> 2;
+                    out_g = idx[5:0] + idx[5:0] + idx[5:0];
+                    out_b = 8'd200 - idx[5:0] - idx[5:0];
+                end else if (idx < 8'd192) begin    // emerald -> amber
+                    out_r = 8'd16 + idx[5:0] + idx[5:0] + idx[5:0];
+                    out_g = 8'd192 - idx[5:0];
+                    out_b = 8'd60 - (idx[5:0] >> 1);
+                end else begin                       // amber -> violet
+                    out_r = 8'd208 - idx[5:0] - idx[5:0];
+                    out_g = 8'd128 - idx[5:0] - idx[5:0];
+                    out_b = 8'd16 + idx[5:0] + idx[5:0] + idx[5:0];
+                end
+            end
+            7'd49: begin // CRT Phosphor
+                if (idx < 8'd64) begin              // black -> dark phosphor
+                    out_r = 8'd0;
+                    out_g = idx[5:0];
+                    out_b = idx[5:0] >> 3;
+                end else if (idx < 8'd128) begin    // dark -> phosphor green
+                    out_r = idx[5:0] >> 2;
+                    out_g = 8'd64 + idx[5:0] + idx[5:0];
+                    out_b = 8'd8 + (idx[5:0] >> 2);
+                end else if (idx < 8'd192) begin    // phosphor -> cyan-green
+                    out_r = 8'd16 + (idx[5:0] >> 1);
+                    out_g = 8'd192 + (idx[5:0] >> 2);
+                    out_b = 8'd24 + idx[5:0] + idx[5:0];
+                end else begin                       // cyan-green -> faded white
+                    out_r = 8'd48 + idx[5:0] + idx[5:0];
+                    out_g = 8'd208 + (idx[5:0] >> 2);
+                    out_b = 8'd152 + (idx[5:0] >> 1);
+                end
+            end
+            7'd50: begin // Deep Sea Bioluminescence
+                if (idx < 8'd64) begin              // near-black navy -> deep blue
+                    out_r = 8'd0;
+                    out_g = idx[5:0] >> 2;
+                    out_b = 8'd16 + (idx[5:0] << 1);
+                end else if (idx < 8'd128) begin    // deep blue -> cyan
+                    out_r = idx[5:0] >> 2;
+                    out_g = 8'd16 + idx[5:0] + idx[5:0];
+                    out_b = 8'd144 + (idx[5:0] >> 1);
+                end else if (idx < 8'd192) begin    // cyan -> turquoise/green
+                    out_r = 8'd16 + (idx[5:0] >> 1);
+                    out_g = 8'd144 + idx[5:0];
+                    out_b = 8'd176 - (idx[5:0] >> 1);
+                end else begin                       // turquoise -> white spark
+                    out_r = 8'd48 + idx[5:0] + idx[5:0] + idx[5:0];
+                    out_g = 8'd208 + (idx[5:0] >> 2);
+                    out_b = 8'd144 + idx[5:0] + idx[5:0];
+                end
+            end
+            7'd51: begin // Rust & Copper
+                if (idx < 8'd64) begin              // dark brown -> rust red
+                    out_r = 8'd40 + (idx[5:0] << 1);
+                    out_g = 8'd16 + (idx[5:0] >> 1);
+                    out_b = 8'd8;
+                end else if (idx < 8'd128) begin    // rust -> orange copper
+                    out_r = 8'd168 + (idx[5:0] >> 1);
+                    out_g = 8'd48 + idx[5:0];
+                    out_b = 8'd8 + (idx[5:0] >> 2);
+                end else if (idx < 8'd192) begin    // copper -> tarnished gold
+                    out_r = 8'd200 - (idx[5:0] >> 1);
+                    out_g = 8'd112 + (idx[5:0] >> 1);
+                    out_b = 8'd24 + (idx[5:0] >> 1);
+                end else begin                       // gold -> patina green
+                    out_r = 8'd168 - idx[5:0] - idx[5:0];
+                    out_g = 8'd144 + (idx[5:0] >> 2);
+                    out_b = 8'd56 + (idx[5:0] >> 1);
+                end
+            end
+            7'd52: begin // Cyberpunk Noir
+                if (idx < 8'd64) begin              // black -> dark purple
+                    out_r = idx[5:0] >> 1;
+                    out_g = 8'd0;
+                    out_b = idx[5:0];
+                end else if (idx < 8'd128) begin    // purple -> neon pink
+                    out_r = 8'd32 + idx[5:0] + idx[5:0] + idx[5:0];
+                    out_g = idx[5:0];
+                    out_b = 8'd64 + idx[5:0];
+                end else if (idx < 8'd192) begin    // pink -> electric blue
+                    out_r = 8'd224 - idx[5:0] - idx[5:0] - idx[5:0];
+                    out_g = 8'd64 + idx[5:0];
+                    out_b = 8'd128 + idx[5:0] + idx[5:0];
+                end else begin                       // blue -> cyan w/ green accent
+                    out_r = 8'd32 + (idx[5:0] >> 1);
+                    out_g = 8'd128 + idx[5:0] + idx[5:0];
+                    out_b = 8'd255 - (idx[5:0] >> 2);
+                end
+            end
+            7'd53: begin // Bone & Ink
+                if (idx < 8'd64) begin              // black -> sepia
+                    out_r = idx[5:0];
+                    out_g = idx[5:0] >> 1;
+                    out_b = idx[5:0] >> 2;
+                end else if (idx < 8'd128) begin    // sepia -> ash gray
+                    out_r = 8'd64 + (idx[5:0] >> 1);
+                    out_g = 8'd32 + idx[5:0];
+                    out_b = 8'd16 + idx[5:0] + idx[5:0];
+                end else if (idx < 8'd192) begin    // ash -> ivory
+                    out_r = 8'd112 + idx[5:0];
+                    out_g = 8'd96 + idx[5:0] + (idx[5:0] >> 1);
+                    out_b = 8'd80 + idx[5:0];
+                end else begin                       // ivory -> bone white
+                    out_r = 8'd232 + (idx[5:0] >> 3);
+                    out_g = 8'd224 + (idx[5:0] >> 3);
+                    out_b = 8'd200 + (idx[5:0] >> 2);
+                end
+            end
+            7'd54: begin // Solar Flare
+                if (idx < 8'd64) begin              // dark red-brown -> crimson
+                    out_r = 8'd60 + (idx[5:0] << 1);
+                    out_g = 8'd8 + (idx[5:0] >> 2);
+                    out_b = 8'd16 - (idx[5:0] >> 3);
+                end else if (idx < 8'd128) begin    // crimson -> orange
+                    out_r = 8'd188 + idx[5:0];
+                    out_g = 8'd24 + idx[5:0] + idx[5:0];
+                    out_b = 8'd8 + (idx[5:0] >> 3);
+                end else if (idx < 8'd192) begin    // orange -> yellow
+                    out_r = 8'd252;
+                    out_g = 8'd152 + idx[5:0] + (idx[5:0] >> 1);
+                    out_b = 8'd16 + idx[5:0];
+                end else begin                       // yellow -> white + violet edge
+                    out_r = 8'd252 - (idx[5:0] >> 3);
+                    out_g = 8'd248 + (idx[5:0] >> 4);
+                    out_b = 8'd80 + idx[5:0] + idx[5:0];
+                end
+            end
+            7'd55: begin // Arctic Plasma
+                if (idx < 8'd64) begin              // midnight blue -> icy blue
+                    out_r = idx[5:0] >> 1;
+                    out_g = 8'd16 + idx[5:0];
+                    out_b = 8'd64 + idx[5:0] + idx[5:0];
+                end else if (idx < 8'd128) begin    // icy blue -> pale cyan
+                    out_r = 8'd32 + idx[5:0];
+                    out_g = 8'd80 + idx[5:0] + (idx[5:0] >> 1);
+                    out_b = 8'd192 + (idx[5:0] >> 1);
+                end else if (idx < 8'd192) begin    // pale cyan -> white
+                    out_r = 8'd96 + idx[5:0] + idx[5:0];
+                    out_g = 8'd176 + idx[5:0];
+                    out_b = 8'd224 + (idx[5:0] >> 2);
+                end else begin                       // white -> mint w/ faint violet
+                    out_r = 8'd224 - (idx[5:0] >> 1);
+                    out_g = 8'd240 + (idx[5:0] >> 4);
+                    out_b = 8'd240 - (idx[5:0] >> 2);
+                end
+            end
+            7'd56: begin // Toxic Candy
+                if (idx < 8'd64) begin              // dark purple -> hot pink
+                    out_r = 8'd32 + idx[5:0] + idx[5:0] + idx[5:0];
+                    out_g = idx[5:0] >> 2;
+                    out_b = 8'd48 + idx[5:0];
+                end else if (idx < 8'd128) begin    // pink -> lime
+                    out_r = 8'd224 - idx[5:0] - idx[5:0] - idx[5:0];
+                    out_g = 8'd16 + idx[5:0] + idx[5:0] + idx[5:0];
+                    out_b = 8'd112 - idx[5:0];
+                end else if (idx < 8'd192) begin    // lime -> cyan
+                    out_r = 8'd32 + (idx[5:0] >> 1);
+                    out_g = 8'd208 - (idx[5:0] >> 2);
+                    out_b = 8'd48 + idx[5:0] + idx[5:0] + idx[5:0];
+                end else begin                       // cyan -> yellow/orange
+                    out_r = 8'd64 + idx[5:0] + idx[5:0] + idx[5:0];
+                    out_g = 8'd192 + (idx[5:0] >> 2);
+                    out_b = 8'd240 - idx[5:0] - idx[5:0] - idx[5:0];
+                end
+            end
+            7'd57: begin // Old Terminal Amber
+                if (idx < 8'd64) begin              // black -> dark brown
+                    out_r = idx[5:0] + (idx[5:0] >> 1);
+                    out_g = idx[5:0] >> 1;
+                    out_b = 8'd0;
+                end else if (idx < 8'd128) begin    // dark brown -> amber
+                    out_r = 8'd96 + idx[5:0] + idx[5:0];
+                    out_g = 8'd32 + idx[5:0];
+                    out_b = idx[5:0] >> 3;
+                end else if (idx < 8'd192) begin    // amber -> orange bright
+                    out_r = 8'd220 + (idx[5:0] >> 2);
+                    out_g = 8'd96 + idx[5:0];
+                    out_b = 8'd8 + (idx[5:0] >> 2);
+                end else begin                       // orange -> warm cream
+                    out_r = 8'd232 + (idx[5:0] >> 3);
+                    out_g = 8'd160 + idx[5:0];
+                    out_b = 8'd24 + idx[5:0] + idx[5:0];
+                end
+            end
+            7'd58: begin // Alien Coral Reef
+                if (idx < 8'd64) begin              // black-blue -> coral red
+                    out_r = idx[5:0] + idx[5:0] + idx[5:0];
+                    out_g = idx[5:0] >> 2;
+                    out_b = 8'd64 - idx[5:0];
+                end else if (idx < 8'd128) begin    // coral -> turquoise
+                    out_r = 8'd192 - idx[5:0] - idx[5:0] - idx[5:0];
+                    out_g = 8'd16 + idx[5:0] + idx[5:0];
+                    out_b = idx[5:0] + idx[5:0];
+                end else if (idx < 8'd192) begin    // turquoise -> purple
+                    out_r = 8'd16 + idx[5:0] + idx[5:0];
+                    out_g = 8'd144 - idx[5:0];
+                    out_b = 8'd128 + idx[5:0];
+                end else begin                       // purple -> yellow-green w/ cyan
+                    out_r = 8'd144 - (idx[5:0] >> 1);
+                    out_g = 8'd80 + idx[5:0] + idx[5:0];
+                    out_b = 8'd192 - (idx[5:0] >> 1);
+                end
+            end
+            7'd59: begin // Black Hole Accretion
+                if (idx < 8'd64) begin              // black -> deep violet
+                    out_r = idx[5:0] >> 1;
+                    out_g = idx[5:0] >> 2;
+                    out_b = idx[5:0];
+                end else if (idx < 8'd128) begin    // violet -> hot orange
+                    out_r = 8'd32 + idx[5:0] + idx[5:0] + idx[5:0];
+                    out_g = 8'd16 + idx[5:0] + idx[5:0];
+                    out_b = 8'd64 - idx[5:0];
+                end else if (idx < 8'd192) begin    // orange -> white
+                    out_r = 8'd224 + (idx[5:0] >> 2);
+                    out_g = 8'd144 + idx[5:0] + (idx[5:0] >> 1);
+                    out_b = idx[5:0] + idx[5:0] + idx[5:0];
+                end else begin                       // white -> electric blue / red edge
+                    out_r = 8'd240 - idx[5:0] - idx[5:0];
+                    out_g = 8'd240 - idx[5:0] - idx[5:0];
+                    out_b = 8'd192 + (idx[5:0] >> 1);
+                end
+            end
+            7'd60: begin // Infrared Camera
+                if (idx < 8'd64) begin              // black -> violet
+                    out_r = idx[5:0];
+                    out_g = idx[5:0] >> 2;
+                    out_b = idx[5:0] + idx[5:0];
+                end else if (idx < 8'd128) begin    // violet -> red
+                    out_r = 8'd64 + idx[5:0] + idx[5:0];
+                    out_g = idx[5:0] >> 1;
+                    out_b = 8'd128 - idx[5:0];
+                end else if (idx < 8'd192) begin    // red -> orange/yellow
+                    out_r = 8'd192 + (idx[5:0] >> 2);
+                    out_g = 8'd32 + idx[5:0] + idx[5:0] + idx[5:0];
+                    out_b = idx[5:0] >> 3;
+                end else begin                       // yellow -> white
+                    out_r = 8'd224 + (idx[5:0] >> 2);
+                    out_g = 8'd224 + (idx[5:0] >> 3);
+                    out_b = 8'd8 + idx[5:0] + idx[5:0] + idx[5:0];
+                end
+            end
+            7'd61: begin // Pearlescent
+                if (idx < 8'd64) begin              // pearl white -> pale rose
+                    out_r = 8'd240 + (idx[5:0] >> 4);
+                    out_g = 8'd224 - (idx[5:0] >> 2);
+                    out_b = 8'd216 - (idx[5:0] >> 2);
+                end else if (idx < 8'd128) begin    // rose -> mint
+                    out_r = 8'd248 - idx[5:0];
+                    out_g = 8'd208 + (idx[5:0] >> 1);
+                    out_b = 8'd200 + (idx[5:0] >> 1);
+                end else if (idx < 8'd192) begin    // mint -> light blue
+                    out_r = 8'd184 - (idx[5:0] >> 1);
+                    out_g = 8'd240 - (idx[5:0] >> 2);
+                    out_b = 8'd232 + (idx[5:0] >> 3);
+                end else begin                       // blue -> soft gold/silver
+                    out_r = 8'd152 + idx[5:0];
+                    out_g = 8'd224 - (idx[5:0] >> 3);
+                    out_b = 8'd248 - idx[5:0];
+                end
+            end
+            7'd62: begin // Data Center Night
+                if (idx < 8'd64) begin              // black -> slate blue
+                    out_r = idx[5:0] >> 2;
+                    out_g = idx[5:0] >> 1;
+                    out_b = 8'd16 + idx[5:0];
+                end else if (idx < 8'd128) begin    // slate -> cold gray
+                    out_r = 8'd16 + idx[5:0];
+                    out_g = 8'd32 + idx[5:0];
+                    out_b = 8'd80 + (idx[5:0] >> 1);
+                end else if (idx < 8'd192) begin    // gray -> LED green
+                    out_r = 8'd80 - (idx[5:0] >> 1);
+                    out_g = 8'd96 + idx[5:0] + idx[5:0];
+                    out_b = 8'd112 - idx[5:0];
+                end else begin                       // green -> status cyan / white
+                    out_r = 8'd48 + idx[5:0] + idx[5:0];
+                    out_g = 8'd224 + (idx[5:0] >> 3);
+                    out_b = 8'd48 + idx[5:0] + idx[5:0] + idx[5:0];
+                end
+            end
+            7'd63: begin // Lava Lamp
+                if (idx < 8'd64) begin              // dark purple -> red
+                    out_r = 8'd48 + idx[5:0] + idx[5:0];
+                    out_g = idx[5:0] >> 2;
+                    out_b = 8'd64 - idx[5:0];
+                end else if (idx < 8'd128) begin    // red -> orange
+                    out_r = 8'd176 + (idx[5:0] >> 1);
+                    out_g = 8'd16 + idx[5:0] + idx[5:0];
+                    out_b = idx[5:0] >> 3;
+                end else if (idx < 8'd192) begin    // orange -> pink
+                    out_r = 8'd208 + (idx[5:0] >> 2);
+                    out_g = 8'd144 - (idx[5:0] >> 1);
+                    out_b = 8'd8 + idx[5:0] + idx[5:0];
+                end else begin                       // pink -> cream / muted yellow
+                    out_r = 8'd224 + (idx[5:0] >> 3);
+                    out_g = 8'd112 + idx[5:0] + (idx[5:0] >> 1);
+                    out_b = 8'd136 - idx[5:0];
+                end
+            end
+            7'd64: begin // Monochrome Brutalist
+                if (idx < 8'd64) begin              // black -> charcoal
+                    out_r = idx[5:0];
+                    out_g = idx[5:0];
+                    out_b = idx[5:0];
+                end else if (idx < 8'd128) begin    // charcoal -> gray
+                    out_r = 8'd64 + idx[5:0];
+                    out_g = 8'd64 + idx[5:0];
+                    out_b = 8'd64 + idx[5:0];
+                end else if (idx < 8'd192) begin    // gray -> light gray (with subtle magenta accent)
+                    out_r = 8'd128 + idx[5:0];
+                    out_g = 8'd128 + idx[5:0] - (idx[5:0] >> 3);
+                    out_b = 8'd128 + idx[5:0];
+                end else begin                       // light -> white
+                    out_r = 8'd192 + (idx[5:0] >> 1);
+                    out_g = 8'd192 + (idx[5:0] >> 1);
+                    out_b = 8'd192 + (idx[5:0] >> 1);
+                end
+            end
+            7'd65: begin // Event Horizon
+                if (idx < 8'd64) begin              // absolute black -> violet
+                    out_r = idx[5:0] >> 2;
+                    out_g = 8'd0;
+                    out_b = idx[5:0];
+                end else if (idx < 8'd128) begin    // violet -> blue-white
+                    out_r = 8'd16 + idx[5:0] + idx[5:0];
+                    out_g = idx[5:0] + idx[5:0];
+                    out_b = 8'd64 + idx[5:0] + idx[5:0];
+                end else if (idx < 8'd192) begin    // blue-white -> orange
+                    out_r = 8'd144 + idx[5:0] + idx[5:0];
+                    out_g = 8'd128 + (idx[5:0] >> 1);
+                    out_b = 8'd192 - idx[5:0] - idx[5:0] - idx[5:0];
+                end else begin                       // orange -> red collapse
+                    out_r = 8'd232 - (idx[5:0] >> 1);
+                    out_g = 8'd160 - idx[5:0] - idx[5:0];
+                    out_b = idx[5:0] >> 3;
+                end
+            end
+            7'd66: begin // Psychedelic Circuit
+                if (idx < 8'd64) begin              // black -> neon green
+                    out_r = 8'd0;
+                    out_g = idx[5:0] + idx[5:0] + idx[5:0];
+                    out_b = idx[5:0] >> 2;
+                end else if (idx < 8'd128) begin    // green -> purple
+                    out_r = idx[5:0] + idx[5:0] + idx[5:0];
+                    out_g = 8'd192 - idx[5:0] - idx[5:0] - idx[5:0];
+                    out_b = 8'd16 + idx[5:0] + idx[5:0] + idx[5:0];
+                end else if (idx < 8'd192) begin    // purple -> cyan
+                    out_r = 8'd192 - idx[5:0] - idx[5:0] - idx[5:0];
+                    out_g = idx[5:0] + idx[5:0] + idx[5:0];
+                    out_b = 8'd208 + (idx[5:0] >> 2);
+                end else begin                       // cyan -> magenta / white
+                    out_r = 8'd16 + idx[5:0] + idx[5:0] + idx[5:0];
+                    out_g = 8'd192 - idx[5:0];
+                    out_b = 8'd255 - (idx[5:0] >> 3);
+                end
+            end
+            7'd67: begin // Desert Mirage
+                if (idx < 8'd64) begin              // dark umber -> sand
+                    out_r = 8'd40 + idx[5:0] + idx[5:0];
+                    out_g = 8'd24 + idx[5:0] + (idx[5:0] >> 1);
+                    out_b = 8'd16 + idx[5:0];
+                end else if (idx < 8'd128) begin    // sand -> gold
+                    out_r = 8'd168 + (idx[5:0] >> 1);
+                    out_g = 8'd120 + idx[5:0];
+                    out_b = 8'd80 - (idx[5:0] >> 1);
+                end else if (idx < 8'd192) begin    // gold -> dusty rose
+                    out_r = 8'd200 + (idx[5:0] >> 2);
+                    out_g = 8'd184 - idx[5:0];
+                    out_b = 8'd48 + idx[5:0] + idx[5:0];
+                end else begin                       // rose -> pale blue / white heat
+                    out_r = 8'd216 - (idx[5:0] >> 1);
+                    out_g = 8'd120 + idx[5:0] + idx[5:0];
+                    out_b = 8'd176 + (idx[5:0] >> 1);
+                end
+            end
+            7'd68: begin // Blood Moon
+                if (idx < 8'd64) begin              // black -> dark maroon
+                    out_r = idx[5:0] + (idx[5:0] >> 1);
+                    out_g = idx[5:0] >> 3;
+                    out_b = idx[5:0] >> 3;
+                end else if (idx < 8'd128) begin    // maroon -> crimson
+                    out_r = 8'd96 + idx[5:0] + idx[5:0];
+                    out_g = 8'd8 + (idx[5:0] >> 2);
+                    out_b = 8'd8 + (idx[5:0] >> 3);
+                end else if (idx < 8'd192) begin    // crimson -> copper red
+                    out_r = 8'd224 + (idx[5:0] >> 3);
+                    out_g = 8'd24 + idx[5:0] + (idx[5:0] >> 1);
+                    out_b = 8'd16 + (idx[5:0] >> 1);
+                end else begin                       // copper -> pale moon-gray
+                    out_r = 8'd224 - (idx[5:0] >> 2);
+                    out_g = 8'd120 + idx[5:0];
+                    out_b = 8'd48 + idx[5:0] + idx[5:0];
+                end
+            end
+            7'd69: begin // Quantum Foam
+                if (idx < 8'd64) begin              // black -> electric blue
+                    out_r = idx[5:0] >> 2;
+                    out_g = idx[5:0];
+                    out_b = idx[5:0] + idx[5:0] + idx[5:0];
+                end else if (idx < 8'd128) begin    // blue -> cyan/pale green
+                    out_r = 8'd16 + idx[5:0];
+                    out_g = 8'd64 + idx[5:0] + idx[5:0];
+                    out_b = 8'd192 - (idx[5:0] >> 1);
+                end else if (idx < 8'd192) begin    // cyan -> violet
+                    out_r = 8'd80 + idx[5:0] + idx[5:0];
+                    out_g = 8'd192 - idx[5:0] - idx[5:0];
+                    out_b = 8'd160 + idx[5:0];
+                end else begin                       // violet -> white spark
+                    out_r = 8'd208 + (idx[5:0] >> 2);
+                    out_g = 8'd64 + idx[5:0] + idx[5:0] + idx[5:0];
+                    out_b = 8'd224 + (idx[5:0] >> 3);
+                end
+            end
+            7'd70: begin // Hypernova Candy
+                if (idx < 8'd64) begin              // black -> hot pink
+                    out_r = idx[5:0] + idx[5:0] + idx[5:0];
+                    out_g = idx[5:0] >> 2;
+                    out_b = 8'd32 + idx[5:0] + (idx[5:0] >> 1);
+                end else if (idx < 8'd128) begin    // pink -> laser cyan
+                    out_r = 8'd192 - idx[5:0] - idx[5:0] - idx[5:0];
+                    out_g = 8'd16 + idx[5:0] + idx[5:0] + idx[5:0];
+                    out_b = 8'd128 + idx[5:0] + (idx[5:0] >> 1);
+                end else if (idx < 8'd192) begin    // cyan -> electric yellow
+                    out_r = idx[5:0] + idx[5:0] + idx[5:0];
+                    out_g = 8'd208 + (idx[5:0] >> 2);
+                    out_b = 8'd224 - idx[5:0] - idx[5:0] - idx[5:0];
+                end else begin                       // yellow -> neon orange / white
+                    out_r = 8'd192 + idx[5:0];
+                    out_g = 8'd224 - idx[5:0];
+                    out_b = 8'd32 + idx[5:0] + idx[5:0];
+                end
+            end
+            7'd71: begin // Cyber Dragon
+                if (idx < 8'd64) begin              // black -> emerald green
+                    out_r = idx[5:0] >> 2;
+                    out_g = idx[5:0] + idx[5:0] + idx[5:0];
+                    out_b = idx[5:0] >> 1;
+                end else if (idx < 8'd128) begin    // emerald -> toxic lime
+                    out_r = 8'd16 + idx[5:0] + idx[5:0];
+                    out_g = 8'd192 + (idx[5:0] >> 2);
+                    out_b = 8'd32 - (idx[5:0] >> 3);
+                end else if (idx < 8'd192) begin    // lime -> violet
+                    out_r = 8'd144 + (idx[5:0] >> 1);
+                    out_g = 8'd208 - idx[5:0] - idx[5:0] - idx[5:0];
+                    out_b = 8'd32 + idx[5:0] + idx[5:0] + idx[5:0];
+                end else begin                       // violet -> magenta / orange flare
+                    out_r = 8'd176 + idx[5:0];
+                    out_g = 8'd16 + idx[5:0] + idx[5:0];
+                    out_b = 8'd224 - idx[5:0] - idx[5:0] - idx[5:0];
+                end
+            end
+            7'd72: begin // Laser Carnival
+                if (idx < 8'd64) begin              // deep purple -> neon red
+                    out_r = 8'd64 + idx[5:0] + idx[5:0];
+                    out_g = idx[5:0] >> 2;
+                    out_b = 8'd64 - (idx[5:0] >> 1);
+                end else if (idx < 8'd128) begin    // red -> cyan
+                    out_r = 8'd192 - idx[5:0] - idx[5:0] - idx[5:0];
+                    out_g = 8'd16 + idx[5:0] + idx[5:0] + idx[5:0];
+                    out_b = 8'd32 + idx[5:0] + idx[5:0] + idx[5:0];
+                end else if (idx < 8'd192) begin    // cyan -> lime
+                    out_r = idx[5:0] + idx[5:0] + idx[5:0];
+                    out_g = 8'd208 + (idx[5:0] >> 2);
+                    out_b = 8'd224 - idx[5:0] - idx[5:0] - idx[5:0];
+                end else begin                       // lime -> yellow / white
+                    out_r = 8'd192 + (idx[5:0] >> 1);
+                    out_g = 8'd240 + (idx[5:0] >> 4);
+                    out_b = 8'd32 + idx[5:0] + idx[5:0];
+                end
+            end
+            7'd73: begin // Glitch Prism
+                if (idx < 8'd64) begin              // black -> RGB red
+                    out_r = idx[5:0] + idx[5:0] + idx[5:0];
+                    out_g = idx[5:0] >> 3;
+                    out_b = idx[5:0] >> 3;
+                end else if (idx < 8'd128) begin    // red -> RGB green (sharp transition)
+                    out_r = 8'd192 - idx[5:0] - idx[5:0] - idx[5:0];
+                    out_g = idx[5:0] + idx[5:0] + idx[5:0];
+                    out_b = idx[5:0] >> 3;
+                end else if (idx < 8'd192) begin    // green -> RGB blue
+                    out_r = idx[5:0] >> 3;
+                    out_g = 8'd192 - idx[5:0] - idx[5:0] - idx[5:0];
+                    out_b = idx[5:0] + idx[5:0] + idx[5:0];
+                end else begin                       // blue -> magenta / white
+                    out_r = 8'd32 + idx[5:0] + idx[5:0] + idx[5:0];
+                    out_g = 8'd16 + idx[5:0] + idx[5:0];
+                    out_b = 8'd192 + (idx[5:0] >> 1);
+                end
+            end
+            7'd74: begin // Plasma Rave
+                if (idx < 8'd64) begin              // black -> ultraviolet / neon blue
+                    out_r = idx[5:0] + (idx[5:0] >> 1);
+                    out_g = idx[5:0] >> 2;
+                    out_b = idx[5:0] + idx[5:0] + idx[5:0];
+                end else if (idx < 8'd128) begin    // blue -> hot pink
+                    out_r = 8'd96 + idx[5:0] + idx[5:0];
+                    out_g = 8'd16 + idx[5:0];
+                    out_b = 8'd192 - (idx[5:0] >> 1);
+                end else if (idx < 8'd192) begin    // pink -> acid green
+                    out_r = 8'd224 - idx[5:0] - idx[5:0] - idx[5:0];
+                    out_g = 8'd80 + idx[5:0] + idx[5:0];
+                    out_b = 8'd160 - idx[5:0] - idx[5:0];
+                end else begin                       // green -> bright orange / white
+                    out_r = 8'd32 + idx[5:0] + idx[5:0] + idx[5:0];
+                    out_g = 8'd208 + (idx[5:0] >> 2);
+                    out_b = 8'd32 + idx[5:0];
+                end
+            end
+            // ---------------------------------------------------------------------
+            // Hard-LUT palettes 75-89 — C64-style discrete colour tables.
+            // Lookup by idx[1:0]/[2:0]/[3:0] for 4/8/16-step jumps (no blending).
+            // ---------------------------------------------------------------------
+            7'd75: begin // Game Boy: 4 olive shades
+                case (idx[1:0])
+                    2'd0: begin out_r = 8'h0F; out_g = 8'h38; out_b = 8'h0F; end
+                    2'd1: begin out_r = 8'h30; out_g = 8'h62; out_b = 8'h30; end
+                    2'd2: begin out_r = 8'h8B; out_g = 8'hAC; out_b = 8'h0F; end
+                    2'd3: begin out_r = 8'h9B; out_g = 8'hBC; out_b = 8'h0F; end
+                endcase
+            end
+            7'd76: begin // NES Castlevania
+                case (idx[3:0])
+                    4'h0: begin out_r = 8'h00; out_g = 8'h00; out_b = 8'h00; end
+                    4'h1: begin out_r = 8'h44; out_g = 8'h00; out_b = 8'h60; end
+                    4'h2: begin out_r = 8'hA8; out_g = 8'h10; out_b = 8'h00; end
+                    4'h3: begin out_r = 8'h78; out_g = 8'h78; out_b = 8'h78; end
+                    4'h4: begin out_r = 8'hF8; out_g = 8'hF8; out_b = 8'hF8; end
+                    4'h5: begin out_r = 8'h6C; out_g = 8'h00; out_b = 8'h00; end
+                    4'h6: begin out_r = 8'h00; out_g = 8'h00; out_b = 8'h6C; end
+                    4'h7: begin out_r = 8'h80; out_g = 8'h20; out_b = 8'h20; end
+                    4'h8: begin out_r = 8'h20; out_g = 8'h00; out_b = 8'h40; end
+                    4'h9: begin out_r = 8'hC0; out_g = 8'h40; out_b = 8'h00; end
+                    4'hA: begin out_r = 8'h40; out_g = 8'h40; out_b = 8'h40; end
+                    4'hB: begin out_r = 8'hA0; out_g = 8'hA0; out_b = 8'hA0; end
+                    4'hC: begin out_r = 8'h60; out_g = 8'h00; out_b = 8'h20; end
+                    4'hD: begin out_r = 8'h00; out_g = 8'h40; out_b = 8'h00; end
+                    4'hE: begin out_r = 8'h40; out_g = 8'h20; out_b = 8'h00; end
+                    4'hF: begin out_r = 8'h10; out_g = 8'h10; out_b = 8'h10; end
+                endcase
+            end
+            7'd77: begin // Embers: smooth red->amber + 1-in-16 white spark
+                if (idx[3:0] == 4'h0) begin
+                    out_r = 8'hFF; out_g = 8'hF8; out_b = 8'hD0;
+                end else if (idx < 8'd96) begin
+                    out_r = 8'd20 + idx + idx;
+                    out_g = idx >> 2;
+                    out_b = 8'h00;
+                end else if (idx < 8'd180) begin
+                    out_r = 8'hFF;
+                    out_g = (idx - 8'd96) + (idx - 8'd96) + (idx - 8'd96);
+                    out_b = idx >> 4;
+                end else begin
+                    out_r = 8'hFF;
+                    out_g = 8'hC0 + ((idx - 8'd180) >> 1);
+                    out_b = 8'd16 + (idx - 8'd180);
+                end
+            end
+            7'd78: begin // ZX Spectrum (8 std + 8 bright)
+                case (idx[3:0])
+                    4'h0: begin out_r = 8'h00; out_g = 8'h00; out_b = 8'h00; end
+                    4'h1: begin out_r = 8'h00; out_g = 8'h00; out_b = 8'hD7; end
+                    4'h2: begin out_r = 8'hD7; out_g = 8'h00; out_b = 8'h00; end
+                    4'h3: begin out_r = 8'hD7; out_g = 8'h00; out_b = 8'hD7; end
+                    4'h4: begin out_r = 8'h00; out_g = 8'hD7; out_b = 8'h00; end
+                    4'h5: begin out_r = 8'h00; out_g = 8'hD7; out_b = 8'hD7; end
+                    4'h6: begin out_r = 8'hD7; out_g = 8'hD7; out_b = 8'h00; end
+                    4'h7: begin out_r = 8'hD7; out_g = 8'hD7; out_b = 8'hD7; end
+                    4'h8: begin out_r = 8'h00; out_g = 8'h00; out_b = 8'h00; end
+                    4'h9: begin out_r = 8'h00; out_g = 8'h00; out_b = 8'hFF; end
+                    4'hA: begin out_r = 8'hFF; out_g = 8'h00; out_b = 8'h00; end
+                    4'hB: begin out_r = 8'hFF; out_g = 8'h00; out_b = 8'hFF; end
+                    4'hC: begin out_r = 8'h00; out_g = 8'hFF; out_b = 8'h00; end
+                    4'hD: begin out_r = 8'h00; out_g = 8'hFF; out_b = 8'hFF; end
+                    4'hE: begin out_r = 8'hFF; out_g = 8'hFF; out_b = 8'h00; end
+                    4'hF: begin out_r = 8'hFF; out_g = 8'hFF; out_b = 8'hFF; end
+                endcase
+            end
+            7'd79: begin // CGA Magenta (4 colours)
+                case (idx[1:0])
+                    2'd0: begin out_r = 8'h00; out_g = 8'h00; out_b = 8'h00; end
+                    2'd1: begin out_r = 8'h55; out_g = 8'hFF; out_b = 8'hFF; end
+                    2'd2: begin out_r = 8'hFF; out_g = 8'h55; out_b = 8'hFF; end
+                    2'd3: begin out_r = 8'hFF; out_g = 8'hFF; out_b = 8'hFF; end
+                endcase
+            end
+            7'd80: begin // Strobe Police: dark navy + 1-in-8 red + 1-in-16 blue + 1-in-32 white
+                if (idx[2:0] == 3'b000) begin
+                    out_r = 8'hFF; out_g = 8'h10; out_b = 8'h10;
+                end else if (idx[3:0] == 4'b0100) begin
+                    out_r = 8'h20; out_g = 8'h30; out_b = 8'hFF;
+                end else if (idx[4:0] == 5'd11) begin
+                    out_r = 8'hFF; out_g = 8'hFF; out_b = 8'hFF;
+                end else begin
+                    out_r = 8'd16 + (idx >> 3);
+                    out_g = 8'd16 + (idx >> 3);
+                    out_b = 8'd40 + (idx >> 1);
+                end
+            end
+            7'd81: begin // Halloween Strobe: purple->orange smooth + 2-in-8 lime double-pulse + 1-in-32 white skeleton
+                if (idx[2:0] == 3'b000 || idx[2:0] == 3'b001) begin
+                    out_r = 8'h40; out_g = 8'hFF; out_b = 8'h00;
+                end else if (idx[4:0] == 5'd17) begin
+                    out_r = 8'hFF; out_g = 8'hF8; out_b = 8'hF0;
+                end else if (idx < 8'd128) begin
+                    out_r = 8'd32 + (idx >> 2);
+                    out_g = idx >> 4;
+                    out_b = 8'd40 + (idx >> 1);
+                end else begin
+                    out_r = 8'hC0 + ((idx - 8'd128) >> 2);
+                    out_g = 8'd40 + ((idx - 8'd128) >> 1);
+                    out_b = 8'd80 - ((idx - 8'd128) >> 2);
+                end
+            end
+            7'd82: begin // Traffic Lights: dim base + 1-in-8 bright flash, colour follows band
+                if (idx[2:0] == 3'b000) begin
+                    if (idx < 8'd86) begin
+                        out_r = 8'hFF; out_g = 8'h10; out_b = 8'h10;
+                    end else if (idx < 8'd171) begin
+                        out_r = 8'hFF; out_g = 8'hE0; out_b = 8'h00;
+                    end else begin
+                        out_r = 8'h10; out_g = 8'hE0; out_b = 8'h10;
+                    end
+                end else if (idx < 8'd86) begin
+                    out_r = 8'd60 + (idx >> 1);
+                    out_g = 8'd10 + (idx >> 4);
+                    out_b = idx >> 4;
+                end else if (idx < 8'd171) begin
+                    out_r = 8'd80 + ((idx - 8'd86) >> 2);
+                    out_g = 8'd60 + ((idx - 8'd86) >> 1);
+                    out_b = idx >> 5;
+                end else begin
+                    out_r = idx >> 5;
+                    out_g = 8'd80 + ((idx - 8'd171) >> 1);
+                    out_b = (idx - 8'd171) >> 4;
+                end
+            end
+            7'd83: begin // SMPTE Color Bars
+                case (idx[2:0])
+                    3'd0: begin out_r = 8'hC0; out_g = 8'hC0; out_b = 8'hC0; end
+                    3'd1: begin out_r = 8'hC0; out_g = 8'hC0; out_b = 8'h00; end
+                    3'd2: begin out_r = 8'h00; out_g = 8'hC0; out_b = 8'hC0; end
+                    3'd3: begin out_r = 8'h00; out_g = 8'hC0; out_b = 8'h00; end
+                    3'd4: begin out_r = 8'hC0; out_g = 8'h00; out_b = 8'hC0; end
+                    3'd5: begin out_r = 8'hC0; out_g = 8'h00; out_b = 8'h00; end
+                    3'd6: begin out_r = 8'h00; out_g = 8'h00; out_b = 8'hC0; end
+                    3'd7: begin out_r = 8'h00; out_g = 8'h00; out_b = 8'h00; end
+                endcase
+            end
+            7'd84: begin // Pixel Sprite (8-bit hero)
+                case (idx[2:0])
+                    3'd0: begin out_r = 8'h00; out_g = 8'h00; out_b = 8'h00; end
+                    3'd1: begin out_r = 8'hF8; out_g = 8'hB8; out_b = 8'h88; end
+                    3'd2: begin out_r = 8'hD8; out_g = 8'h28; out_b = 8'h00; end
+                    3'd3: begin out_r = 8'h78; out_g = 8'h08; out_b = 8'h00; end
+                    3'd4: begin out_r = 8'h28; out_g = 8'h28; out_b = 8'hA8; end
+                    3'd5: begin out_r = 8'h08; out_g = 8'h08; out_b = 8'h48; end
+                    3'd6: begin out_r = 8'h78; out_g = 8'h38; out_b = 8'h00; end
+                    3'd7: begin out_r = 8'hF8; out_g = 8'hF8; out_b = 8'hF8; end
+                endcase
+            end
+            7'd85: begin // Vintage Poster: avocado->burnt orange smooth + 1-in-32 mustard burst
+                if (idx[4:0] == 5'b00000) begin
+                    out_r = 8'hF0; out_g = 8'hC0; out_b = 8'h20;
+                end else if (idx < 8'd128) begin
+                    out_r = 8'd80 + (idx[5:0] >> 1);
+                    out_g = 8'd100 + idx[5:0];
+                    out_b = 8'd20 + (idx[5:0] >> 2);
+                end else begin
+                    out_r = 8'd180 + ((idx - 8'd128) >> 2);
+                    out_g = 8'd80 + ((idx - 8'd128) >> 1);
+                    out_b = 8'd20 + ((idx - 8'd128) >> 3);
+                end
+            end
+            7'd86: begin // Casino Slots: gold base + 1-in-8 cherry red + 1-in-16 white jackpot
+                if (idx[3:0] == 4'b0000) begin
+                    out_r = 8'hFF; out_g = 8'hFF; out_b = 8'hFF;
+                end else if (idx[2:0] == 3'b100) begin
+                    out_r = 8'hE0; out_g = 8'h00; out_b = 8'h20;
+                end else begin
+                    out_r = 8'd180 + (idx[5:0] >> 1);
+                    out_g = 8'd140 + (idx[5:0] >> 1);
+                    out_b = 8'd16 + (idx[5:0] >> 3);
+                end
+            end
+            7'd87: begin // Neon Tubes: dark blue->hot pink smooth + 1-in-4 cyan flash
+                if (idx[1:0] == 2'b00) begin
+                    out_r = 8'h00; out_g = 8'hFF; out_b = 8'hF8;
+                end else if (idx < 8'd128) begin
+                    out_r = 8'd16 + (idx[5:0] >> 1);
+                    out_g = idx[5:0] >> 2;
+                    out_b = 8'd80 + idx[5:0];
+                end else begin
+                    out_r = 8'd200 + ((idx - 8'd128) >> 3);
+                    out_g = 8'd24 + ((idx - 8'd128) >> 2);
+                    out_b = 8'd120 - ((idx - 8'd128) >> 3);
+                end
+            end
+            7'd88: begin // Stained Glass Hard
+                case (idx[2:0])
+                    3'd0: begin out_r = 8'hC8; out_g = 8'h0C; out_b = 8'h2C; end
+                    3'd1: begin out_r = 8'h0A; out_g = 8'h0A; out_b = 8'h0A; end
+                    3'd2: begin out_r = 8'h12; out_g = 8'h38; out_b = 8'hC0; end
+                    3'd3: begin out_r = 8'h0A; out_g = 8'h0A; out_b = 8'h0A; end
+                    3'd4: begin out_r = 8'h0C; out_g = 8'hA8; out_b = 8'h50; end
+                    3'd5: begin out_r = 8'h0A; out_g = 8'h0A; out_b = 8'h0A; end
+                    3'd6: begin out_r = 8'hF8; out_g = 8'hB8; out_b = 8'h20; end
+                    3'd7: begin out_r = 8'h80; out_g = 8'h20; out_b = 8'hC0; end
+                endcase
+            end
+            7'd89: begin // Disco Floor: rainbow smooth + 1-in-16 white peak + 1-in-2 black void (strobing dots)
+                if (idx[3:0] == 4'b0000) begin
+                    out_r = 8'hFF; out_g = 8'hFF; out_b = 8'hFF;
+                end else if (idx[0] == 1'b0) begin
+                    out_r = 8'h00; out_g = 8'h00; out_b = 8'h00;
+                end else if (idx < 8'd86) begin
+                    out_r = 8'hFF - (idx + idx);
+                    out_g = idx + idx;
+                    out_b = 8'h00;
+                end else if (idx < 8'd171) begin
+                    out_r = 8'h00;
+                    out_g = 8'hFF - ((idx - 8'd86) + (idx - 8'd86));
+                    out_b = (idx - 8'd86) + (idx - 8'd86);
+                end else begin
+                    out_r = (idx - 8'd171) + (idx - 8'd171);
+                    out_g = 8'h00;
+                    out_b = 8'hFF - ((idx - 8'd171) + (idx - 8'd171));
                 end
             end
             default: begin

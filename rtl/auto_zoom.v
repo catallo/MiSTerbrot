@@ -37,16 +37,16 @@ module auto_zoom #(
     output reg  signed [WIDTH-1:0] step,
     output reg                     active,
     output reg                     view_changed,
-    output reg  [5:0]              palette_idx,
+    output reg  [6:0]              palette_idx,
     output wire [`POI_IDX_BITS-1:0] target_idx_out
 );
 
 localparam signed [WIDTH-1:0] DEFAULT_STEP = 64'sh0003333333333333;
 localparam signed [WIDTH-1:0] MIN_STEP     = 64'sh0000000000000010;
 localparam N_TARGETS  = `POI_N_TARGETS;
-localparam N_PALETTES = 47;
+localparam N_PALETTES = 90;
 localparam IDX_BITS   = `POI_IDX_BITS;
-localparam PAL_BITS   = 6;
+localparam PAL_BITS   = 7;
 localparam [IDX_BITS-1:0] TARGET_LAST_IDX  = `POI_LAST_IDX;
 localparam [PAL_BITS-1:0] PALETTE_LAST_IDX = N_PALETTES - 1;
 
