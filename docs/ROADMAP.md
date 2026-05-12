@@ -218,10 +218,12 @@ Independent of resolution/framerate work. Worth pursuing whenever Track A/B has 
 1. **Pan-during-zoom** — drift sideways while zooming, instead of straight-in. ~20 lines in `auto_zoom.v`. Dramatic dynamic feel.
 2. **Variable zoom speed** — sigmoid pacing (fast away, slow near target).
 3. **Dwell-time variation per POI** — longer dwell at deeper zoom for appreciation.
-4. **Periodic zoom-out interludes** — every Nth POI, zoom out to overview for context.
-5. **Palette crossfade between POIs** — instead of instant swap, blend over 30-60 frames. ~200 ALMs.
-6. **Variable color-cycling speed per palette** — per-palette `cycle_rate` lookup; some palettes (Disco Floor) work fast, others (Cream, Pearlescent) work slow.
-7. **Color-cycling direction reversal** — flip cycling direction periodically.
+4. **Palette crossfade between POIs** — instead of instant swap, blend over 30-60 frames. ~200 ALMs.
+5. **Variable color-cycling speed per palette** — per-palette `cycle_rate` lookup; some palettes (Disco Floor) work fast, others (Cream, Pearlescent) work slow.
+6. **Color-cycling direction reversal** — flip cycling direction periodically.
+
+**Already implemented (for reference):**
+- Periodic zoom-out interludes — the auto-zoom state machine includes `S_ZOOM_OUT` between every POI (`rtl/auto_zoom.v`).
 
 **Not pursuing:**
 
