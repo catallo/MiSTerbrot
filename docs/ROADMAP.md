@@ -56,12 +56,19 @@ Current slack is +0.013 to +0.07 ns. Constraint tightening + possibly retiming a
 - Risk: doesn't close; revert.
 - Effort: **0.5–2 days**.
 
-### A5. Coarse-to-fine render (perception only)
+### A5. Multi-pass progressive refinement *(not* coarse-to-fine within a frame)
 
-Render every 4th pixel first (full frame appears blocky), then fill in. Doesn't reduce total work but the eye sees motion sooner. Especially nice during slow deep-zoom transitions.
+Important correction: a within-frame coarse-to-fine pass would NOT improve perceived responsiveness in our current double-buffered design. The buffer swap happens only after the back buffer is fully drawn, so the user always sees a complete previous frame frozen until the next complete frame arrives. Mid-render refinement is invisible.
 
-- Implementation: dispatch order in `pixel_pipeline.v`.
-- Effort: **1 day**.
+**What would actually work** (more involved than originally scoped):
+
+- **Multi-pass with intermediate buffer swaps**: render a 1/16-density coarse pass first (each computed pixel paints a 4×4 block into the back buffer), swap, then a 1/4-density pass (2×2 blocks) overwriting the back buffer, swap, then full-density refinement, swap. The user sees three displayed frames per logical frame: blocky → moderate → final. Net work is the same (or slightly more due to redundant writes), but the perceived zoom is much smoother.
+
+Effort: ~4–5 days (render-scheduler rewrite, mask-based dilated writes, swap-policy state machine).
+
+- **Single-buffer fallback for very slow renders**: when a frame budget exceeds ~1 second, drop to single-buffer just for that frame so the user watches refinement live with tearing. Easier (~1–2 days) but contradicts the no-tearing principle we hold for double-buffer.
+
+**Decision: defer.** The combined gain from A1-A4 alone makes the average frame fast enough that long stalls become uncommon. Revisit only if specific deep-zoom POIs still feel choppy after Track A lands.
 
 ### Combined Track A target
 
@@ -71,7 +78,7 @@ Render every 4th pixel first (full frame appears blocky), then fill in. Doesn't 
 | A2 Symmetry (applicable POIs) | 1.9× | 1.9× |
 | A3 Period-3 bulbs | 1.1× | 1.05× |
 | A4 Higher iter clock | 1.1× | 1.1× |
-| **Stacked** | **~10×** | **~6×** |
+| **Stacked (A1-A4)** | **~10×** | **~6×** |
 
 Roughly **1.5–2 weeks total** for a 5–10× framerate boost — and crucially, no architectural changes. The core remains BRAM-only, double-buffered, 240p. We just compute frames faster.
 
