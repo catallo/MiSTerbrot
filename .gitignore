@@ -41,3 +41,8 @@ tools/*
 !tools/poi_ocr.py
 !tools/poi_compare_score.py
 !tools/poi_master.json
+!tools/benchmarks.json
+!tools/bench_encode.py
+!tools/bench_decode_screenshot.py
+!tools/bench_run.py
+!tools/bench_diff.py

@@ -163,6 +163,8 @@ localparam CONF_STR = {
 	"-, Space/Start: Auto-Zoom Toggle;",
 	"-, N: Next POI;",
 	"-, M: Snap to next POI canonical zoom;",
+	"-, B: Benchmark mode toggle;",
+	"-, V: Benchmark next scene;",
 	"-, G/H: Overlay BG Dim On/Off;",
 	"-, K/L: Overlay Blanking On/Off;",
 	"-, Y/R/Home: Reset View;",
@@ -217,7 +219,7 @@ wire       core_rendering;
 fractal_top #(
 	.H_RES(320),
 	.V_RES(240),
-	.N_ITERATORS(20),
+	.N_ITERATORS(24),	// 4 quads x 6 contexts/quad
 	.WIDTH(64),
 	.FRAC_BITS(56)
 ) u_fractal_top (

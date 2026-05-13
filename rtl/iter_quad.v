@@ -5,21 +5,27 @@
 // Note: name retained for historical reasons; this version has 5 contexts
 // (A..E) per instance, not 4.
 //
-// 5-stage pipeline (vs. 2-stage in iter_pair.v):
+// 6-stage pipeline (vs. 2-stage in iter_pair.v):
+//   Stage 0   : operand input register (mux output -> DSP input reg packing)
 //   Stage 1   : DSP partial products (registered)
-//   Stage 2a1 : lower-half 32-bit adds + carry → registered (NEW)
+//   Stage 2a1 : lower-half 32-bit adds + carry → registered
 //   Stage 2a2 : upper-half 32-bit adds + assemble → registered
 //                {zr_sq, zi_sq, zr_zi, ovf}
 //   Stage 2b1 : mag_sq, escape, compares, phase_d3 4:1-style mux → registered
 //   Stage 2b2 : final adds + state machine writeback at phase_d4
 //
-// Each context iterates every 5 clocks. Five-stage pipeline requires
+// Each context iterates every 6 clocks. Six-stage pipeline requires
 // N_contexts ≥ N_stages to avoid the iteration loop hazard (same-cycle
-// read while writeback for the same context is happening).
+// read while writeback for the same context is happening) — hence the
+// 6 contexts. Total iterators per quad: 6 (was 5).
+// NOTE: phase_d4 (the same gate name used in the OLD 5-context design)
+// is correct here too — adding Stage 0 lengthens the phase delay chain
+// by ONE cycle, so phase_d4 now lags phase by 5 cycles, exactly matching
+// the data age in Stage 2b2's source registers.
 //
 // DSP usage per iter_quad: ~14 DSP blocks (7 multiply ops × ~2 DSPs each).
 // Same multiplier count as iter_pair.v / earlier 4-context iter_quad,
-// but serves 5 logical iterators instead.
+// but serves 6 logical iterators instead.
 // 12-bit iteration count supports max_iter up to 2048.
 //
 // Mandelbrot mode reuses the multiplier pipeline for an interior precheck
@@ -82,7 +88,18 @@ module iter_quad #(
     output wire                    done_e,
     output wire [11:0]             iter_count_e,
     output wire                    escaped_e,
-    output wire signed [WIDTH-1:0] final_mag_sq_e
+    output wire signed [WIDTH-1:0] final_mag_sq_e,
+
+    // Context f (6th context, added to fill the new Stage 0 input-register
+    // pipeline slot so the operand mux can pack into the DSP input registers
+    // without throughput loss).
+    input  wire                    start_f,
+    input  wire signed [WIDTH-1:0] cr_f,
+    input  wire signed [WIDTH-1:0] ci_f,
+    output wire                    done_f,
+    output wire [11:0]             iter_count_f,
+    output wire                    escaped_f,
+    output wire signed [WIDTH-1:0] final_mag_sq_f
 );
 
 localparam signed [WIDTH-1:0] ESCAPE_THRESHOLD = {{(WIDTH-FRAC_BITS-3){1'b0}}, 1'b1, {(FRAC_BITS+2){1'b0}}};
@@ -96,22 +113,22 @@ localparam [2:0] S_IDLE     = 3'd0,
                  S_ITER     = 3'd4,
                  S_DONE     = 3'd5;
 
-localparam [2:0] PHASE_MAX = 3'd4;  // 5 contexts: phase counts 0..4
+localparam [2:0] PHASE_MAX = 3'd5;  // 6 contexts: phase counts 0..5
 
 // ---- Per-context state arrays ----
-reg [2:0]              ctx_state          [0:4];
-reg signed [WIDTH-1:0] ctx_zr             [0:4];
-reg signed [WIDTH-1:0] ctx_zi             [0:4];
-reg signed [WIDTH-1:0] ctx_c_real         [0:4];
-reg signed [WIDTH-1:0] ctx_c_imag         [0:4];
-reg [11:0]             ctx_iter           [0:4];
-reg                    ctx_primed         [0:4];
-reg signed [WIDTH-1:0] ctx_cardioid_x     [0:4];
-reg signed [WIDTH-1:0] ctx_cardioid_ci_sq [0:4];
-reg                    ctx_done           [0:4];
-reg [11:0]             ctx_iter_count     [0:4];
-reg                    ctx_escaped        [0:4];
-reg signed [WIDTH-1:0] ctx_final_mag_sq   [0:4];
+reg [2:0]              ctx_state          [0:5];
+reg signed [WIDTH-1:0] ctx_zr             [0:5];
+reg signed [WIDTH-1:0] ctx_zi             [0:5];
+reg signed [WIDTH-1:0] ctx_c_real         [0:5];
+reg signed [WIDTH-1:0] ctx_c_imag         [0:5];
+reg [11:0]             ctx_iter           [0:5];
+reg                    ctx_primed         [0:5];
+reg signed [WIDTH-1:0] ctx_cardioid_x     [0:5];
+reg signed [WIDTH-1:0] ctx_cardioid_ci_sq [0:5];
+reg                    ctx_done           [0:5];
+reg [11:0]             ctx_iter_count     [0:5];
+reg                    ctx_escaped        [0:5];
+reg signed [WIDTH-1:0] ctx_final_mag_sq   [0:5];
 
 // ---- Connect output ports ----
 assign done_a         = ctx_done[0];
@@ -134,43 +151,84 @@ assign done_e         = ctx_done[4];
 assign iter_count_e   = ctx_iter_count[4];
 assign escaped_e      = ctx_escaped[4];
 assign final_mag_sq_e = ctx_final_mag_sq[4];
+assign done_f         = ctx_done[5];
+assign iter_count_f   = ctx_iter_count[5];
+assign escaped_f      = ctx_escaped[5];
+assign final_mag_sq_f = ctx_final_mag_sq[5];
 
 // ---- Per-context input fan-in ----
-wire                    ctx_start [0:4];
+wire                    ctx_start [0:5];
 assign ctx_start[0] = start_a;
 assign ctx_start[1] = start_b;
 assign ctx_start[2] = start_c;
 assign ctx_start[3] = start_d;
 assign ctx_start[4] = start_e;
-wire signed [WIDTH-1:0] ctx_cr_in [0:4];
+assign ctx_start[5] = start_f;
+wire signed [WIDTH-1:0] ctx_cr_in [0:5];
 assign ctx_cr_in[0] = cr_a;
 assign ctx_cr_in[1] = cr_b;
 assign ctx_cr_in[2] = cr_c;
 assign ctx_cr_in[3] = cr_d;
 assign ctx_cr_in[4] = cr_e;
-wire signed [WIDTH-1:0] ctx_ci_in [0:4];
+assign ctx_cr_in[5] = cr_f;
+wire signed [WIDTH-1:0] ctx_ci_in [0:5];
 assign ctx_ci_in[0] = ci_a;
 assign ctx_ci_in[1] = ci_b;
 assign ctx_ci_in[2] = ci_c;
 assign ctx_ci_in[3] = ci_d;
 assign ctx_ci_in[4] = ci_e;
+assign ctx_ci_in[5] = ci_f;
 
 // ---- 3-bit phase counter (5 contexts; wraps at 5) ----
+// Replicate per operand mux. Quartus auto-DUPLICATEs `phase` to relieve fanout
+// across the seven DSPs, but after the benchmarking refactor changed nearby
+// placement, the auto-duplicates ended up far from the operand muxes and the
+// `phase[1] -> mux -> DSP -> zrsq_cross` path crossed 10 ns at 100 MHz. By
+// giving each of the two operand muxes its own preserved+dont_merge counter,
+// the placer is free to put each adjacent to its 5:1 mux LUT cluster. The
+// original `phase` is kept as the source for downstream `phase_d1` tracking.
 reg [2:0] phase;
+(* preserve = "true", dont_merge = "true" *) reg [2:0] phase_zr;
+(* preserve = "true", dont_merge = "true" *) reg [2:0] phase_zi;
+
 always @(posedge clk or negedge rst_n) begin
-    if (!rst_n) phase <= 3'd0;
-    else        phase <= (phase == PHASE_MAX) ? 3'd0 : phase + 3'd1;
+    if (!rst_n) begin
+        phase    <= 3'd0;
+        phase_zr <= 3'd0;
+        phase_zi <= 3'd0;
+    end else begin
+        phase    <= (phase    == PHASE_MAX) ? 3'd0 : phase    + 3'd1;
+        phase_zr <= (phase_zr == PHASE_MAX) ? 3'd0 : phase_zr + 3'd1;
+        phase_zi <= (phase_zi == PHASE_MAX) ? 3'd0 : phase_zi + 3'd1;
+    end
 end
 
 // ---- Multiplier input mux (selects active context's z based on phase) ----
-wire signed [WIDTH-1:0] mul_zr = ctx_zr[phase];
-wire signed [WIDTH-1:0] mul_zi = ctx_zi[phase];
+// Use the dedicated counter replicas so each mux can be placed near its DSPs.
+wire signed [WIDTH-1:0] mul_zr_w = ctx_zr[phase_zr];
+wire signed [WIDTH-1:0] mul_zi_w = ctx_zi[phase_zi];
 
-// ---- Split operands into 32-bit halves ----
-wire signed [31:0] zr_hi = mul_zr[63:32];
-wire        [31:0] zr_lo = mul_zr[31:0];
-wire signed [31:0] zi_hi = mul_zi[63:32];
-wire        [31:0] zi_lo = mul_zi[31:0];
+// ============================================================
+// Stage 0: register the muxed operands so Quartus can pack these regs into
+// the DSP's clk0/clk1 INPUT registers. Splits the long mux->DSP combinational
+// path into two pipeline stages, giving the critical `phase[1] -> Mux6 -> Mult1
+// -> zrsq_cross` path several ns of slack. The total pipeline depth grows
+// from 5 to 6 stages; the context count was grown from 5 to 6 in tandem so
+// the pipeline still fires one iter per cycle per quad.
+// ============================================================
+reg signed [WIDTH-1:0] mul_zr_r, mul_zi_r;
+reg [2:0]              phase_d0;
+always @(posedge clk) begin
+    mul_zr_r <= mul_zr_w;
+    mul_zi_r <= mul_zi_w;
+    phase_d0 <= phase;
+end
+
+// ---- Split registered operands into 32-bit halves ----
+wire signed [31:0] zr_hi = mul_zr_r[63:32];
+wire        [31:0] zr_lo = mul_zr_r[31:0];
+wire signed [31:0] zi_hi = mul_zi_r[63:32];
+wire        [31:0] zi_lo = mul_zi_r[31:0];
 wire signed [32:0] zr_lo_s = {1'b0, zr_lo};
 wire signed [32:0] zi_lo_s = {1'b0, zi_lo};
 
@@ -194,7 +252,7 @@ always @(posedge clk) begin
     zrzi_hh    <= zr_hi * zi_hi;
     zrzi_hl    <= zr_hi * zi_lo_s;
     zrzi_lh    <= zr_lo_s * zi_hi;
-    phase_d1   <= phase;
+    phase_d1   <= phase_d0;  // was `<= phase`; new Stage 0 input-register sits between
 end
 
 // ============================================================
@@ -212,12 +270,30 @@ end
 // ============================================================
 wire signed [65:0] zrsq_cross_2_w = {zrsq_cross, 1'b0};
 wire signed [65:0] zisq_cross_2_w = {zisq_cross, 1'b0};
-wire signed [65:0] zrzi_mid_w     = {zrzi_hl[64], zrzi_hl} + {zrzi_lh[64], zrzi_lh};
+
+// zr*zi has two cross terms. Keep the lower-word accumulation out of the
+// top-word carry chain so Stage 2a1 does not become two serial 32-bit adders.
+wire [32:0] zrzi_mid_lo_sum_w = {1'b0, zrzi_hl[31:0]} + {1'b0, zrzi_lh[31:0]};
+wire signed [33:0] zrzi_mid_hi_sum_w =
+    $signed({zrzi_hl[64], zrzi_hl[64:32]}) +
+    $signed({zrzi_lh[64], zrzi_lh[64:32]}) +
+    $signed({33'd0, zrzi_mid_lo_sum_w[32]});
+wire [32:0] zrzi_mid_word_sum_w = {1'b0, zrzi_hl[63:32]} +
+                                  {1'b0, zrzi_lh[63:32]} +
+                                  {32'd0, zrzi_mid_lo_sum_w[32]};
+wire [31:0] zrzi_word_sum_w   = zrzi_hh[31:0] ^ zrzi_hl[63:32] ^ zrzi_lh[63:32];
+wire [32:0] zrzi_word_carry_w = {((zrzi_hh[31:0] & zrzi_hl[63:32]) |
+                                  (zrzi_hh[31:0] & zrzi_lh[63:32]) |
+                                  (zrzi_hl[63:32] & zrzi_lh[63:32])), 1'b0};
+wire [32:0] zrzi_word_total_w = {1'b0, zrzi_word_sum_w} +
+                                zrzi_word_carry_w +
+                                {32'd0, zrzi_mid_lo_sum_w[32]};
 
 // Lower-half adds: 32-bit + 32-bit → 33-bit (low result + carry)
 wire [32:0] zrsq_lo_sum_w = {1'b0, zrsq_hh[31:0]} + {1'b0, zrsq_cross_2_w[63:32]};
 wire [32:0] zisq_lo_sum_w = {1'b0, zisq_hh[31:0]} + {1'b0, zisq_cross_2_w[63:32]};
-wire [32:0] zrzi_lo_sum_w = {1'b0, zrzi_hh[31:0]} + {1'b0, zrzi_mid_w   [63:32]};
+wire [32:0] zrzi_lo_sum_w = {zrzi_word_total_w[32] ^ zrzi_mid_word_sum_w[32],
+                             zrzi_word_total_w[31:0]};
 
 reg [31:0] zrsq_lo_r,    zisq_lo_r,    zrzi_lo_r;     // lower 32 bits of upper-half sum (slice [63:32])
 reg        zrsq_carry_r, zisq_carry_r, zrzi_carry_r;  // carry into upper-half (slice bit 64)
@@ -248,9 +324,9 @@ always @(posedge clk) begin
     zrzi_lo_r         <= zrzi_lo_sum_w[31:0];
     zrzi_carry_r      <= zrzi_lo_sum_w[32];
     zrzi_hh_hi_r      <= zrzi_hh[63:32];
-    zrzi_mid_sign_r   <= zrzi_mid_w[65];
-    zrzi_mid_top_r    <= zrzi_mid_w[65:64];
-    zrzi_pass_r       <= zrzi_mid_w[31:0];
+    zrzi_mid_sign_r   <= zrzi_mid_hi_sum_w[33];
+    zrzi_mid_top_r    <= zrzi_mid_hi_sum_w[33:32];
+    zrzi_pass_r       <= zrzi_mid_lo_sum_w[31:0];
 
     phase_d2          <= phase_d1;
 end
@@ -331,6 +407,10 @@ reg signed [WIDTH-1:0] s2_c_imag;
 reg signed [WIDTH-1:0] s2_cardioid_x;
 reg signed [WIDTH-1:0] s2_cardioid_ci_sq;
 reg [2:0]              phase_d4;
+// The Stage 0 operand-input register adds a stage at the START of the pipe.
+// phase_d4 (4 chained registers from `phase`) is now 5 cycles behind phase,
+// which matches the data age in Stage 2b2 (Stage 0 -> Stage 2b1 = 5 stages).
+// No phase_d5 needed — the writeback gating stays on phase_d4.
 
 always @(posedge clk) begin
     mag_sq_r          <= mag_sq_w;
@@ -363,11 +443,11 @@ wire signed [WIDTH-1:0] zi_next_std = two_zr_zi  + s2_c_imag;
 wire signed [WIDTH-1:0] zi_next     = zi_next_std;
 
 // ============================================================
-// Per-context state machines (replicated via generate, 5 contexts)
+// Per-context state machines (replicated via generate, 6 contexts)
 // ============================================================
 genvar k;
 generate
-for (k = 0; k < 5; k = k + 1) begin : ctx_sm
+for (k = 0; k < 6; k = k + 1) begin : ctx_sm
     localparam [2:0] CTX_K = k[2:0];
 
     always @(posedge clk or negedge rst_n) begin

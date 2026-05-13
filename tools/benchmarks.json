@@ -1,0 +1,102 @@
+[
+  {
+    "name": "FULL 640",
+    "cx": -0.5,
+    "cy": 0.0,
+    "zoom_level": 0.0,
+    "max_iter": 512,
+    "mode_640": true,
+    "palette": 0,
+    "note": "Fast sanity scene; expected to saturate at display cadence."
+  },
+  {
+    "name": "P3 ISLAND",
+    "cx": -1.754877666,
+    "cy": 0.0,
+    "zoom_level": 5.0,
+    "max_iter": 1024,
+    "mode_640": true,
+    "palette": 30,
+    "note": "Real-axis period-3 minibrot; useful for symmetry work."
+  },
+  {
+    "name": "P5 ISLAND DEEP",
+    "cx": 0.359259225,
+    "cy": 0.642513737,
+    "zoom_level": 8.0,
+    "max_iter": 1024,
+    "mode_640": true,
+    "palette": 35,
+    "note": "Period-5 island detail; boundary-heavy 1024-iteration scene."
+  },
+  {
+    "name": "TRIPLE SPIRAL P4",
+    "cx": -0.1540378,
+    "cy": 1.03692215,
+    "zoom_level": 11.0,
+    "max_iter": 1024,
+    "mode_640": true,
+    "palette": 42,
+    "note": "Medallion near P4 island; broad 1024-iteration stress scene."
+  },
+  {
+    "name": "SEAHORSE TAIL",
+    "cx": -0.7435669,
+    "cy": 0.1314023,
+    "zoom_level": 10.8,
+    "max_iter": 1024,
+    "mode_640": true,
+    "palette": 48,
+    "note": "Boundary-heavy seahorse valley scene."
+  },
+  {
+    "name": "ELEPHANT ISLAND",
+    "cx": 0.292576,
+    "cy": -0.014998,
+    "zoom_level": 13.0,
+    "max_iter": 2048,
+    "mode_640": true,
+    "palette": 54,
+    "note": "Distorted elephant island; 2048-iteration boundary/interior mix."
+  },
+  {
+    "name": "FEIGENBAUM DEEP",
+    "cx": -1.4011552,
+    "cy": 0.0,
+    "zoom_level": 13.0,
+    "max_iter": 2048,
+    "mode_640": true,
+    "palette": 60,
+    "note": "Real-axis Feigenbaum cascade; very slow symmetry-sensitive scene."
+  },
+  {
+    "name": "JEWEL BOX",
+    "cx": -0.74542846,
+    "cy": 0.11300888,
+    "zoom_level": 17.65,
+    "max_iter": 2048,
+    "mode_640": true,
+    "palette": 66,
+    "note": "Classic seahorse waypoint; 2048-iteration mixed boundary scene."
+  },
+  {
+    "name": "SH SATELLITE",
+    "cx": -0.743643135,
+    "cy": 0.131825963,
+    "zoom_level": 18.06,
+    "max_iter": 4095,
+    "mode_640": true,
+    "palette": 72,
+    "note": "Deep seahorse satellite minibrot; high 4095-iteration load."
+  },
+  {
+    "name": "JULIA ISLANDS",
+    "cx": -0.7436438886,
+    "cy": 0.1318259043,
+    "zoom_level": 29.85,
+    "max_iter": 4095,
+    "mode_640": true,
+    "palette": 89,
+    "note": "Embedded Julia islands; deepest current benchmark scene."
+  }
+]

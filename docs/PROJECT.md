@@ -184,18 +184,20 @@ Build artifacts and release notes:
 
 ### Keyboard verification-mode overrides
 
-Four PS/2 keys let an automated verification flow force the overlay
+PS/2 keys let an automated verification flow force the overlay
 state regardless of the OSD setting (cleared on reset, otherwise
 last-key-wins):
 
 | Key | Effect |
 |-----|--------|
+| `B` | Toggle deterministic benchmark mode. Benchmark mode continuously re-renders the current fixed scene. |
 | `G` | Force Overlay BG = Dimmed (fractal under text strip → 50% brightness) |
 | `H` | Force Overlay BG = Transparent (OSD default) |
 | `K` | Force overlay blanking timer ON (text auto-hides after 10s) |
 | `L` | Force overlay blanking timer OFF (text always visible) |
 | `M` | Snap to next POI's canonical zoom (auto-zoom hold) |
 | `N` | Skip to next POI in playlist (normal slow-zoom) |
+| `V` | Advance to the next deterministic benchmark scene. |
 
 The OSD bit `O[23] Overlay BG` controls the same dim flag as `G`/`H`;
 `O[19] Blank Text` controls the same blanking flag as `K`/`L`. Keys
@@ -222,6 +224,29 @@ including the bright Skittles / Barbie / Acid backgrounds where the
 chroma-based OCR filter in `tools/poi_walkthrough.py` previously
 struggled. Cost: a 6-way OR for `in_overlay_region`, three muxes, and
 two 2-bit override registers — under 10 ALMs.
+
+### Deterministic benchmarking
+
+Track A performance measurement uses `tools/benchmarks.json` as the source of
+truth and `tools/bench_encode.py` to generate `rtl/benchmark_generated.vh`.
+Benchmark mode is toggled with `B`; `V` advances scenes. While active, the core
+forces the benchmark scene's center, step, resolution, palette, and fixed
+`max_iter`, then continuously re-renders the static scene.
+
+The normal text overlay is not used for benchmark measurement. Instead,
+benchmark mode encodes a 24-bit machine-readable strip into the top-left pixels
+of the final video output:
+
+```text
+bits 23..20 = magic A
+bits 19..16 = scene index
+bits 15..12 = max-iter tier
+bits 11..0  = F10
+```
+
+`F10` is completed frames in the last 10-second window. Decode screenshots with
+`tools/bench_decode_screenshot.py`; sustained FPS is `F10 / 10`. See
+`docs/BENCHMARKING.md` for the capture workflow.
 
 ## Build Instructions
 
@@ -407,3 +432,24 @@ The fitted reports include latch-related warnings. `output_files/MiSTerbrot.fit.
 
 - Treat comments marked `v0.8` / `v0.9.0` as potentially stale until checked against the actual RTL.
 - Treat `PROJECT.md` as the maintained truth source.
+
+## Working with this codebase as an AI agent
+
+This project is built and iterated on via a closed feedback loop between an AI agent and the FPGA hardware. The harness is designed to let the agent operate **as autonomously as possible** — propose, build, deploy, measure, commit — without round-tripping every decision through the human.
+
+**Guiding principles:**
+
+- **Act autonomously by default.** When the next step is clear, take it. If a Docker Quartus build is needed, kick it off. If deploying via SCP + `load_core` is the next step, do it. If running `tools/poi_walkthrough.py` or `tools/bench_run.py` produces a useful artifact, run them. Don't ask for permission for routine steps that are part of a well-established workflow.
+- **Invest in the feedback loop.** When a measurement or verification step is missing, build the tool that closes the loop. The existing harness was grown this way:
+  - `tools/poi_render.py` — produces Python reference thumbnails (visual diff target)
+  - `tools/poi_walkthrough.py` — drives the FPGA through all POIs, captures, OCRs, composes side-by-side
+  - `tools/poi_ocr.py` — template-match OCR against the in-FPGA 5×5 font
+  - `tools/poi_compare_score.py` — deterministic triage of visual diffs (interior-mask IoU)
+  - `tools/bench_encode.py` / `tools/bench_decode_screenshot.py` / `rtl/benchmark_generated.vh` — pixel-strip benchmark telemetry pipeline
+  - `tools/bench_run.py` / `tools/bench_diff.py` — automated benchmark suite runner and result diffing
+  - `tools/misterclaw-send` — programmatic input + screenshot + `load_core` against the running MiSTer
+  - **Always extend this set** when a missing tool would shorten the next loop.
+- **Bias toward measured changes.** When optimising or debugging, prefer changes that have a deterministic measurement attached. The benchmark suite + `bench_diff.py` makes Track A wins quantitative; do not ship "feels faster" without a number. Per-POI compare scoring makes visual regressions findable in seconds.
+- **Don't fear infrastructure work.** A 30-line Python script that automates the next 10 manual steps is worth more than getting through those 10 steps once. The closed feedback loop is the project's most valuable artifact, more than any single optimisation.
+- **Surface honest negatives.** Timing did not close, scene names don't line up, the patch made it slower — say so plainly with the numbers. The user wants signal, not optimism.
+- **Risky / destructive actions still need confirmation.** `git push --force`, deleting branches, modifying CI, anything that touches shared state outside this repo. The autonomy directive covers internal iteration, not blast-radius actions.

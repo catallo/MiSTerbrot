@@ -14,10 +14,12 @@
 // Native 240p output (320x240 @ 15kHz). MiSTer ascaler handles upscaling.
 //============================================================================
 
+`include "benchmark_generated.vh"
+
 module fractal_top #(
     parameter H_RES       = 320,
     parameter V_RES       = 240,
-    parameter N_ITERATORS = 20,
+    parameter N_ITERATORS = 24,  // 4 quads x 6 contexts/quad
     parameter WIDTH       = 64,
     parameter FRAC_BITS   = 56
 )(
@@ -46,6 +48,35 @@ module fractal_top #(
     output wire        rendering
 );
 
+// ---- Deterministic benchmark scene data ----
+reg                     benchmark_active;
+reg [`BENCH_IDX_BITS-1:0] benchmark_idx;
+reg                     benchmark_view_changed;
+reg signed [WIDTH-1:0] bench_center_x;
+reg signed [WIDTH-1:0] bench_center_y;
+reg signed [WIDTH-1:0] bench_step;
+reg [11:0]             bench_max_iter;
+reg [3:0]              bench_iter_tier;
+reg [6:0]              bench_palette;
+reg                    bench_mode_640;
+
+always @(*) begin
+    case (benchmark_idx)
+        `BENCH_SCENE_CASES
+        default: begin
+            bench_center_x = 64'shFF80000000000000;
+            bench_center_y = 64'sh0000000000000000;
+            bench_step     = 64'sh0003333333333333;
+            bench_max_iter = 12'd512;
+            bench_iter_tier = 4'd2;
+            bench_palette  = 7'd0;
+            bench_mode_640 = 1'b0;
+        end
+    endcase
+end
+
+wire effective_mode_640 = benchmark_active ? bench_mode_640 : mode_640;
+
 // ---- Pixel clock ----
 //   320 mode: 50 MHz / 8 = 6.25 MHz dot clock (15.625 kHz line rate)
 //   640 mode: 50 MHz / 4 = 12.5 MHz dot clock (15.625 kHz line rate at 800 H_TOTAL)
@@ -55,8 +86,8 @@ always @(posedge clk or negedge rst_n) begin
     if (!rst_n) ce_pix_cnt <= 3'd0;
     else        ce_pix_cnt <= ce_pix_cnt + 3'd1;
 end
-assign ce_pix = mode_640 ? (ce_pix_cnt[1:0] == 2'd0)
-                         : (ce_pix_cnt       == 3'd0);
+assign ce_pix = effective_mode_640 ? (ce_pix_cnt[1:0] == 2'd0)
+                                   : (ce_pix_cnt       == 3'd0);
 
 // ---- OSD Parameter Decoding ----
 wire [6:0] osd_palette_sel;
@@ -129,6 +160,8 @@ wire                    auto_zoom_toggle;
 wire                    auto_zoom_deactivate;
 wire                    auto_zoom_skip_next;
 wire                    auto_zoom_snap_next;
+wire                    benchmark_toggle;
+wire                    benchmark_next;
 wire                    auto_zoom_active;
 wire signed [WIDTH-1:0] az_center_x;
 wire signed [WIDTH-1:0] az_center_y;
@@ -176,6 +209,8 @@ input_handler #(
     .auto_zoom_deactivate(auto_zoom_deactivate),
     .auto_zoom_skip_next(auto_zoom_skip_next),
     .auto_zoom_snap_next(auto_zoom_snap_next),
+    .benchmark_toggle(benchmark_toggle),
+    .benchmark_next(benchmark_next),
     .key_bg_dim_on(key_bg_dim_on),
     .key_bg_dim_off(key_bg_dim_off),
     .key_blank_text_on(key_blank_text_on),
@@ -201,10 +236,35 @@ always @(posedge clk or negedge rst_n) begin
         az_enable_prev <= 1'b1;
     end else begin
         az_enable_prev <= az_enable;
-        if (auto_zoom_deactivate)
-        az_enable <= 1'b0;
+        if (benchmark_toggle && !benchmark_active)
+            az_enable <= 1'b0;
+        else if (auto_zoom_deactivate)
+            az_enable <= 1'b0;
         else if (auto_zoom_toggle)
-        az_enable <= ~az_enable;
+            az_enable <= ~az_enable;
+    end
+end
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        benchmark_active       <= 1'b0;
+        benchmark_idx          <= {`BENCH_IDX_BITS{1'b0}};
+        benchmark_view_changed <= 1'b0;
+    end else begin
+        benchmark_view_changed <= 1'b0;
+
+        if (benchmark_toggle) begin
+            benchmark_active       <= ~benchmark_active;
+            benchmark_view_changed <= 1'b1;
+        end
+
+        if (benchmark_next) begin
+            benchmark_idx <= (benchmark_idx == `BENCH_LAST_IDX) ?
+                             {`BENCH_IDX_BITS{1'b0}} :
+                             (benchmark_idx + {{(`BENCH_IDX_BITS-1){1'b0}}, 1'b1});
+            if (benchmark_active)
+                benchmark_view_changed <= 1'b1;
+        end
     end
 end
 
@@ -236,26 +296,31 @@ auto_zoom #(
 );
 
 // ---- Mux: auto_zoom overrides manual when active ----
-wire signed [WIDTH-1:0] center_x    = auto_zoom_active ? az_center_x : input_center_x;
-wire signed [WIDTH-1:0] center_y    = auto_zoom_active ? az_center_y : input_center_y;
-wire signed [WIDTH-1:0] step        = auto_zoom_active ? az_step        : input_step;
-wire                    view_changed = auto_zoom_active ? az_view_changed : input_view_changed;
+wire signed [WIDTH-1:0] center_x    = benchmark_active ? bench_center_x :
+                                       auto_zoom_active ? az_center_x    : input_center_x;
+wire signed [WIDTH-1:0] center_y    = benchmark_active ? bench_center_y :
+                                       auto_zoom_active ? az_center_y    : input_center_y;
+wire signed [WIDTH-1:0] step        = benchmark_active ? bench_step     :
+                                       auto_zoom_active ? az_step        : input_step;
+wire                    view_changed = benchmark_active ? benchmark_view_changed :
+                                       auto_zoom_active ? az_view_changed : input_view_changed;
 
 // OSD overrides for palette; iterations can come from OSD or keyboard.
 wire       osd_palette_override = (osd_palette_sel != 7'd0);
 wire [6:0] osd_palette_idx_full = osd_palette_sel - 7'd1;
 wire [6:0] osd_palette_idx = osd_palette_idx_full;
-wire [6:0] palette_sel  = osd_palette_override ? osd_palette_idx :
+wire [6:0] palette_sel  = benchmark_active     ? bench_palette :
+                          osd_palette_override ? osd_palette_idx :
                           input_palette_override ? input_palette_sel :
                           auto_zoom_active       ? az_palette_idx  : input_palette_sel;
 reg  [11:0] input_max_iter;
-wire [11:0] max_iter     = input_max_iter;  // keyboard-only (unified)
+wire [11:0] max_iter     = benchmark_active ? bench_max_iter : input_max_iter;
 reg  [6:0] palette_sel_prev;
 reg  [11:0] max_iter_prev;
 reg         mode_640_prev;
 wire settings_changed = (palette_sel != palette_sel_prev) ||
                         (max_iter != max_iter_prev) ||
-                        (mode_640 != mode_640_prev);
+                        (effective_mode_640 != mode_640_prev);
 
 // Auto-iter: scale max_iter with zoom depth so deep zooms don't render solid
 // black for lack of iterations. Tiers match tools/poi_render.max_iter_for_zoom.
@@ -374,7 +439,7 @@ always @(posedge clk or negedge rst_n) begin
         az_target_idx_prev <= az_target_idx;
         palette_sel_prev  <= palette_sel;
         max_iter_prev     <= max_iter;
-        mode_640_prev     <= mode_640;
+        mode_640_prev     <= effective_mode_640;
 
         // Latch view changes during render or wait
         if ((view_changed || settings_changed) && render_state != RS_IDLE)
@@ -397,7 +462,7 @@ always @(posedge clk or negedge rst_n) begin
         RS_WAIT_SWAP: begin
             // Wait for VBLANK swap before starting next render
             if (vblank_rise && frame_complete) begin
-                if (view_changed || settings_changed || need_rerender) begin
+                if (benchmark_active || view_changed || settings_changed || need_rerender) begin
                     start_render  <= 1'b1;
                     need_rerender <= 1'b0;
                     render_state  <= RS_RENDER;
@@ -429,7 +494,7 @@ pixel_pipeline #(
     .clk(clk),
     .clk_iter(clk_iter),
     .rst_n(rst_n),
-    .mode_640(mode_640),
+    .mode_640(effective_mode_640),
     .start_frame(start_render),
     .frame_done(frame_done),
     .max_iter(max_iter),
@@ -443,13 +508,45 @@ pixel_pipeline #(
     .result_escaped(pipe_result_escaped)
 );
 
+// ---- Benchmark counters ----
+// Benchmark mode continuously re-renders the static scene, so the 10-second
+// window counter measures sustained throughput without relying on screenshot
+// timing.
+localparam [28:0] BENCH_WINDOW_TICKS = 29'd500_000_000; // 10s @ 50 MHz
+
+reg [28:0] bench_window_ticks;
+reg [15:0] bench_window_frames;
+reg [15:0] last_bench_window_frames;
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        bench_window_ticks          <= 29'd0;
+        bench_window_frames         <= 16'd0;
+        last_bench_window_frames    <= 16'd0;
+    end else begin
+        if (!benchmark_active) begin
+            bench_window_ticks       <= 29'd0;
+            bench_window_frames      <= 16'd0;
+            last_bench_window_frames <= 16'd0;
+        end else if (bench_window_ticks == BENCH_WINDOW_TICKS - 29'd1) begin
+            bench_window_ticks       <= 29'd0;
+            last_bench_window_frames <= bench_window_frames + {15'd0, frame_done_rise};
+            bench_window_frames      <= 16'd0;
+        end else begin
+            bench_window_ticks <= bench_window_ticks + 29'd1;
+            if (frame_done_rise)
+                bench_window_frames <= bench_window_frames + 16'd1;
+        end
+    end
+end
+
 // ---- Framebuffer ----
 // Write addr: y*H_RES + x.
 //   320 mode: y*320 + x = (y<<8) + (y<<6) + x
 //   640 mode: y*640 + x = (y<<9) + (y<<7) + x
 wire [FB_ADDR_WIDTH-1:0] wr_y = {9'd0, pipe_result_y[8:0]};
 wire [FB_ADDR_WIDTH-1:0] wr_x = {7'd0, pipe_result_x[10:0]};
-wire [FB_ADDR_WIDTH-1:0] wr_addr = mode_640
+wire [FB_ADDR_WIDTH-1:0] wr_addr = effective_mode_640
                                    ? ((wr_y << 9) + (wr_y << 7) + wr_x)
                                    : ((wr_y << 8) + (wr_y << 6) + wr_x);
 wire [FB_DATA_WIDTH-1:0] wr_data = {pipe_result_escaped, pipe_result_iter};
@@ -462,10 +559,10 @@ wire [9:0]  vid_pixel_y;
 // out-of-bounds BRAM reads during hblank/vblank that could leak through
 // the 1-cycle BRAM-read latency into the next active pixel.
 wire vid_in_range = (vid_pixel_y < 10'd240) &&
-                    (vid_pixel_x < (mode_640 ? 11'd640 : 11'd320));
+                    (vid_pixel_x < (effective_mode_640 ? 11'd640 : 11'd320));
 wire [FB_ADDR_WIDTH-1:0] rd_y = {9'd0, vid_pixel_y[8:0]};
 wire [FB_ADDR_WIDTH-1:0] rd_x = {7'd0, vid_pixel_x[10:0]};
-wire [FB_ADDR_WIDTH-1:0] vid_rd_addr_raw = mode_640
+wire [FB_ADDR_WIDTH-1:0] vid_rd_addr_raw = effective_mode_640
                                        ? ((rd_y << 9) + (rd_y << 7) + rd_x)
                                        : ((rd_y << 8) + (rd_y << 6) + rd_x);
 wire [FB_ADDR_WIDTH-1:0] vid_rd_addr = vid_in_range ? vid_rd_addr_raw
@@ -498,7 +595,7 @@ video_timing u_video_timing (
     .clk(clk),
     .rst_n(rst_n),
     .ce_pix(ce_pix),
-    .mode_640(mode_640),
+    .mode_640(effective_mode_640),
     .hsync(hsync),
     .vsync(vsync),
     .hblank(hblank),
@@ -553,7 +650,7 @@ text_overlay #(
     .FRAC_BITS(FRAC_BITS)
 ) u_text_overlay (
     .clk(clk),
-    .mode_640(mode_640),
+    .mode_640(effective_mode_640),
     .overlay_enable(overlay_enable),
     .overlay_visible(overlay_visible),
     .blank_text_enable(blank_text_enable),
@@ -606,8 +703,19 @@ always @(posedge clk or negedge rst_n) begin
 end
 
 // VGA output
-assign vga_r = overlay_r;
-assign vga_g = overlay_g;
-assign vga_b = overlay_b;
+// In benchmark mode, encode machine-readable telemetry into 24 tiny 4x4
+// color blocks at the top-left: magic A, scene index, max-iter tier, F10[11:0].
+wire [23:0] benchmark_telemetry = {4'hA, benchmark_idx[3:0],
+                                   bench_iter_tier,
+                                   last_bench_window_frames[11:0]};
+wire        benchmark_telemetry_region = benchmark_active && vid_active_d &&
+                                          (vid_pixel_y_d < 10'd4) &&
+                                          (vid_pixel_x_d < 11'd96);
+wire [4:0]  benchmark_telemetry_bit_idx = vid_pixel_x_d[6:2];
+wire        benchmark_telemetry_bit = benchmark_telemetry[5'd23 - benchmark_telemetry_bit_idx];
+
+assign vga_r = benchmark_telemetry_region ? (benchmark_telemetry_bit ? 8'hFF : 8'h00) : overlay_r;
+assign vga_g = benchmark_telemetry_region ? (benchmark_telemetry_bit ? 8'hFF : 8'h00) : overlay_g;
+assign vga_b = benchmark_telemetry_region ? (benchmark_telemetry_bit ? 8'h00 : 8'hFF) : overlay_b;
 
 endmodule

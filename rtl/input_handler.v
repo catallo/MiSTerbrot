@@ -48,6 +48,8 @@ module input_handler #(
     output reg                     auto_zoom_deactivate,
     output reg                     auto_zoom_skip_next,
     output reg                     auto_zoom_snap_next,  // M key / X button: snap to next POI canonical view
+    output reg                     benchmark_toggle,     // B key: toggle deterministic benchmark mode
+    output reg                     benchmark_next,       // V key: advance deterministic benchmark scene
     output reg                     key_bg_dim_on,        // G key: force overlay BG to Dimmed
     output reg                     key_bg_dim_off,       // H key: force overlay BG to Transparent
     output reg                     key_blank_text_on,    // K key: force overlay blanking timer ON
@@ -124,6 +126,8 @@ always @(posedge clk or negedge rst_n) begin
         auto_zoom_deactivate <= 1'b0;
         auto_zoom_skip_next  <= 1'b0;
         auto_zoom_snap_next  <= 1'b0;
+        benchmark_toggle     <= 1'b0;
+        benchmark_next       <= 1'b0;
         key_bg_dim_on        <= 1'b0;
         key_bg_dim_off       <= 1'b0;
         key_blank_text_on    <= 1'b0;
@@ -133,6 +137,8 @@ always @(posedge clk or negedge rst_n) begin
         auto_zoom_deactivate <= 1'b0;
         auto_zoom_skip_next  <= 1'b0;
         auto_zoom_snap_next  <= 1'b0;
+        benchmark_toggle     <= 1'b0;
+        benchmark_next       <= 1'b0;
         key_bg_dim_on        <= 1'b0;
         key_bg_dim_off       <= 1'b0;
         key_blank_text_on    <= 1'b0;
@@ -233,6 +239,12 @@ always @(posedge clk or negedge rst_n) begin
                         end
                         8'h31: begin // N = Skip to next in playlist
                             if (auto_zoom_active) auto_zoom_skip_next <= 1'b1;
+                        end
+                        8'h32: begin // B = Toggle deterministic benchmark mode
+                            benchmark_toggle <= 1'b1;
+                        end
+                        8'h2A: begin // V = Advance deterministic benchmark scene
+                            benchmark_next <= 1'b1;
                         end
                         8'h3A: begin // M = Snap to next POI canonical view (verification mode)
                             auto_zoom_snap_next <= 1'b1;
