@@ -23,23 +23,33 @@
 module pixel_pipeline #(
     parameter N_ITERATORS = 24,  // 4 quads x 6 contexts/quad
     parameter WIDTH       = 64,
-    parameter FRAC_BITS   = 56
+    parameter FRAC_BITS   = 56,
+    parameter RID_W       = 2    // region_id tag width (Mariani-Silver v2)
 )(
     input  wire                    clk,        // clk_sys (50 MHz)
     input  wire                    clk_iter,   // clk_iter (100 MHz)
     input  wire                    rst_n,
-    input  wire                    mode_640,   // resolution mode passed to coord_gen
-    input  wire                    start_frame,
     output wire                    frame_done,
     input  wire [11:0]             max_iter,
-    input  wire signed [WIDTH-1:0] center_x,
-    input  wire signed [WIDTH-1:0] center_y,
-    input  wire signed [WIDTH-1:0] step,
+
+    // External coordinate source (coord_generator or region_manager).
+    // coord_region_id is the Mariani-Silver-v2 tag; with v1 / coord_generator
+    // it can be tied to 0.
+    input  wire                    coord_valid,
+    output wire                    coord_ready,
+    input  wire [10:0]             coord_px,
+    input  wire [9:0]              coord_py,
+    input  wire signed [WIDTH-1:0] coord_cr,
+    input  wire signed [WIDTH-1:0] coord_ci,
+    input  wire [RID_W-1:0]        coord_region_id,
+    input  wire                    coord_frame_done,
+
     output reg                     result_valid,
     output reg  [10:0]             result_x,
     output reg  [9:0]              result_y,
     output reg  [11:0]             result_iter,
-    output reg                     result_escaped
+    output reg                     result_escaped,
+    output reg  [RID_W-1:0]        result_region_id
 );
 
 localparam IDX_W = $clog2(N_ITERATORS);
@@ -63,25 +73,9 @@ always @(posedge clk_iter or negedge rst_n) begin
 end
 
 // =====================================================================
-// Coordinate generator (clk_sys)
+// Coordinate source is external (coord_generator or region_manager,
+// muxed at the top level). coord_ready is the dispatcher's "ready" line.
 // =====================================================================
-wire                    coord_valid, coord_ready;
-wire [10:0]             coord_px;
-wire [9:0]              coord_py;
-wire signed [WIDTH-1:0] coord_cr, coord_ci;
-wire                    coord_frame_done;
-
-coord_generator #(
-    .WIDTH(WIDTH), .FRAC_BITS(FRAC_BITS)
-) u_coord_gen (
-    .clk(clk), .rst_n(rst_n),
-    .mode_640(mode_640),
-    .start_frame(start_frame),
-    .center_x(center_x), .center_y(center_y), .step(step),
-    .ready(coord_ready), .valid(coord_valid),
-    .pixel_x(coord_px), .pixel_y(coord_py),
-    .cr(coord_cr), .ci(coord_ci), .frame_done(coord_frame_done)
-);
 
 // =====================================================================
 // Per-slot state (clk_sys)
@@ -92,6 +86,7 @@ reg  [10:0]             iter_px      [0:N_ITERATORS-1];
 reg  [9:0]              iter_py      [0:N_ITERATORS-1];
 reg  signed [WIDTH-1:0] iter_cr      [0:N_ITERATORS-1];
 reg  signed [WIDTH-1:0] iter_ci      [0:N_ITERATORS-1];
+reg  [RID_W-1:0]        iter_rid     [0:N_ITERATORS-1]; // region_id tag
 
 // =====================================================================
 // CDC: per-slot start (clk_sys → clk_iter) via toggle synchronizer
@@ -244,6 +239,7 @@ always @(posedge clk or negedge rst_n) begin
         result_valid <= 1'b0;
         result_x <= 11'd0; result_y <= 10'd0;
         result_iter <= 12'd0; result_escaped <= 1'b0;
+        result_region_id <= {RID_W{1'b0}};
         for (i = 0; i < N_ITERATORS; i = i + 1) begin
             iter_busy[i]         <= 1'b0;
             iter_start_q[i]      <= 1'b0;
@@ -252,6 +248,7 @@ always @(posedge clk or negedge rst_n) begin
             iter_py[i]           <= 10'd0;
             iter_cr[i]           <= {WIDTH{1'b0}};
             iter_ci[i]           <= {WIDTH{1'b0}};
+            iter_rid[i]          <= {RID_W{1'b0}};
         end
     end else begin
         result_valid <= 1'b0;
@@ -271,6 +268,7 @@ always @(posedge clk or negedge rst_n) begin
             iter_py[dispatch_idx]      <= coord_py;
             iter_cr[dispatch_idx]      <= coord_cr;
             iter_ci[dispatch_idx]      <= coord_ci;
+            iter_rid[dispatch_idx]     <= coord_region_id;
             dispatch_idx <= (dispatch_idx == N_ITERATORS[IDX_W-1:0] - 1'b1)
                             ? {IDX_W{1'b0}} : dispatch_idx + 1'b1;
         end
@@ -285,6 +283,7 @@ always @(posedge clk or negedge rst_n) begin
             result_y                      <= iter_py[collect_idx];
             result_iter                   <= iter_count_level[collect_idx];
             result_escaped                <= iter_escaped_level[collect_idx];
+            result_region_id              <= iter_rid[collect_idx];
             iter_busy[collect_idx]        <= 1'b0;
             iter_done_pending[collect_idx]<= 1'b0;
         end

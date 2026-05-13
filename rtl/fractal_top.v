@@ -455,14 +455,23 @@ always @(posedge clk or negedge rst_n) begin
         end
 
         RS_RENDER: begin
-            if (frame_done)
-                render_state <= RS_WAIT_SWAP;
+            if (frame_done) begin
+                if (benchmark_active) begin
+                    // Bench mode: skip the vsync wait so F10 reflects raw
+                    // compute throughput, not the 60 Hz display cap. The
+                    // display still updates on vblank via the bank_sel
+                    // swap logic — the user sees the last-completed frame.
+                    start_render <= 1'b1;
+                end else begin
+                    render_state <= RS_WAIT_SWAP;
+                end
+            end
         end
 
         RS_WAIT_SWAP: begin
             // Wait for VBLANK swap before starting next render
             if (vblank_rise && frame_complete) begin
-                if (benchmark_active || view_changed || settings_changed || need_rerender) begin
+                if (view_changed || settings_changed || need_rerender) begin
                     start_render  <= 1'b1;
                     need_rerender <= 1'b0;
                     render_state  <= RS_RENDER;
@@ -486,26 +495,121 @@ wire [9:0]  pipe_result_y;
 wire [11:0] pipe_result_iter;
 wire        pipe_result_escaped;
 
+// Mariani-Silver toggle (OSD bit 25). When 0, the classic coord_generator
+// drives the dispatch port and there is no fill-bypass write traffic. When 1,
+// region_manager drives boundary-only coords to the pipeline and emits
+// interior-fill pixels directly to the framebuffer write mux.
+wire ms_enable = status[25];
+
+// Min-region-dim selector: status[27:26] picks {16, 32, 64, 128}. Smaller
+// values let Mariani-Silver subdivide further (more decision overhead but
+// finer fills); larger values short-circuit to full-dispatch sooner.
+wire [7:0] ms_min_region_dim = (status[27:26] == 2'b00) ? 8'd16  :
+                               (status[27:26] == 2'b01) ? 8'd32  :
+                               (status[27:26] == 2'b10) ? 8'd64  :
+                                                          8'd128;
+
+// ---- Coord source A: classic raster-order generator ----
+wire                    cg_valid, cg_ready;
+wire [10:0]             cg_px;
+wire [9:0]              cg_py;
+wire signed [WIDTH-1:0] cg_cr, cg_ci;
+wire                    cg_frame_done;
+
+coord_generator #(
+    .WIDTH(WIDTH), .FRAC_BITS(FRAC_BITS)
+) u_coord_gen (
+    .clk(clk), .rst_n(rst_n),
+    .mode_640(effective_mode_640),
+    .start_frame(start_render & ~ms_enable),
+    .center_x(center_x), .center_y(center_y), .step(step),
+    .ready(cg_ready), .valid(cg_valid),
+    .pixel_x(cg_px), .pixel_y(cg_py),
+    .cr(cg_cr), .ci(cg_ci), .frame_done(cg_frame_done)
+);
+
+// ---- Coord source B: Mariani-Silver region manager ----
+// N_SLOTS=4 / N_SLOTS=2 both blew the device budget (155% / 149% ALMs),
+// because muxing the coord-table read address through disp_slot prevented
+// M10K inference (combinational read → tables synthesized as 56K registers
+// = ~31K extra ALMs).  Falling back to N_SLOTS=1 (= sequential region v1
+// behaviour, single read path, M10K inferred cleanly).  Pipelining can be
+// revisited later by adding a register stage on the coord-table read.
+localparam RID_W = 1;
+wire                    rm_valid, rm_ready;
+wire [10:0]             rm_px;
+wire [9:0]              rm_py;
+wire signed [WIDTH-1:0] rm_cr, rm_ci;
+wire [RID_W-1:0]        rm_region_id;
+wire                    rm_frame_done;
+wire                    rm_fill_valid;
+wire [10:0]             rm_fill_x;
+wire [9:0]              rm_fill_y;
+wire [11:0]             rm_fill_iter;
+wire                    rm_fill_escaped;
+wire [RID_W-1:0]        pipe_result_region_id;
+
+region_manager #(
+    .WIDTH(WIDTH), .FRAC_BITS(FRAC_BITS), .N_SLOTS(1), .RID_W(RID_W)
+) u_region_manager (
+    .clk(clk), .rst_n(rst_n),
+    .mode_640(effective_mode_640),
+    .start_frame(start_render & ms_enable),
+    .frame_done(rm_frame_done),
+    .min_region_dim(ms_min_region_dim),
+    .center_x(center_x), .center_y(center_y), .step(step),
+    .max_iter(max_iter),
+    .coord_ready(rm_ready),
+    .coord_valid(rm_valid),
+    .coord_px(rm_px), .coord_py(rm_py),
+    .coord_cr(rm_cr), .coord_ci(rm_ci),
+    .coord_region_id(rm_region_id),
+    .result_valid(pipe_result_valid),
+    .result_x(pipe_result_x), .result_y(pipe_result_y),
+    .result_iter(pipe_result_iter), .result_escaped(pipe_result_escaped),
+    .result_region_id(pipe_result_region_id),
+    .fill_valid(rm_fill_valid),
+    .fill_x(rm_fill_x), .fill_y(rm_fill_y),
+    .fill_iter(rm_fill_iter), .fill_escaped(rm_fill_escaped)
+);
+
+// ---- Mux: pipeline coord port ----
+wire                    pipe_coord_valid       = ms_enable ? rm_valid       : cg_valid;
+wire [10:0]             pipe_coord_px          = ms_enable ? rm_px          : cg_px;
+wire [9:0]              pipe_coord_py          = ms_enable ? rm_py          : cg_py;
+wire signed [WIDTH-1:0] pipe_coord_cr          = ms_enable ? rm_cr          : cg_cr;
+wire signed [WIDTH-1:0] pipe_coord_ci          = ms_enable ? rm_ci          : cg_ci;
+wire [RID_W-1:0]        pipe_coord_region_id   = ms_enable ? rm_region_id   : {RID_W{1'b0}};
+wire                    pipe_coord_frame_done  = ms_enable ? rm_frame_done  : cg_frame_done;
+wire                    pipe_coord_ready;
+assign cg_ready = ~ms_enable & pipe_coord_ready;
+assign rm_ready =  ms_enable & pipe_coord_ready;
+
 pixel_pipeline #(
     .N_ITERATORS(N_ITERATORS),
     .WIDTH(WIDTH),
-    .FRAC_BITS(FRAC_BITS)
+    .FRAC_BITS(FRAC_BITS),
+    .RID_W(RID_W)
 ) u_pipeline (
     .clk(clk),
     .clk_iter(clk_iter),
     .rst_n(rst_n),
-    .mode_640(effective_mode_640),
-    .start_frame(start_render),
     .frame_done(frame_done),
     .max_iter(max_iter),
-    .center_x(center_x),
-    .center_y(center_y),
-    .step(step),
+    .coord_valid(pipe_coord_valid),
+    .coord_ready(pipe_coord_ready),
+    .coord_px(pipe_coord_px),
+    .coord_py(pipe_coord_py),
+    .coord_cr(pipe_coord_cr),
+    .coord_ci(pipe_coord_ci),
+    .coord_region_id(pipe_coord_region_id),
+    .coord_frame_done(pipe_coord_frame_done),
     .result_valid(pipe_result_valid),
     .result_x(pipe_result_x),
     .result_y(pipe_result_y),
     .result_iter(pipe_result_iter),
-    .result_escaped(pipe_result_escaped)
+    .result_escaped(pipe_result_escaped),
+    .result_region_id(pipe_result_region_id)
 );
 
 // ---- Benchmark counters ----
@@ -544,12 +648,23 @@ end
 // Write addr: y*H_RES + x.
 //   320 mode: y*320 + x = (y<<8) + (y<<6) + x
 //   640 mode: y*640 + x = (y<<9) + (y<<7) + x
-wire [FB_ADDR_WIDTH-1:0] wr_y = {9'd0, pipe_result_y[8:0]};
-wire [FB_ADDR_WIDTH-1:0] wr_x = {7'd0, pipe_result_x[10:0]};
+// Two write sources: (a) pipe_result_valid (iter pipeline output) and
+// (b) rm_fill_valid (region_manager interior-fill bypass, Mariani-Silver
+// only). They never collide in v1 because region_manager waits for the iter
+// pipeline to drain before entering its S_FILL state.
+wire        fb_use_fill = rm_fill_valid;
+wire [10:0] fb_wr_pixel_x = fb_use_fill ? rm_fill_x        : pipe_result_x;
+wire [9:0]  fb_wr_pixel_y = fb_use_fill ? rm_fill_y        : pipe_result_y;
+wire [11:0] fb_wr_iter    = fb_use_fill ? rm_fill_iter     : pipe_result_iter;
+wire        fb_wr_escaped = fb_use_fill ? rm_fill_escaped  : pipe_result_escaped;
+wire        fb_wr_en      = fb_use_fill | pipe_result_valid;
+
+wire [FB_ADDR_WIDTH-1:0] wr_y = {9'd0, fb_wr_pixel_y[8:0]};
+wire [FB_ADDR_WIDTH-1:0] wr_x = {7'd0, fb_wr_pixel_x[10:0]};
 wire [FB_ADDR_WIDTH-1:0] wr_addr = effective_mode_640
                                    ? ((wr_y << 9) + (wr_y << 7) + wr_x)
                                    : ((wr_y << 8) + (wr_y << 6) + wr_x);
-wire [FB_DATA_WIDTH-1:0] wr_data = {pipe_result_escaped, pipe_result_iter};
+wire [FB_DATA_WIDTH-1:0] wr_data = {fb_wr_escaped, fb_wr_iter};
 
 // Read address: same formula
 wire [10:0] vid_pixel_x;
@@ -576,7 +691,7 @@ framebuffer #(
     .ADDR_WIDTH(FB_ADDR_WIDTH)
 ) u_framebuffer (
     .clk(clk),
-    .wr_en(pipe_result_valid),
+    .wr_en(fb_wr_en),
     .wr_addr(wr_addr),
     .wr_data(wr_data),
     .rd_addr(rd_addr),

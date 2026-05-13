@@ -19,16 +19,24 @@ Going to 640×480 doubles the framebuffer to ~1 MB, which doesn't fit in BRAM. S
 
 Five low-risk improvements that compound. Done before resolution change, they make 480p feel viable rather than painful.
 
-### A1. Mariani–Silver interior detection — biggest single win
+### A1. Mariani–Silver interior detection — implemented (v1 shipped, v2 in flight)
 
 Classical fractal speedup. Trace the boundary of a rectangular region of pixels; if all boundary pixels classify identically (all interior, or all exterior with similar escape count), fill the interior of the rectangle from that classification *without* iterating each pixel.
 
-At deep zoom where the set's interior fills large connected regions of the framebuffer, this can be **5–10× faster** because we stop wasting DSP cycles on bulb interiors.
+**Reality check from v1 bench**: original 5–10× estimate was too optimistic. MS dispatches the boundary, which is geometrically nearest the fractal — i.e. the pixels with the **highest** iter counts. Baseline averages those in with cheap interior (max_iter via precheck) and cheap deep-exterior; MS concentrates on the expensive subset. Net result: 2 wins out of 10 bench scenes (TRIPLE SPIRAL +83%, JULIA ISLANDS +73%), most other scenes flat or worse. See `PERF_BASELINE_TRACK_A.md` for details.
 
-- Implementation: recursive region splitter in `clk_sys`, dispatches boundary-only pixel coords to the existing iterator pipeline, fills the interior in the framebuffer write path.
-- Cost: ~500 lines new logic, no new DSPs.
-- Risk: regions misclassified at boundary precision (mitigation: minimum region size threshold).
-- Effort: **3–5 days**.
+This drove a re-scoping of A1 into sub-items:
+
+- **A1.1 ✓** — `MIN_REGION_DIM` exposed as OSD knob (16/32/64/128). Sweep showed best MR varies per-scene by 8×, no global setting works.
+- **A1.2** (build in flight) — 4-slot region pipelining + region_id tag through `pixel_pipeline.v`. Removes iterator starvation between regions. Expected 1.3–1.5× on slow scenes.
+- **A1.3** (pending) — cache parent-boundary iter results so split children skip the shared boundary pixels. Direct attack on the redundant-work overhead at deep recursion.
+- **A1.4** (planned) — per-POI `prefers_ms` flag in `tools/poi_master.json`, driven by an expanded 86-POI benchmark. MS toggles automatically per POI based on empirical data. This is the headline UX win — preserve the gains, eliminate the regressions.
+- **A1.bench** — vsync-bypass in benchmark mode so F10 reflects raw compute, not the 60 fps display cap.
+- **A1.fix** — closed clk_iter timing at +0.424 ns slack via seed sweep (Quartus seed 5).
+
+Cost: ~600 lines RTL total (`region_manager.v` + minimal pixel_pipeline + fractal_top changes), 9 M10K blocks for coord tables. No new DSPs.
+
+Effort: ~1 week so far. A1.4 (per-POI flag + 86-scene bench expansion) is the next deliverable.
 
 ### A2. Real-axis symmetry (cy = 0 POIs)
 
@@ -70,17 +78,24 @@ Effort: ~4–5 days (render-scheduler rewrite, mask-based dilated writes, swap-p
 
 **Decision: defer.** The combined gain from A1-A4 alone makes the average frame fast enough that long stalls become uncommon. Revisit only if specific deep-zoom POIs still feel choppy after Track A lands.
 
-### Combined Track A target
+### Combined Track A target — revised after A1 v1 data
 
-| Combination | Gain at z10-15 | Gain at z25 |
+Original estimates assumed MS would deliver 5–10× as a global win. The
+bench data showed that's only true for a subset of POIs. Revised targets:
+
+| Combination | Mechanism | Expected gain |
 |---|---|---|
-| A1 Mariani-Silver | 5-10× | 3-5× |
-| A2 Symmetry (applicable POIs) | 1.9× | 1.9× |
-| A3 Period-3 bulbs | 1.1× | 1.05× |
-| A4 Higher iter clock | 1.1× | 1.1× |
-| **Stacked (A1-A4)** | **~10×** | **~6×** |
+| A1 MS (per-POI, with pipelining + caching) | Per-POI flag picks the win path; no losses | ~1.5–2× on the MS-friendly half of POIs, no regression on the rest |
+| A2 Symmetry (applicable POIs) | Compute only y≥0, mirror y<0 | 1.9× on real-axis POIs |
+| A3 Period-3 bulbs | Skip the two extra interior precheck-able bulbs | ~5–15% catalogue-wide |
+| A4 Higher iter clock | Constraint tightening 100→110 MHz | 10% throughput |
+| **Stacked, MS-friendly POI** | A1+A2+A3+A4 | ~2.5–4× |
+| **Stacked, MS-neutral POI** | A2+A3+A4 only | ~1.2–1.5× |
 
-Roughly **1.5–2 weeks total** for a 5–10× framerate boost — and crucially, no architectural changes. The core remains BRAM-only, double-buffered, 240p. We just compute frames faster.
+The shift from "uniform 5–10× win" to "per-POI 2–4× win + per-POI 1.2–1.5× win"
+is the honest revision. **The core stays BRAM-only, double-buffered, 240p.**
+We compute frames faster on the POIs that allow it, and don't regress
+elsewhere.
 
 ## Track B — SDRAM-backed framebuffer + 480i then 480p
 

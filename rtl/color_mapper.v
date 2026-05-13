@@ -848,8 +848,8 @@ task palette_rgb;
                     out_b = 8'd105 + idx[6:0];
                 end else if (idx[2:0] == 3'b000) begin
                     out_r = 8'd255;
-                    out_g = 8'd255;
-                    out_b = 8'd255;
+                    out_g = 8'd215;
+                    out_b = 8'd0;
                 end else begin
                     out_r = 8'd176 + idx[5:0];
                     out_g = 8'd196 + (idx[5:0] >> 1);

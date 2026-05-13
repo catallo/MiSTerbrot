@@ -2,6 +2,7 @@ set_global_assignment -name SYSTEMVERILOG_FILE MiSTerbrot.sv
 set_global_assignment -name VERILOG_FILE rtl/fractal_top.v
 set_global_assignment -name VERILOG_FILE rtl/pixel_pipeline.v
 set_global_assignment -name VERILOG_FILE rtl/coord_generator.v
+set_global_assignment -name VERILOG_FILE rtl/region_manager.v
 set_global_assignment -name VERILOG_FILE rtl/color_mapper.v
 set_global_assignment -name VERILOG_FILE rtl/video_timing.v
 set_global_assignment -name VERILOG_FILE rtl/framebuffer.v

@@ -76,6 +76,8 @@ def main():
                    help="Label for this run (e.g., 'baseline', 'after-A1')")
     p.add_argument("--keep-screenshots", action="store_true",
                    help="Leave /tmp screenshots after the run for inspection")
+    p.add_argument("--no-toggle", action="store_true",
+                   help="Skip pressing B at start/end (assume bench mode already on)")
     args = p.parse_args()
 
     if not MISTERCLAW.exists():
@@ -102,15 +104,18 @@ def main():
     print(f"tmp dir     : {tmp_dir}")
     print()
 
-    print(">> Pressing B to enter benchmark mode")
-    send_key(args.host, "B")
+    if args.no_toggle:
+        print(">> --no-toggle: assuming benchmark mode already on")
+    else:
+        print(">> Pressing B to enter benchmark mode")
+        send_key(args.host, "b")
     print(f">> Waiting {args.wait:.1f}s for F10 to fill on scene 0")
     time.sleep(args.wait)
 
     results = []
     for idx in range(len(scenes)):
         if idx > 0:
-            send_key(args.host, "V")
+            send_key(args.host, "v")
             time.sleep(args.wait)
         if idx not in wanted:
             continue
@@ -140,8 +145,9 @@ def main():
         })
 
     print()
-    print(">> Pressing B to exit benchmark mode")
-    send_key(args.host, "B")
+    if not args.no_toggle:
+        print(">> Pressing B to exit benchmark mode")
+        send_key(args.host, "b")
 
     out = {
         "label": args.label,
