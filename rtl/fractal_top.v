@@ -456,22 +456,28 @@ always @(posedge clk or negedge rst_n) begin
 
         RS_RENDER: begin
             if (frame_done) begin
-                if (benchmark_active) begin
-                    // Bench mode: skip the vsync wait so F10 reflects raw
-                    // compute throughput, not the 60 Hz display cap. The
-                    // display still updates on vblank via the bank_sel
-                    // swap logic — the user sees the last-completed frame.
-                    start_render <= 1'b1;
-                end else begin
-                    render_state <= RS_WAIT_SWAP;
-                end
+                // Always wait for VBLANK before restarting. Skipping vsync
+                // here (the previous "bench mode raw throughput" hack) broke
+                // the MiSTer HDMI scaler and the on-disk screenshot capture
+                // — both lock to the framebuffer's vsync edge. Analog video
+                // bypasses the scaler so it kept working, but losing HDMI +
+                // screenshots kills the bench_decode_screenshot.py loop.
+                // Side effect: F10 caps at 596 (~60 fps) on fast scenes.
+                // That's an acceptable trade for an end-to-end working
+                // benchmark pipeline.
+                render_state <= RS_WAIT_SWAP;
             end
         end
 
         RS_WAIT_SWAP: begin
             // Wait for VBLANK swap before starting next render
             if (vblank_rise && frame_complete) begin
-                if (view_changed || settings_changed || need_rerender) begin
+                if (view_changed || settings_changed || need_rerender ||
+                    benchmark_active) begin
+                    // benchmark_active forces a continuous re-render so F10
+                    // measures sustained throughput. Capped at vsync (~60 Hz)
+                    // because we removed the vsync bypass — see the comment
+                    // in RS_RENDER above.
                     start_render  <= 1'b1;
                     need_rerender <= 1'b0;
                     render_state  <= RS_RENDER;
