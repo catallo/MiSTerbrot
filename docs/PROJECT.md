@@ -10,10 +10,15 @@ MiSTerbrot is a MiSTer FPGA core for real-time Mandelbrot set rendering on the D
 
 ## Target Hardware
 
-- MiSTer on Terasic DE10-Nano
+- MiSTer on Terasic DE10-Nano with the **MiSTer analog video addon board** installed
 - FPGA: Intel/Altera Cyclone V `5CSEBA6U23I7`
 - Quartus target flow: `17.0.2 Lite` / standard MiSTer build environment
-- Video path: native 240p core timing into the MiSTer framework, with MiSTer scaler/ascaler handling display upscaling
+- Video path: native 240p core timing into the MiSTer framework, with MiSTer scaler/ascaler handling upscaling
+- Display setup:
+  - **Primary**: IBM C170 VGA CRT, driven via the analog video addon board's VGA pins (multisync, ~31 kHz line rate)
+  - **Secondary**: LG C1 OLED via HDMI
+- **15 kHz CRT support is a hard requirement** even though we cannot test it locally. Many MiSTer users drive RGB SCART / arcade monitors at the SD line rate, and the core's native 240p timing (15.625 kHz line rate, ~59.7 Hz refresh) is what makes that work. Any change to `rtl/video_timing.v` or the analog video path must preserve this — break 15 kHz output and we lose a chunk of the user base. Validate on the multisync VGA CRT here at minimum; defer to community feedback for true 15 kHz fixed-frequency displays.
+- Build implications: do **not** enable `MISTER_DISABLE_YC` even though we don't deliberately use Y/C output — the analog addon board path shares framework code with the YC encoder, and removing it has not been validated against the CRT. Audio is unused, so `MISTER_DISABLE_ALSA` is safe.
 - Current fitted build resource usage from `output_files/MiSTerbrot.fit.summary`:
   - `24,155 / 41,910` ALMs (`58%`)
   - `30,560` registers

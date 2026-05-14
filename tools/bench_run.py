@@ -38,15 +38,21 @@ DEFAULT_WAIT = 12.0     # > 10s so the F10 window is fully populated
 
 def send_key(host, key):
     subprocess.run(
-        [str(MISTERCLAW), "--host", host, "input", "type", key],
-        check=True, capture_output=True, timeout=10,
+        [str(MISTERCLAW), "--host", host, "--timeout", "30",
+         "input", "type", key],
+        check=True, capture_output=True, timeout=15,
     )
 
 
 def screenshot(host, out_path):
+    # --timeout 30 (misterclaw) prevents truncated PNGs on slow transfers; the
+    # subprocess timeout below guards the whole call. With the default 10s
+    # misterclaw timeout we occasionally got 24 KB truncated files that PIL
+    # couldn't parse.
     subprocess.run(
-        [str(MISTERCLAW), "--host", host, "screenshot", "--output", str(out_path)],
-        check=True, capture_output=True, timeout=15,
+        [str(MISTERCLAW), "--host", host, "--timeout", "30",
+         "screenshot", "--output", str(out_path)],
+        check=True, capture_output=True, timeout=45,
     )
 
 
@@ -78,6 +84,9 @@ def main():
                    help="Leave /tmp screenshots after the run for inspection")
     p.add_argument("--no-toggle", action="store_true",
                    help="Skip pressing B at start/end (assume bench mode already on)")
+    p.add_argument("--keep-mister-screenshots", action="store_true",
+                   help="Don't delete /media/fat/screenshots/MiSTerbrot/*.png "
+                        "on the MiSTer after the run (default: clean up)")
     args = p.parse_args()
 
     if not MISTERCLAW.exists():
@@ -113,7 +122,8 @@ def main():
     time.sleep(args.wait)
 
     results = []
-    for idx in range(len(scenes)):
+    last_wanted = max(wanted)
+    for idx in range(last_wanted + 1):
         if idx > 0:
             send_key(args.host, "v")
             time.sleep(args.wait)
@@ -166,6 +176,23 @@ def main():
         # Don't auto-delete; cheap to leave in /tmp and the JSON points at them.
         # Users can `rm -rf` the tmp_dir manually if they want.
         print(f"(screenshots left in {tmp_dir})")
+
+    if not args.keep_mister_screenshots:
+        # Each misterclaw screenshot triggers a fresh capture saved to
+        # /media/fat/screenshots/MiSTerbrot/ — they pile up fast (1 per scene
+        # per run × many runs). Clean them up unless the user explicitly opts
+        # out. Password and host match the misterclaw deploy convention.
+        try:
+            subprocess.run(
+                ["sshpass", "-p", "1", "ssh",
+                 "-o", "StrictHostKeyChecking=accept-new",
+                 f"root@{args.host}",
+                 "rm -f /media/fat/screenshots/MiSTerbrot/*.png"],
+                check=True, capture_output=True, timeout=20,
+            )
+            print(f"(cleaned MiSTer screenshots dir on {args.host})")
+        except subprocess.SubprocessError as e:
+            print(f"(MiSTer cleanup skipped — {e})", file=sys.stderr)
     return 0
 
 

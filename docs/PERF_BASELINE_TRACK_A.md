@@ -15,10 +15,146 @@ Decode screenshots with `tools/bench_decode_screenshot.py`; run the suite
 with `tools/bench_run.py --label <name> --output <path>`; diff two runs
 with `tools/bench_diff.py <before.json> <after.json>`.
 
-> Note on F10 ceiling: until the vsync-bypass landed (see A1.bench below),
-> the render-state machine waited for vblank between frames, capping bench
-> reads at 60 fps even when raw compute was faster. So F10=596 on FULL 640
-> entries below means "≥60 fps", not necessarily exactly 60.
+> **F10 ceiling — permanent (since 2026-05-14).** The render-state machine
+> waits for vblank between frames in benchmark mode, capping F10 at ~596
+> (~60 fps). An earlier build (commit ff02c4a) bypassed vsync to measure raw
+> compute, but the bypass broke the MiSTer HDMI scaler and the on-disk
+> screenshot capture (both lock to the framebuffer's vsync edge — the analog
+> video board kept working because it bypasses the scaler entirely). Without
+> screenshots we can't decode F10 → bench automation dies. The bypass is
+> **gone for good**. F10=596 on a fast scene means "≥60 fps"; the few scenes
+> faster than 60 fps don't need precise measurement anyway.
+
+---
+
+## 2026-05-14 · `86poi-vsync-clean` — Full 86-POI catalogue baseline
+
+First sweep over the full 86-POI benchmark catalogue (`gen_full_benchmarks.py`
+generated `tools/benchmarks.json` from `tools/poi_master.json`). This is the
+**new baseline** for all forthcoming Track A experiments — `bench_diff.py`
+should compare against this run, not the prior 10-scene tables below.
+
+Driver: `bench_run.py` via misterclaw `input type B/V`. The cfg-write
+workaround (`bench_sweep.py`) was deleted in the same commit; it had only
+existed because:
+
+1. The V-key didn't actually work due to a runtime mux that overrode the
+   counter (fixed in this build — `benchmark_idx` is a plain register now)
+2. Bench mode bypassed vsync, which broke the MiSTer HDMI scaler and
+   screenshot capture (also reverted in this build — vsync respected;
+   F10 capped at ~596 / 60 fps which is fine in practice)
+
+Build:
+
+- Core: `MiSTerbrot_20260514.rbf`
+- Bitstream SHA256: `f39c8684f94d9989bf8459f39debb70bace3cbfba7ba1e4372bdebe3e8fdfcfe`
+- Quartus seed: `9` · `ROUTER_EFFORT_MULTIPLIER 4.0` · `MISTER_DISABLE_ALSA=1`
+- Iter clock: `100 MHz` · setup slack `+0.126 ns`
+- ALMs: `34,715 / 41,910 (83%)` · DSPs: `112/112` · BRAM: `83%`
+- Results JSON: `tools/benchmark_results_86poi.json`
+- MS = Off, MR = 16 (defaults — sweep done without MS optimization)
+
+**Aggregate stats** (86 scenes, 0 decode failures):
+
+| metric | value |
+|---|---:|
+| min FPS | 0.8 (SAT DBL SPIRAL, z25) |
+| max FPS | 59.7 (MISIUREWICZ M4, vsync-capped) |
+| median FPS | 14.8 |
+| geomean FPS | 10.9 |
+| ≥30 fps scenes | 4 (vsync-capped antenna-region POIs) |
+| <1 fps scenes | 1 |
+
+**Per-POI numbers** (F10 = frames in last 10 s; FPS = F10/10):
+
+| ID | Scene | F10 | FPS |
+|---:|---|---:|---:|
+| 0 | P6 SUB BULB | 299 | 29.9 |
+| 1 | P3 ISLAND | 298 | 29.8 |
+| 2 | P3 ISLAND TIP | 299 | 29.9 |
+| 3 | P4 ISLAND | 298 | 29.8 |
+| 4 | P5 ISLAND | 199 | 19.9 |
+| 5 | P6 ISLAND | 298 | 29.8 |
+| 6 | P7 ISLAND | 199 | 19.9 |
+| 7 | P8 ISLAND | 298 | 29.8 |
+| 8 | P9 ISLAND | 199 | 19.9 |
+| 9 | P11 ISLAND | 149 | 14.9 |
+| 10 | P22 ISLAND | 120 | 12.0 |
+| 11 | ELEPHANT TRUNK | 299 | 29.9 |
+| 12 | ELEPHANT HEADS | 100 | 10.0 |
+| 13 | ELEPHANT ISLAND | 32 | 3.2 |
+| 14 | ELEPHANT P19 | 149 | 14.9 |
+| 15 | ELEPHANT P16 | 150 | 15.0 |
+| 16 | SEAHORSE BODY | 74 | 7.4 |
+| 17 | SEAHORSE TAIL | 120 | 12.0 |
+| 18 | SEAHORSE DEEP | 60 | 6.0 |
+| 19 | SEAHORSE TAIL2 | 100 | 10.0 |
+| 20 | DOUBLE HOOK | 119 | 11.9 |
+| 21 | SH SATELLITE | 43 | 4.3 |
+| 22 | SAT ANTENNA | 17 | 1.7 |
+| 23 | SAT HEAD | 11 | 1.1 |
+| 24 | SAT SEAHORSE | 11 | 1.1 |
+| 25 | SAT DBL SPIRAL | 8 | 0.8 |
+| 26 | JULIA ISLANDS | 21 | 2.1 |
+| 27 | TRIPLE WEST | 50 | 5.0 |
+| 28 | TRIPLE DEEP | 60 | 6.0 |
+| 29 | FEIGENBAUM | 118 | 11.8 |
+| 30 | FEIGENBAUM ZOOM | 67 | 6.7 |
+| 31 | FEIGENBAUM DEEP | 28 | 2.8 |
+| 32 | GEN FEIGENBAUM | 294 | 29.4 |
+| 33 | MISIUREWICZ M4 | 597 | 59.7 |
+| 34 | MISIUREWICZ M4-2 | 298 | 29.8 |
+| 35 | MISIUREWICZ SPIR | 148 | 14.8 |
+| 36 | MISIUREWICZ -1.94 | 596 | 59.6 |
+| 37 | MISIUREWICZ -1.84 | 597 | 59.7 |
+| 38 | DBL SPIRAL P4 | 298 | 29.8 |
+| 39 | SINGLE SPIRAL | 299 | 29.9 |
+| 40 | TRIPLE MEDALLION | 119 | 11.9 |
+| 41 | DBL SPIRAL ISLE | 86 | 8.6 |
+| 42 | TRIPLE ISLE MED | 74 | 7.4 |
+| 43 | CAULIFLOWER MED | 149 | 14.9 |
+| 44 | EJS CAULI | 199 | 19.9 |
+| 45 | EJS DBL SPIRAL | 149 | 14.9 |
+| 46 | EJS BRANCH | 199 | 19.9 |
+| 47 | EJS NUCLEUS | 13 | 1.3 |
+| 48 | LOVE CANAL | 32 | 3.2 |
+| 49 | P5 ISLAND DEEP | 100 | 10.0 |
+| 50 | ELEPHANT MED | 100 | 10.0 |
+| 51 | STARFISH | 120 | 12.0 |
+| 52 | M3,1 WAKE 3/7 | 149 | 14.9 |
+| 53 | M11,1 WAKE 5/11 | 85 | 8.5 |
+| 54 | CONCHA APPROACH | 298 | 29.8 |
+| 55 | M7,1 WAKE 1/7 | 149 | 14.9 |
+| 56 | SH CUSP DEEP | 20 | 2.0 |
+| 57 | EJS PERIOD 44 | 195 | 19.5 |
+| 58 | JEWEL BOX | 60 | 6.0 |
+| 59 | R2T P6 ISLAND | 35 | 3.5 |
+| 60 | SH CUSP FINE | 10 | 1.0 |
+| 61 | R2 HALF ISLE | 18 | 1.8 |
+| 62 | R2T P7 ISLAND | 290 | 29.0 |
+| 63 | SCEPTER MED | 119 | 11.9 |
+| 64 | BRANCH MED | 298 | 29.8 |
+| 65 | EJS P3 DEEP | 85 | 8.5 |
+| 66 | NEEDLE MED | 296 | 29.6 |
+| 67 | M3,1 1/3 LIMB TIP | 596 | 59.6 |
+| 68 | M_4,2 CASCADE 1 | 299 | 29.9 |
+| 69 | M_8,4 CASCADE 2 | 199 | 19.9 |
+| 70 | M_16,8 CASCADE 3 | 149 | 14.9 |
+| 71 | EJS P47 ALPHA | 149 | 14.9 |
+| 72 | EJS P50 BETA | 149 | 14.9 |
+| 73 | EJS WAKE 1/4 | 149 | 14.9 |
+| 74 | SH SPIRAL CONT | 118 | 11.8 |
+| 75 | SH TAIL SPIRAL | 99 | 9.9 |
+| 76 | ELEPHANT MED 2 | 148 | 14.8 |
+| 77 | R2T 1/2 ISLE STEP | 57 | 5.7 |
+| 78 | BEYER STEP 13 | 22 | 2.2 |
+| 79 | BEYER STEP 14 | 18 | 1.8 |
+| 80 | TRIPLE SPIRAL P4 | 30 | 3.0 |
+| 81 | MERCATOR P189 | 145 | 14.5 |
+| 82 | MERCATOR P38 | 149 | 14.9 |
+| 83 | M(3,3) WAKE 1/3 DP | 299 | 29.9 |
+| 84 | M(7,7) WAKE 1/4 DP | 298 | 29.8 |
+| 85 | EJS P47 GAMMA | 150 | 15.0 |
 
 ---
 

@@ -29,6 +29,7 @@ timing_report.tcl
 
 # Test/deploy artifacts
 MiSTerbrot_*.rbf
+screenshots/archive/
 # tools/ — ignore-by-default but allowlist the POI pipeline (regenerates rtl/poi_generated.vh)
 tools/*
 !tools/misterclaw-send
@@ -46,3 +47,5 @@ tools/*
 !tools/bench_decode_screenshot.py
 !tools/bench_run.py
 !tools/bench_diff.py
+!tools/gen_full_benchmarks.py
+!tools/bench_run_full.py

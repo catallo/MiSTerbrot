@@ -68,13 +68,19 @@ pixels, not text.
 
 ## Pixel Telemetry
 
-Benchmark mode encodes data into 24 tiny color blocks at the top-left of the
-final video output. Each block is 4x4 pixels:
+Benchmark mode encodes data into **32 tiny 4x4-pixel color blocks** at the top-left
+of the final video output (128 px wide, 4 px tall — doubled to 8 px tall by the
+MiSTer scaler on its way to HDMI):
 
-- bits 23..20: magic nibble `A`
-- bits 19..16: benchmark scene index
-- bits 15..12: max-iteration tier
-- bits 11..0: `F10`
+| Bits  | Field        | Notes                                              |
+|------:|--------------|----------------------------------------------------|
+| 31:28 | magic `0xA`  | self-check; rejects non-bench captures             |
+| 27    | `ms_enable`  | Mariani-Silver state (1 = on)                      |
+| 26:25 | `mr_sel`     | Min Region: 00=16, 01=32, 10=64, 11=128            |
+| 24:23 | spare        | reserved for future use                            |
+| 22:16 | `scene_idx`  | 7 bits — 86-POI catalogue                          |
+| 15:12 | `iter_tier`  | max-iteration tier (see table below)               |
+| 11:0  | `F10`        | frames completed in the last 10-second window      |
 
 Max-iteration tiers are:
 
@@ -88,16 +94,54 @@ Max-iteration tiers are:
 | 5 | 4095 |
 
 Each `1` bit is yellow (`#FFFF00`) and each `0` bit is blue (`#0000FF`).
-`F10` is completed render frames in the last 10-second window. It is encoded as
-12 bits, which is enough up to 409.5 FPS. Sustained FPS is:
+`F10` is completed render frames in the last 10-second window. The 12-bit
+field is technically large enough for 409.5 FPS, but render is **vsync-locked
+at ~60 fps**, so F10 saturates at ~596 (60 × 9.93 effective seconds within the
+window). Sustained FPS is:
 
 ```text
 FPS = F10 / 10
 ```
 
+> **F10 ceiling note.** An earlier build bypassed vsync in benchmark mode to
+> measure raw compute throughput, but that broke the MiSTer HDMI scaler and the
+> on-disk screenshot capture (both lock to the framebuffer's vsync edge). The
+> bypass is **gone for good** — accept the 60 fps ceiling. In practice, almost
+> every Track A POI is well below 60 fps anyway; the ones that aren't are
+> trivially "fast" and don't need precise measurement.
+
 The magic nibble makes screenshot decoding self-checking. If the decoded magic
 is not `0xA`, the screenshot was probably taken with benchmark mode disabled,
 from the wrong core, or with unexpected capture scaling/cropping.
+
+### Visible block positions (counting from leftmost)
+
+| Block(s) | Bit(s)  | Field        |
+|---------:|---------|--------------|
+| 0–3      | 31..28  | magic `0xA` (Y B Y B)      |
+| 4        | 27      | MS state                   |
+| 5–6      | 26..25  | MR selector                |
+| 7–8      | 24..23  | spare                      |
+| 9–15     | 22..16  | scene index                |
+| 16–19    | 15..12  | iter tier                  |
+| 20–31    | 11..0   | F10                        |
+
+### Runtime keys (verification mode)
+
+| Key | Effect                                 |
+|-----|----------------------------------------|
+| B   | Toggle benchmark mode                  |
+| V   | Advance to next benchmark scene        |
+| S   | Force Mariani-Silver ON  (overrides OSD)|
+| A   | Force Mariani-Silver OFF (overrides OSD)|
+| 1   | Force MIN_REGION_DIM = 16              |
+| 2   | Force MIN_REGION_DIM = 32              |
+| 3   | Force MIN_REGION_DIM = 64              |
+| 4   | Force MIN_REGION_DIM = 128             |
+
+S/A and 1/2/3/4 are sticky after first press (OSD value wins until you press
+one). Per the verification-key convention, there is no "follow OSD again"
+reset until core reload.
 
 ## Capture And Decode
 
@@ -114,7 +158,7 @@ python3 tools/bench_decode_screenshot.py /tmp/bench_00.png
 Example decoder output:
 
 ```text
-magic=0xA scene=0 iter_tier=2 f10=596 fps=59.6 bits=101000000010001001010100
+magic=0xA scene=0 ms=Off mr=16 iter_tier=3 f10=299 fps=29.9 bits=10100000000000000011000100101011
 ```
 
 To capture the full suite, repeat this loop:
