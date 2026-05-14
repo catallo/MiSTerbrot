@@ -172,6 +172,8 @@ localparam CONF_STR = {
 	"-, M: Snap to next POI canonical zoom;",
 	"-, B: Benchmark mode toggle;",
 	"-, V: Benchmark next scene;",
+	"-, S/A: Mariani-Silver On/Off;",
+	"-, 1/2/3/4: Min Region 16/32/64/128;",
 	"-, G/H: Overlay BG Dim On/Off;",
 	"-, K/L: Overlay Blanking On/Off;",
 	"-, Y/R/Home: Reset View;",

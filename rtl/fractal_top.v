@@ -102,6 +102,8 @@ wire       always_show_poi;
 wire       osd_overlay_bg_dim;
 wire       key_bg_dim_on, key_bg_dim_off;
 wire       key_blank_text_on, key_blank_text_off;
+wire       key_ms_on, key_ms_off;
+wire       key_mr_16, key_mr_32, key_mr_64, key_mr_128;
 
 fractal_osd #(
     .WIDTH(WIDTH),
@@ -126,17 +128,29 @@ fractal_osd #(
 // ---- Verification-mode overrides (keys force on/off, default = follow OSD) ----
 // blank_text_override: 2'b00=follow OSD, 2'b01=force OFF (always visible), 2'b10=force ON (auto-blank)
 // bg_dim_override   : same encoding for the Overlay BG bit.
+// ms_override       : 2'b00=follow OSD, 2'b01=force OFF, 2'b10=force ON.
+// mr_override       : 3'b000=follow OSD, else 16/32/64/128 selected by 1/2/3/4 keys.
 reg [1:0] blank_text_override;
 reg [1:0] bg_dim_override;
+reg [1:0] ms_override;
+reg [2:0] mr_override;
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         blank_text_override <= 2'b00;
         bg_dim_override     <= 2'b00;
+        ms_override         <= 2'b00;
+        mr_override         <= 3'b000;
     end else begin
         if (key_blank_text_on)  blank_text_override <= 2'b10;
         if (key_blank_text_off) blank_text_override <= 2'b01;
         if (key_bg_dim_on)      bg_dim_override     <= 2'b10;
         if (key_bg_dim_off)     bg_dim_override     <= 2'b01;
+        if (key_ms_on)          ms_override         <= 2'b10;
+        if (key_ms_off)         ms_override         <= 2'b01;
+        if (key_mr_16)          mr_override         <= 3'b001;
+        if (key_mr_32)          mr_override         <= 3'b010;
+        if (key_mr_64)          mr_override         <= 3'b011;
+        if (key_mr_128)         mr_override         <= 3'b100;
     end
 end
 wire blank_text_enable = (blank_text_override == 2'b10) ? 1'b1 :
@@ -215,6 +229,12 @@ input_handler #(
     .key_bg_dim_off(key_bg_dim_off),
     .key_blank_text_on(key_blank_text_on),
     .key_blank_text_off(key_blank_text_off),
+    .key_ms_on(key_ms_on),
+    .key_ms_off(key_ms_off),
+    .key_mr_16(key_mr_16),
+    .key_mr_32(key_mr_32),
+    .key_mr_64(key_mr_64),
+    .key_mr_128(key_mr_128),
     .auto_zoom_active(auto_zoom_active),
     .sync_from_auto_zoom(auto_zoom_handoff),
     .sync_center_x(az_center_x),
@@ -505,12 +525,20 @@ wire        pipe_result_escaped;
 // drives the dispatch port and there is no fill-bypass write traffic. When 1,
 // region_manager drives boundary-only coords to the pipeline and emits
 // interior-fill pixels directly to the framebuffer write mux.
-wire ms_enable = status[25];
+// Mariani-Silver toggle (OSD bit 25, override via S/A keys via ms_override).
+wire ms_enable = (ms_override == 2'b10) ? 1'b1 :
+                 (ms_override == 2'b01) ? 1'b0 :
+                                          status[25];
 
-// Min-region-dim selector: status[27:26] picks {16, 32, 64, 128}. Smaller
-// values let Mariani-Silver subdivide further (more decision overhead but
-// finer fills); larger values short-circuit to full-dispatch sooner.
-wire [7:0] ms_min_region_dim = (status[27:26] == 2'b00) ? 8'd16  :
+// Min-region-dim selector: status[27:26] picks {16, 32, 64, 128}, override
+// via 1/2/3/4 keys via mr_override. Smaller values let Mariani-Silver
+// subdivide further (more decision overhead but finer fills); larger values
+// short-circuit to full-dispatch sooner.
+wire [7:0] ms_min_region_dim = (mr_override == 3'b001) ? 8'd16  :
+                               (mr_override == 3'b010) ? 8'd32  :
+                               (mr_override == 3'b011) ? 8'd64  :
+                               (mr_override == 3'b100) ? 8'd128 :
+                               (status[27:26] == 2'b00) ? 8'd16  :
                                (status[27:26] == 2'b01) ? 8'd32  :
                                (status[27:26] == 2'b10) ? 8'd64  :
                                                           8'd128;
