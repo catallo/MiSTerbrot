@@ -48,7 +48,8 @@ set_global_assignment -name ECO_OPTIMIZE_TIMING ON
 set_global_assignment -name PERIPHERY_TO_CORE_PLACEMENT_AND_ROUTING_OPTIMIZATION ON
 set_global_assignment -name PHYSICAL_SYNTHESIS_ASYNCHRONOUS_SIGNAL_PIPELINING ON
 set_global_assignment -name ALM_REGISTER_PACKING_EFFORT MEDIUM
-set_global_assignment -name SEED 5
+set_global_assignment -name SEED 9
+set_global_assignment -name ROUTER_EFFORT_MULTIPLIER 4.0
 
 #set_global_assignment -name VERILOG_MACRO "MISTER_FB=1"
 
@@ -68,10 +69,12 @@ set_global_assignment -name SEED 5
 #set_global_assignment -name VERILOG_MACRO "MISTER_SMALL_VBUF=1"
 
 # Disable YC / Composite output to save some resources
+# IMPORTANT: keep DISABLED — primary display is a VGA CRT via the analog
+# video addon board, which shares framework code with the YC encoder.
 #set_global_assignment -name VERILOG_MACRO "MISTER_DISABLE_YC=1"
 
 # Disable ALSA audio output to save some resources
-#set_global_assignment -name VERILOG_MACRO "MISTER_DISABLE_ALSA=1"
+set_global_assignment -name VERILOG_MACRO "MISTER_DISABLE_ALSA=1"
 
 source sys/sys.tcl
 source sys/sys_analog.tcl
