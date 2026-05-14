@@ -534,14 +534,18 @@ wire ms_enable = (ms_override == 2'b10) ? 1'b1 :
 // via 1/2/3/4 keys via mr_override. Smaller values let Mariani-Silver
 // subdivide further (more decision overhead but finer fills); larger values
 // short-circuit to full-dispatch sooner.
-wire [7:0] ms_min_region_dim = (mr_override == 3'b001) ? 8'd16  :
-                               (mr_override == 3'b010) ? 8'd32  :
-                               (mr_override == 3'b011) ? 8'd64  :
-                               (mr_override == 3'b100) ? 8'd128 :
-                               (status[27:26] == 2'b00) ? 8'd16  :
-                               (status[27:26] == 2'b01) ? 8'd32  :
-                               (status[27:26] == 2'b10) ? 8'd64  :
-                                                          8'd128;
+// mr_sel is the canonical 2-bit selector — used for both the lookup and the
+// telemetry strip encoding so they always agree.
+wire [1:0] mr_sel = (mr_override == 3'b001) ? 2'b00 :
+                    (mr_override == 3'b010) ? 2'b01 :
+                    (mr_override == 3'b011) ? 2'b10 :
+                    (mr_override == 3'b100) ? 2'b11 :
+                                              status[27:26];
+
+wire [7:0] ms_min_region_dim = (mr_sel == 2'b00) ? 8'd16  :
+                               (mr_sel == 2'b01) ? 8'd32  :
+                               (mr_sel == 2'b10) ? 8'd64  :
+                                                   8'd128;
 
 // ---- Coord source A: classic raster-order generator ----
 wire                    cg_valid, cg_ready;
@@ -652,17 +656,26 @@ pixel_pipeline #(
 // timing.
 localparam [28:0] BENCH_WINDOW_TICKS = 29'd500_000_000; // 10s @ 50 MHz
 
-reg [28:0] bench_window_ticks;
-reg [15:0] bench_window_frames;
-reg [15:0] last_bench_window_frames;
+reg [28:0]                bench_window_ticks;
+reg [15:0]                bench_window_frames;
+reg [15:0]                last_bench_window_frames;
+// Scene-change detection — reset the F10 window when the scene advances so
+// each scene gets a clean, full 10-second window after V. Otherwise the
+// tumbling window can straddle a scene transition and report a mix of old
+// + new frames.
+reg [`BENCH_IDX_BITS-1:0] bench_idx_prev;
+wire                      bench_scene_changed =
+                              benchmark_active && (benchmark_idx != bench_idx_prev);
 
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         bench_window_ticks          <= 29'd0;
         bench_window_frames         <= 16'd0;
         last_bench_window_frames    <= 16'd0;
+        bench_idx_prev              <= {`BENCH_IDX_BITS{1'b0}};
     end else begin
-        if (!benchmark_active) begin
+        bench_idx_prev <= benchmark_idx;
+        if (!benchmark_active || bench_scene_changed) begin
             bench_window_ticks       <= 29'd0;
             bench_window_frames      <= 16'd0;
             last_bench_window_frames <= 16'd0;
@@ -852,16 +865,26 @@ always @(posedge clk or negedge rst_n) begin
 end
 
 // VGA output
-// In benchmark mode, encode machine-readable telemetry into 24 tiny 4x4
-// color blocks at the top-left: magic A, scene index, max-iter tier, F10[11:0].
-wire [23:0] benchmark_telemetry = {4'hA, benchmark_idx[3:0],
+// In benchmark mode, encode machine-readable telemetry into 32 tiny 4x4
+// color blocks at the top-left:
+//   bits 31..28 = magic A
+//   bit  27     = ms_enable
+//   bits 26..25 = mr_sel  (00=16, 01=32, 10=64, 11=128)
+//   bits 24..23 = spare
+//   bits 22..16 = scene index (7 bits — 86-POI catalogue)
+//   bits 15..12 = iter_tier
+//   bits 11..0  = F10
+// The Python decoder (tools/bench_decode_screenshot.py) must match this
+// layout exactly.
+wire [31:0] benchmark_telemetry = {4'hA, ms_enable, mr_sel, 2'b0,
+                                   benchmark_idx[6:0],
                                    bench_iter_tier,
                                    last_bench_window_frames[11:0]};
 wire        benchmark_telemetry_region = benchmark_active && vid_active_d &&
                                           (vid_pixel_y_d < 10'd4) &&
-                                          (vid_pixel_x_d < 11'd96);
+                                          (vid_pixel_x_d < 11'd128);
 wire [4:0]  benchmark_telemetry_bit_idx = vid_pixel_x_d[6:2];
-wire        benchmark_telemetry_bit = benchmark_telemetry[5'd23 - benchmark_telemetry_bit_idx];
+wire        benchmark_telemetry_bit = benchmark_telemetry[5'd31 - benchmark_telemetry_bit_idx];
 
 assign vga_r = benchmark_telemetry_region ? (benchmark_telemetry_bit ? 8'hFF : 8'h00) : overlay_r;
 assign vga_g = benchmark_telemetry_region ? (benchmark_telemetry_bit ? 8'hFF : 8'h00) : overlay_g;

@@ -1,53 +1,133 @@
 [
   {
-    "name": "FULL 640",
-    "cx": -0.5,
+    "name": "P6 SUB BULB",
+    "cx": -1.477333,
     "cy": 0.0,
-    "zoom_level": 0.0,
-    "max_iter": 512,
+    "zoom_level": 6.0,
+    "max_iter": 1024,
     "mode_640": true,
     "palette": 0,
-    "note": "Fast sanity scene; expected to saturate at display cadence."
+    "note": "Period-6 satellite bulb on real axis"
   },
   {
     "name": "P3 ISLAND",
     "cx": -1.754877666,
     "cy": 0.0,
     "zoom_level": 5.0,
-    "max_iter": 1024,
+    "max_iter": 512,
     "mode_640": true,
-    "palette": 30,
-    "note": "Real-axis period-3 minibrot; useful for symmetry work."
+    "palette": 7,
+    "note": "Largest island, period-3 minibrot nucleus"
   },
   {
-    "name": "P5 ISLAND DEEP",
-    "cx": 0.359259225,
-    "cy": 0.642513737,
-    "zoom_level": 8.0,
+    "name": "P3 ISLAND TIP",
+    "cx": -1.790327492,
+    "cy": 0.0,
+    "zoom_level": 7.0,
+    "max_iter": 1024,
+    "mode_640": true,
+    "palette": 14,
+    "note": "Tip of period-3 island antenna"
+  },
+  {
+    "name": "P4 ISLAND",
+    "cx": -0.15652,
+    "cy": 1.032247,
+    "zoom_level": 6.0,
+    "max_iter": 1024,
+    "mode_640": true,
+    "palette": 21,
+    "note": "Largest period-4 island in 1/3 limb"
+  },
+  {
+    "name": "P5 ISLAND",
+    "cx": 0.358431,
+    "cy": 0.643507,
+    "zoom_level": 7.0,
+    "max_iter": 1024,
+    "mode_640": true,
+    "palette": 28,
+    "note": "Largest period-5 island"
+  },
+  {
+    "name": "P6 ISLAND",
+    "cx": 0.44299,
+    "cy": 0.373727,
+    "zoom_level": 7.0,
     "max_iter": 1024,
     "mode_640": true,
     "palette": 35,
-    "note": "Period-5 island detail; boundary-heavy 1024-iteration scene."
+    "note": "Largest period-6 island"
   },
   {
-    "name": "TRIPLE SPIRAL P4",
-    "cx": -0.1540378,
-    "cy": 1.03692215,
-    "zoom_level": 11.0,
+    "name": "P7 ISLAND",
+    "cx": 0.432259,
+    "cy": 0.227315,
+    "zoom_level": 8.0,
     "max_iter": 1024,
     "mode_640": true,
     "palette": 42,
-    "note": "Medallion near P4 island; broad 1024-iteration stress scene."
+    "note": "Period-7 island"
   },
   {
-    "name": "SEAHORSE TAIL",
-    "cx": -0.7435669,
-    "cy": 0.1314023,
-    "zoom_level": 10.8,
+    "name": "P8 ISLAND",
+    "cx": 0.404879,
+    "cy": 0.146216,
+    "zoom_level": 8.0,
     "max_iter": 1024,
     "mode_640": true,
-    "palette": 48,
-    "note": "Boundary-heavy seahorse valley scene."
+    "palette": 49,
+    "note": "Period-8 island"
+  },
+  {
+    "name": "P9 ISLAND",
+    "cx": 0.378631,
+    "cy": 0.098841,
+    "zoom_level": 9.0,
+    "max_iter": 1024,
+    "mode_640": true,
+    "palette": 56,
+    "note": "Period-9 island"
+  },
+  {
+    "name": "P11 ISLAND",
+    "cx": 0.339454,
+    "cy": 0.050823,
+    "zoom_level": 10.0,
+    "max_iter": 1024,
+    "mode_640": true,
+    "palette": 63,
+    "note": "Period-11 island near cardioid cusp"
+  },
+  {
+    "name": "P22 ISLAND",
+    "cx": 0.27215,
+    "cy": 0.005401,
+    "zoom_level": 12.0,
+    "max_iter": 2048,
+    "mode_640": true,
+    "palette": 70,
+    "note": "Period-22 island near elephant valley"
+  },
+  {
+    "name": "ELEPHANT TRUNK",
+    "cx": 0.29833,
+    "cy": 0.00111,
+    "zoom_level": 5.0,
+    "max_iter": 512,
+    "mode_640": true,
+    "palette": 77,
+    "note": "Elephant valley with trunks visible"
+  },
+  {
+    "name": "ELEPHANT HEADS",
+    "cx": 0.291665,
+    "cy": -0.015555,
+    "zoom_level": 9.0,
+    "max_iter": 1024,
+    "mode_640": true,
+    "palette": 84,
+    "note": "Detailed elephant heads in cusp R2.C(0)"
   },
   {
     "name": "ELEPHANT ISLAND",
@@ -56,28 +136,78 @@
     "zoom_level": 13.0,
     "max_iter": 2048,
     "mode_640": true,
-    "palette": 54,
-    "note": "Distorted elephant island; 2048-iteration boundary/interior mix."
+    "palette": 1,
+    "note": "Distorted elephant island R2F(1/15B1)S"
   },
   {
-    "name": "FEIGENBAUM DEEP",
-    "cx": -1.4011552,
-    "cy": 0.0,
-    "zoom_level": 13.0,
-    "max_iter": 2048,
+    "name": "ELEPHANT P19",
+    "cx": 0.27994,
+    "cy": 0.008629,
+    "zoom_level": 11.0,
+    "max_iter": 1024,
     "mode_640": true,
-    "palette": 60,
-    "note": "Real-axis Feigenbaum cascade; very slow symmetry-sensitive scene."
+    "palette": 8,
+    "note": "Period-19 island in elephant valley"
   },
   {
-    "name": "JEWEL BOX",
-    "cx": -0.74542846,
-    "cy": 0.11300888,
-    "zoom_level": 17.65,
+    "name": "ELEPHANT P16",
+    "cx": 0.292529,
+    "cy": 0.01497,
+    "zoom_level": 11.0,
+    "max_iter": 1024,
+    "mode_640": true,
+    "palette": 15,
+    "note": "Period-16 island near elephant valley"
+  },
+  {
+    "name": "SEAHORSE BODY",
+    "cx": -0.74303,
+    "cy": 0.126433,
+    "zoom_level": 7.95,
+    "max_iter": 1024,
+    "mode_640": true,
+    "palette": 22,
+    "note": "Beyer step 3, seahorse with 25 spokes"
+  },
+  {
+    "name": "SEAHORSE TAIL",
+    "cx": -0.7435669,
+    "cy": 0.1314023,
+    "zoom_level": 10.77,
+    "max_iter": 1024,
+    "mode_640": true,
+    "palette": 29,
+    "note": "Beyer step 4, seahorse tail spirals"
+  },
+  {
+    "name": "SEAHORSE DEEP",
+    "cx": -0.74407,
+    "cy": 0.1174,
+    "zoom_level": 8.44,
+    "max_iter": 1024,
+    "mode_640": true,
+    "palette": 36,
+    "note": "Mu-Ency seahorse valley fig 2"
+  },
+  {
+    "name": "SEAHORSE TAIL2",
+    "cx": -0.7436499,
+    "cy": 0.13188204,
+    "zoom_level": 12.4,
     "max_iter": 2048,
     "mode_640": true,
-    "palette": 66,
-    "note": "Classic seahorse waypoint; 2048-iteration mixed boundary scene."
+    "palette": 43,
+    "note": "Beyer step 5, tail part deeper"
+  },
+  {
+    "name": "DOUBLE HOOK",
+    "cx": -0.74364085,
+    "cy": 0.13182733,
+    "zoom_level": 14.93,
+    "max_iter": 2048,
+    "mode_640": true,
+    "palette": 50,
+    "note": "Beyer step 6, double hook"
   },
   {
     "name": "SH SATELLITE",
@@ -86,8 +216,48 @@
     "zoom_level": 18.06,
     "max_iter": 4095,
     "mode_640": true,
-    "palette": 72,
-    "note": "Deep seahorse satellite minibrot; high 4095-iteration load."
+    "palette": 57,
+    "note": "Beyer step 7, satellite minibrot"
+  },
+  {
+    "name": "SAT ANTENNA",
+    "cx": -0.743644786,
+    "cy": 0.1318252536,
+    "zoom_level": 20.34,
+    "max_iter": 4095,
+    "mode_640": true,
+    "palette": 64,
+    "note": "Beyer step 8, satellite antenna"
+  },
+  {
+    "name": "SAT HEAD",
+    "cx": -0.74364409961,
+    "cy": 0.13182604688,
+    "zoom_level": 22.5,
+    "max_iter": 4095,
+    "mode_640": true,
+    "palette": 71,
+    "note": "Beyer step 9, head-shoulder of satellite"
+  },
+  {
+    "name": "SAT SEAHORSE",
+    "cx": -0.74364386269,
+    "cy": 0.13182590271,
+    "zoom_level": 24.82,
+    "max_iter": 4095,
+    "mode_640": true,
+    "palette": 78,
+    "note": "Beyer step 10, satellite seahorse valley"
+  },
+  {
+    "name": "SAT DBL SPIRAL",
+    "cx": -0.743643900055,
+    "cy": 0.131825890901,
+    "zoom_level": 26.27,
+    "max_iter": 4095,
+    "mode_640": true,
+    "palette": 85,
+    "note": "Beyer step 11, satellite double spiral"
   },
   {
     "name": "JULIA ISLANDS",
@@ -96,7 +266,597 @@
     "zoom_level": 29.85,
     "max_iter": 4095,
     "mode_640": true,
+    "palette": 2,
+    "note": "Beyer step 12, embedded Julia islands"
+  },
+  {
+    "name": "TRIPLE WEST",
+    "cx": -0.1549,
+    "cy": 0.65218,
+    "zoom_level": 9.0,
+    "max_iter": 1024,
+    "mode_640": true,
+    "palette": 9,
+    "note": "Triple spiral valley west side detail"
+  },
+  {
+    "name": "TRIPLE DEEP",
+    "cx": -0.15625,
+    "cy": 0.653411,
+    "zoom_level": 12.0,
+    "max_iter": 2048,
+    "mode_640": true,
+    "palette": 16,
+    "note": "Triple spiral around R2F(1/3(19/20B1)B*)"
+  },
+  {
+    "name": "FEIGENBAUM",
+    "cx": -1.401155189,
+    "cy": 0.0,
+    "zoom_level": 5.0,
+    "max_iter": 512,
+    "mode_640": true,
+    "palette": 23,
+    "note": "Real-axis Feigenbaum point"
+  },
+  {
+    "name": "FEIGENBAUM ZOOM",
+    "cx": -1.40114,
+    "cy": 0.0,
+    "zoom_level": 7.0,
+    "max_iter": 1024,
+    "mode_640": true,
+    "palette": 30,
+    "note": "Cascade approaching Feigenbaum"
+  },
+  {
+    "name": "FEIGENBAUM DEEP",
+    "cx": -1.4011552,
+    "cy": 0.0,
+    "zoom_level": 13.0,
+    "max_iter": 2048,
+    "mode_640": true,
+    "palette": 37,
+    "note": "Feigenbaum cascade closer view"
+  },
+  {
+    "name": "GEN FEIGENBAUM",
+    "cx": -0.1528,
+    "cy": 1.0397,
+    "zoom_level": 6.0,
+    "max_iter": 1024,
+    "mode_640": true,
+    "palette": 44,
+    "note": "Generalized Feigenbaum in 1/3 limb"
+  },
+  {
+    "name": "MISIUREWICZ M4",
+    "cx": -0.101096364,
+    "cy": 0.95628651,
+    "zoom_level": 6.0,
+    "max_iter": 1024,
+    "mode_640": true,
+    "palette": 51,
+    "note": "Principal Misiurewicz of 1/3 limb (M4,1)"
+  },
+  {
+    "name": "MISIUREWICZ M4-2",
+    "cx": 0.366362983,
+    "cy": 0.591533773,
+    "zoom_level": 5.0,
+    "max_iter": 512,
+    "mode_640": true,
+    "palette": 58,
+    "note": "Principal Misiurewicz of wake 1/4"
+  },
+  {
+    "name": "MISIUREWICZ SPIR",
+    "cx": -0.77568377,
+    "cy": 0.13646737,
+    "zoom_level": 7.0,
+    "max_iter": 1024,
+    "mode_640": true,
+    "palette": 65,
+    "note": "M23,2 two-arms spiral in seahorse valley"
+  },
+  {
+    "name": "MISIUREWICZ -1.94",
+    "cx": -1.940799807,
+    "cy": 0.0,
+    "zoom_level": 7.0,
+    "max_iter": 1024,
+    "mode_640": true,
+    "palette": 72,
+    "note": "Period-4 nucleus along main antenna"
+  },
+  {
+    "name": "MISIUREWICZ -1.84",
+    "cx": -1.839287,
+    "cy": 0.0,
+    "zoom_level": 6.0,
+    "max_iter": 1024,
+    "mode_640": true,
+    "palette": 79,
+    "note": "M2,2 west of period-3 island"
+  },
+  {
+    "name": "DBL SPIRAL P4",
+    "cx": -0.1611188,
+    "cy": 1.03632203,
+    "zoom_level": 6.0,
+    "max_iter": 1024,
+    "mode_640": true,
+    "palette": 86,
+    "note": "Double-spiral medallion near P4 island"
+  },
+  {
+    "name": "SINGLE SPIRAL",
+    "cx": -0.1543869,
+    "cy": 1.0308295,
+    "zoom_level": 6.0,
+    "max_iter": 1024,
+    "mode_640": true,
+    "palette": 3,
+    "note": "Single-spiral medallion in 1/3 limb"
+  },
+  {
+    "name": "TRIPLE MEDALLION",
+    "cx": -0.1540378,
+    "cy": 1.03692215,
+    "zoom_level": 7.0,
+    "max_iter": 1024,
+    "mode_640": true,
+    "palette": 10,
+    "note": "Triple-spiral medallion in 1/3 limb"
+  },
+  {
+    "name": "DBL SPIRAL ISLE",
+    "cx": -1.25531894,
+    "cy": -0.38220889,
+    "zoom_level": 23.0,
+    "max_iter": 4095,
+    "mode_640": true,
+    "palette": 17,
+    "note": "Double-spiral medallion in P3 island"
+  },
+  {
+    "name": "TRIPLE ISLE MED",
+    "cx": -1.25469032,
+    "cy": -0.37930648,
+    "zoom_level": 22.5,
+    "max_iter": 4095,
+    "mode_640": true,
+    "palette": 24,
+    "note": "Triple-spiral medallion at P3 island cusp"
+  },
+  {
+    "name": "CAULIFLOWER MED",
+    "cx": -1.25689632,
+    "cy": -0.37960804,
+    "zoom_level": 21.6,
+    "max_iter": 4095,
+    "mode_640": true,
+    "palette": 31,
+    "note": "Cauliflower medallion near P3 island"
+  },
+  {
+    "name": "EJS CAULI",
+    "cx": -1.74876455,
+    "cy": 0.0,
+    "zoom_level": 17.34,
+    "max_iter": 2048,
+    "mode_640": true,
+    "palette": 38,
+    "note": "Embedded Julia set, cauliflower-type"
+  },
+  {
+    "name": "EJS DBL SPIRAL",
+    "cx": -1.768620774,
+    "cy": 0.002428273,
+    "zoom_level": 18.74,
+    "max_iter": 4095,
+    "mode_640": true,
+    "palette": 45,
+    "note": "Embedded Julia set, double-spiral type"
+  },
+  {
+    "name": "EJS BRANCH",
+    "cx": -1.7576852691,
+    "cy": 0.0176750996,
+    "zoom_level": 23.32,
+    "max_iter": 4095,
+    "mode_640": true,
+    "palette": 52,
+    "note": "Embedded Julia set, branch (filament)"
+  },
+  {
+    "name": "EJS NUCLEUS",
+    "cx": -0.7445398603,
+    "cy": 0.1217237736,
+    "zoom_level": 27.0,
+    "max_iter": 4095,
+    "mode_640": true,
+    "palette": 59,
+    "note": "Deep embedded Julia set in seahorse valley"
+  },
+  {
+    "name": "LOVE CANAL",
+    "cx": -0.235125,
+    "cy": 0.827225,
+    "zoom_level": 12.0,
+    "max_iter": 2048,
+    "mode_640": true,
+    "palette": 66,
+    "note": "Dewdney 1989 Sci-Am Love Canal feature"
+  },
+  {
+    "name": "P5 ISLAND DEEP",
+    "cx": 0.359259225,
+    "cy": 0.642513737,
+    "zoom_level": 8.0,
+    "max_iter": 1024,
+    "mode_640": true,
+    "palette": 73,
+    "note": "Period-5 island detailed center"
+  },
+  {
+    "name": "ELEPHANT MED",
+    "cx": 0.259899594,
+    "cy": 0.001612614,
+    "zoom_level": 14.0,
+    "max_iter": 2048,
+    "mode_640": true,
+    "palette": 80,
+    "note": "Deep elephant valley with medallions"
+  },
+  {
+    "name": "STARFISH",
+    "cx": -0.374004139,
+    "cy": 0.659792175,
+    "zoom_level": 16.0,
+    "max_iter": 2048,
+    "mode_640": true,
+    "palette": 87,
+    "note": "Sunburst/starfish radial pattern (original v0.10 POI)"
+  },
+  {
+    "name": "M3,1 WAKE 3/7",
+    "cx": -0.670209187903254,
+    "cy": 0.458060975296946,
+    "zoom_level": 15.0,
+    "max_iter": 2048,
+    "mode_640": true,
+    "palette": 4,
+    "note": "Branch tip, principal Misiurewicz of wake 3/7"
+  },
+  {
+    "name": "M11,1 WAKE 5/11",
+    "cx": -0.724112682973574,
+    "cy": 0.286456567676711,
+    "zoom_level": 15.29,
+    "max_iter": 2048,
+    "mode_640": true,
+    "palette": 11,
+    "note": "Branch tip, principal Misiurewicz of wake 5/11"
+  },
+  {
+    "name": "CONCHA APPROACH",
+    "cx": -1.74731071,
+    "cy": 0.0,
+    "zoom_level": 15.64,
+    "max_iter": 2048,
+    "mode_640": true,
+    "palette": 18,
+    "note": "Large 2-fold EJS in R2F(1/2B1)S.C(0), Mu-Ency Fig 4"
+  },
+  {
+    "name": "M7,1 WAKE 1/7",
+    "cx": 0.397391822296541,
+    "cy": 0.133511204871878,
+    "zoom_level": 16.0,
+    "max_iter": 2048,
+    "mode_640": true,
+    "palette": 25,
+    "note": "Branch tip, principal Misiurewicz of wake 1/7"
+  },
+  {
+    "name": "SH CUSP DEEP",
+    "cx": -0.75000582,
+    "cy": 0.00298255,
+    "zoom_level": 17.04,
+    "max_iter": 2048,
+    "mode_640": true,
+    "palette": 32,
+    "note": "Deep seahorse valley R.C(1/2-) cusp dwell figure"
+  },
+  {
+    "name": "EJS PERIOD 44",
+    "cx": -1.76886792,
+    "cy": 0.00392602,
+    "zoom_level": 17.29,
+    "max_iter": 2048,
+    "mode_640": true,
+    "palette": 39,
+    "note": "Period-44 embedded Julia set near P3 antenna"
+  },
+  {
+    "name": "JEWEL BOX",
+    "cx": -0.74542846,
+    "cy": 0.11300888,
+    "zoom_level": 17.65,
+    "max_iter": 2048,
+    "mode_640": true,
+    "palette": 46,
+    "note": "Rollo Silver Jewel Box, classic seahorse waypoint"
+  },
+  {
+    "name": "R2T P6 ISLAND",
+    "cx": -1.99637834,
+    "cy": 0.0,
+    "zoom_level": 18.23,
+    "max_iter": 4095,
+    "mode_640": true,
+    "palette": 53,
+    "note": "Period-6 island in real-axis R2t cascade to c=-2"
+  },
+  {
+    "name": "SH CUSP FINE",
+    "cx": -0.74999636,
+    "cy": 0.002972856,
+    "zoom_level": 19.04,
+    "max_iter": 4095,
+    "mode_640": true,
+    "palette": 60,
+    "note": "Finer seahorse valley R.C(1/2-) cusp dwell"
+  },
+  {
+    "name": "R2 HALF ISLE",
+    "cx": -1.249559196,
+    "cy": 0.030466443,
+    "zoom_level": 21.14,
+    "max_iter": 4095,
+    "mode_640": true,
+    "palette": 67,
+    "note": "Spiral-detail island in R2.1/2 child cusp"
+  },
+  {
+    "name": "R2T P7 ISLAND",
+    "cx": -1.9990964107298,
+    "cy": 0.0,
+    "zoom_level": 22.24,
+    "max_iter": 4095,
+    "mode_640": true,
+    "palette": 74,
+    "note": "Period-7 island in real-axis R2t cascade to c=-2"
+  },
+  {
+    "name": "SCEPTER MED",
+    "cx": -1.25450731,
+    "cy": -0.38338111,
+    "zoom_level": 22.78,
+    "max_iter": 4095,
+    "mode_640": true,
+    "palette": 81,
+    "note": "Scepter medallion at .1/2.C(1/2) cusp of P3 island"
+  },
+  {
+    "name": "BRANCH MED",
+    "cx": -1.25850351,
+    "cy": -0.38266514,
+    "zoom_level": 23.35,
+    "max_iter": 4095,
+    "mode_640": true,
+    "palette": 88,
+    "note": "Branch medallion type C EJS in P3 island branch"
+  },
+  {
+    "name": "EJS P3 DEEP",
+    "cx": -1.7499254344,
+    "cy": 3e-10,
+    "zoom_level": 23.68,
+    "max_iter": 4095,
+    "mode_640": true,
+    "palette": 5,
+    "note": "2-fold EJS deep inside P3 island, Cantor-dust"
+  },
+  {
+    "name": "NEEDLE MED",
+    "cx": -1.25320279,
+    "cy": -0.3850133,
+    "zoom_level": 23.79,
+    "max_iter": 4095,
+    "mode_640": true,
+    "palette": 12,
+    "note": "Needle medallion near island spike tip"
+  },
+  {
+    "name": "M3,1 1/3 LIMB TIP",
+    "cx": -0.2281554937,
+    "cy": 1.115142508,
+    "zoom_level": 11.0,
+    "max_iter": 1024,
+    "mode_640": true,
+    "palette": 19,
+    "note": "M(3,1) endpoint at the tip of the OTHER main branch of the 1/3 limb. Preperiod 3 period 1."
+  },
+  {
+    "name": "M_4,2 CASCADE 1",
+    "cx": -1.4303576325,
+    "cy": 0.0,
+    "zoom_level": 11.0,
+    "max_iter": 1024,
+    "mode_640": true,
+    "palette": 26,
+    "note": "M(4,2) first primary separator on the period-doubling cascade toward Feigenbaum. Boundary between chaotic bands of period 2 and 4."
+  },
+  {
+    "name": "M_8,4 CASCADE 2",
+    "cx": -1.4074051182,
+    "cy": 0.0,
+    "zoom_level": 13.0,
+    "max_iter": 2048,
+    "mode_640": true,
+    "palette": 33,
+    "note": "M(8,4) second primary separator on the Feigenbaum cascade. Next band-boundary below M_4,2 on the real axis."
+  },
+  {
+    "name": "M_16,8 CASCADE 3",
+    "cx": -1.4024921764,
+    "cy": 0.0,
+    "zoom_level": 14.5,
+    "max_iter": 2048,
+    "mode_640": true,
+    "palette": 40,
+    "note": "M(16,8) third primary separator. Approaches Feigenbaum point at -1.40115518909. Sits just rightward of FEIGENBAUM DEEP."
+  },
+  {
+    "name": "EJS P47 ALPHA",
+    "cx": -1.7688720239,
+    "cy": 0.0039323033,
+    "zoom_level": 19.0,
+    "max_iter": 4095,
+    "mode_640": true,
+    "palette": 47,
+    "note": "First-order pre-image island of period 47 in the embedded Julia ring surrounding the period-44 EJS center."
+  },
+  {
+    "name": "EJS P50 BETA",
+    "cx": -1.7688663431,
+    "cy": 0.0039289815,
+    "zoom_level": 19.5,
+    "max_iter": 4095,
+    "mode_640": true,
+    "palette": 54,
+    "note": "Period-50 child island in the Julia ring around EJS PERIOD 44. Different ray-position from EJS P47 ALPHA."
+  },
+  {
+    "name": "EJS WAKE 1/4",
+    "cx": -0.1601617454,
+    "cy": 1.0375719439,
+    "zoom_level": 13.0,
+    "max_iter": 2048,
+    "mode_640": true,
+    "palette": 61,
+    "note": "Embedded Julia set centered on the largest period-4 bulb in the longest filament near the 1/3 limb tip."
+  },
+  {
+    "name": "SH SPIRAL CONT",
+    "cx": -0.744538,
+    "cy": 0.1212,
+    "zoom_level": 11.0,
+    "max_iter": 1024,
+    "mode_640": true,
+    "palette": 68,
+    "note": "Spiral continuation in Seahorse Valley deep R2F(13/27B2). Zoom-sequence waypoint approaching JEWEL BOX/EJS NUCLEUS."
+  },
+  {
+    "name": "SH TAIL SPIRAL",
+    "cx": -0.7445366,
+    "cy": 0.1217208,
+    "zoom_level": 12.5,
+    "max_iter": 2048,
+    "mode_640": true,
+    "palette": 75,
+    "note": "Tail-spiral intermediate; same chain as EJS NUCLEUS but distinct waypoint at shallower zoom."
+  },
+  {
+    "name": "ELEPHANT MED 2",
+    "cx": -1.256841444,
+    "cy": -0.379421881,
+    "zoom_level": 22.8,
+    "max_iter": 4095,
+    "mode_640": true,
+    "palette": 82,
+    "note": "Mu-Ency named 'elephant medallion'. Adjacent to existing CAULIFLOWER MED but distinct embedded-Julia center."
+  },
+  {
+    "name": "R2T 1/2 ISLE STEP",
+    "cx": -1.2494989,
+    "cy": 0.030333,
+    "zoom_level": 12.7,
+    "max_iter": 2048,
+    "mode_640": true,
     "palette": 89,
-    "note": "Embedded Julia islands; deepest current benchmark scene."
+    "note": "Intermediate spiral-tip waypoint inside the R2.1/2.C(1/2) seahorse-west region. Step before R2 HALF ISLE."
+  },
+  {
+    "name": "BEYER STEP 13",
+    "cx": -0.7436438872,
+    "cy": 0.1318259043,
+    "zoom_level": 32.3,
+    "max_iter": 4095,
+    "mode_640": true,
+    "palette": 6,
+    "note": "Wolfgang Beyer step 13: 5.14e9x. Satellite seahorse tail with embedded Julia island. Deeper than JULIA ISLANDS."
+  },
+  {
+    "name": "BEYER STEP 14",
+    "cx": -0.743643887,
+    "cy": 0.1318259042,
+    "zoom_level": 35.8,
+    "max_iter": 4095,
+    "mode_640": true,
+    "palette": 13,
+    "note": "Wolfgang Beyer step 14: 5.998e10x. Two islands connected by tiny structures meeting at a satellite. Deepest published Beyer waypoint."
+  },
+  {
+    "name": "TRIPLE SPIRAL P4",
+    "cx": -0.1540378,
+    "cy": 1.03692215,
+    "zoom_level": 11.0,
+    "max_iter": 1024,
+    "mode_640": true,
+    "palette": 20,
+    "note": "Romera et al triple-spiral medallion. Zoom-sequence of existing TRIPLE MEDALLION at deeper magnification."
+  },
+  {
+    "name": "MERCATOR P189",
+    "cx": -1.7487645202,
+    "cy": 0.0,
+    "zoom_level": 25.0,
+    "max_iter": 4095,
+    "mode_640": true,
+    "palette": 27,
+    "note": "Period-189 minibrot in the EJS CAULI region (mathr reference point). Deeper than EJS CAULI."
+  },
+  {
+    "name": "MERCATOR P38",
+    "cx": -1.7487645763,
+    "cy": 0.0,
+    "zoom_level": 22.0,
+    "max_iter": 4095,
+    "mode_640": true,
+    "palette": 34,
+    "note": "Period-38 minibrot just beyond the EJS CAULI nucleus. Intermediate between EJS CAULI and MERCATOR P189."
+  },
+  {
+    "name": "M(3,3) WAKE 1/3 DP",
+    "cx": -0.1010963638,
+    "cy": 0.9562865108,
+    "zoom_level": 11.5,
+    "max_iter": 1024,
+    "mode_640": true,
+    "palette": 41,
+    "note": "Principal Misiurewicz branch point of wake 1/3 (3-spoke junction at the bulb). Zoom-sequence of existing MISIUREWICZ M4."
+  },
+  {
+    "name": "M(7,7) WAKE 1/4 DP",
+    "cx": 0.3663629834,
+    "cy": 0.5915337733,
+    "zoom_level": 11.5,
+    "max_iter": 1024,
+    "mode_640": true,
+    "palette": 48,
+    "note": "Principal Misiurewicz point of wake 1/4 (4-spoke branch hub). Zoom-sequence of existing MISIUREWICZ M4-2."
+  },
+  {
+    "name": "EJS P47 GAMMA",
+    "cx": -1.7688635553,
+    "cy": 0.0039192692,
+    "zoom_level": 19.0,
+    "max_iter": 4095,
+    "mode_640": true,
+    "palette": 55,
+    "note": "Second period-47 pre-image island, mirrored across the EJS P44 center from EJS P47 ALPHA."
   }
 ]

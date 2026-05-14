@@ -10,7 +10,7 @@ except ImportError as exc:
     raise SystemExit("ERROR: Pillow is required: python3 -m pip install Pillow") from exc
 
 
-N_BITS = 24
+N_BITS = 32
 BLOCK_W = 4
 MAGIC = 0xA
 
@@ -39,14 +39,26 @@ def decode_at(img, x0, y):
     for bit in bits:
         value = (value << 1) | bit
 
-    magic = (value >> 20) & 0xF
+    # 32-bit layout:
+    #   [31:28] magic 0xA
+    #   [27]    ms_enable
+    #   [26:25] mr_sel (00=16, 01=32, 10=64, 11=128)
+    #   [24:23] spare
+    #   [22:16] scene[6:0]
+    #   [15:12] iter_tier[3:0]
+    #   [11:0]  f10[11:0]
+    magic = (value >> 28) & 0xF
     if magic != MAGIC:
         return None
 
+    mr_sel = (value >> 25) & 0x3
     return {
         "bits": "".join(str(bit) for bit in bits),
         "magic": magic,
-        "scene": (value >> 16) & 0xF,
+        "ms_enable": (value >> 27) & 0x1,
+        "mr_sel": mr_sel,
+        "mr_dim": [16, 32, 64, 128][mr_sel],
+        "scene": (value >> 16) & 0x7F,
         "iter_tier": (value >> 12) & 0xF,
         "f10": value & 0xFFF,
         "value": value,
@@ -79,6 +91,7 @@ def main(argv):
     fps = result["f10"] / 10.0
     print(
         f"magic=0x{result['magic']:X} scene={result['scene']} "
+        f"ms={'On' if result['ms_enable'] else 'Off'} mr={result['mr_dim']} "
         f"iter_tier={result['iter_tier']} "
         f"f10={result['f10']} fps={fps:.1f} bits={result['bits']}"
     )
