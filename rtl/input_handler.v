@@ -54,12 +54,6 @@ module input_handler #(
     output reg                     key_bg_dim_off,       // H key: force overlay BG to Transparent
     output reg                     key_blank_text_on,    // K key: force overlay blanking timer ON
     output reg                     key_blank_text_off,   // L key: force overlay blanking timer OFF
-    output reg                     key_ms_on,            // S key: force Mariani-Silver ON
-    output reg                     key_ms_off,           // A key: force Mariani-Silver OFF
-    output reg                     key_mr_16,            // 1 key: force MIN_REGION_DIM = 16
-    output reg                     key_mr_32,            // 2 key: force MIN_REGION_DIM = 32
-    output reg                     key_mr_64,            // 3 key: force MIN_REGION_DIM = 64
-    output reg                     key_mr_128,           // 4 key: force MIN_REGION_DIM = 128
     input  wire                    auto_zoom_active,
     input  wire                    sync_from_auto_zoom,
     input  wire signed [WIDTH-1:0] sync_center_x,
@@ -138,12 +132,6 @@ always @(posedge clk or negedge rst_n) begin
         key_bg_dim_off       <= 1'b0;
         key_blank_text_on    <= 1'b0;
         key_blank_text_off   <= 1'b0;
-        key_ms_on            <= 1'b0;
-        key_ms_off           <= 1'b0;
-        key_mr_16            <= 1'b0;
-        key_mr_32            <= 1'b0;
-        key_mr_64            <= 1'b0;
-        key_mr_128           <= 1'b0;
     end else begin
         auto_zoom_toggle     <= 1'b0;
         auto_zoom_deactivate <= 1'b0;
@@ -155,12 +143,6 @@ always @(posedge clk or negedge rst_n) begin
         key_bg_dim_off       <= 1'b0;
         key_blank_text_on    <= 1'b0;
         key_blank_text_off   <= 1'b0;
-        key_ms_on            <= 1'b0;
-        key_ms_off           <= 1'b0;
-        key_mr_16            <= 1'b0;
-        key_mr_32            <= 1'b0;
-        key_mr_64            <= 1'b0;
-        key_mr_128           <= 1'b0;
         joy_prev        <= joystick;
         ps2_strobe_prev <= ps2_key[10];
         view_changed    <= 1'b0;
@@ -279,24 +261,12 @@ always @(posedge clk or negedge rst_n) begin
                         8'h4B: begin // L = Force overlay blanking timer OFF (always visible)
                             key_blank_text_off <= 1'b1;
                         end
-                        8'h1B: begin // S = Force Mariani-Silver ON
-                            key_ms_on <= 1'b1;
-                        end
-                        8'h1C: begin // A = Force Mariani-Silver OFF
-                            key_ms_off <= 1'b1;
-                        end
-                        8'h16: begin // 1 = Force MIN_REGION_DIM = 16
-                            key_mr_16 <= 1'b1;
-                        end
-                        8'h1E: begin // 2 = Force MIN_REGION_DIM = 32
-                            key_mr_32 <= 1'b1;
-                        end
-                        8'h26: begin // 3 = Force MIN_REGION_DIM = 64
-                            key_mr_64 <= 1'b1;
-                        end
-                        8'h25: begin // 4 = Force MIN_REGION_DIM = 128
-                            key_mr_128 <= 1'b1;
-                        end
+                        // S/A keys used to toggle Mariani-Silver, and
+                        // 1/2/3/4 used to set MIN_REGION_DIM. Both dropped
+                        // when MS was disabled in the shipping core (the
+                        // region_manager has an intermittent hang and the
+                        // diagnosed fix breaks HDMI synchronization).
+                        // Re-add when MS gets a proper sim-driven debug.
                         8'h1A, // Z = Toggle auto-zoom screensaver
                         8'h29: begin // Space = Toggle auto-zoom screensaver
                             auto_zoom_toggle <= 1'b1;

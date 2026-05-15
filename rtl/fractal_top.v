@@ -102,8 +102,6 @@ wire       always_show_poi;
 wire       osd_overlay_bg_dim;
 wire       key_bg_dim_on, key_bg_dim_off;
 wire       key_blank_text_on, key_blank_text_off;
-wire       key_ms_on, key_ms_off;
-wire       key_mr_16, key_mr_32, key_mr_64, key_mr_128;
 
 fractal_osd #(
     .WIDTH(WIDTH),
@@ -128,29 +126,17 @@ fractal_osd #(
 // ---- Verification-mode overrides (keys force on/off, default = follow OSD) ----
 // blank_text_override: 2'b00=follow OSD, 2'b01=force OFF (always visible), 2'b10=force ON (auto-blank)
 // bg_dim_override   : same encoding for the Overlay BG bit.
-// ms_override       : 2'b00=follow OSD, 2'b01=force OFF, 2'b10=force ON.
-// mr_override       : 3'b000=follow OSD, else 16/32/64/128 selected by 1/2/3/4 keys.
 reg [1:0] blank_text_override;
 reg [1:0] bg_dim_override;
-reg [1:0] ms_override;
-reg [2:0] mr_override;
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         blank_text_override <= 2'b00;
         bg_dim_override     <= 2'b00;
-        ms_override         <= 2'b00;
-        mr_override         <= 3'b000;
     end else begin
         if (key_blank_text_on)  blank_text_override <= 2'b10;
         if (key_blank_text_off) blank_text_override <= 2'b01;
         if (key_bg_dim_on)      bg_dim_override     <= 2'b10;
         if (key_bg_dim_off)     bg_dim_override     <= 2'b01;
-        if (key_ms_on)          ms_override         <= 2'b10;
-        if (key_ms_off)         ms_override         <= 2'b01;
-        if (key_mr_16)          mr_override         <= 3'b001;
-        if (key_mr_32)          mr_override         <= 3'b010;
-        if (key_mr_64)          mr_override         <= 3'b011;
-        if (key_mr_128)         mr_override         <= 3'b100;
     end
 end
 wire blank_text_enable = (blank_text_override == 2'b10) ? 1'b1 :
@@ -229,12 +215,6 @@ input_handler #(
     .key_bg_dim_off(key_bg_dim_off),
     .key_blank_text_on(key_blank_text_on),
     .key_blank_text_off(key_blank_text_off),
-    .key_ms_on(key_ms_on),
-    .key_ms_off(key_ms_off),
-    .key_mr_16(key_mr_16),
-    .key_mr_32(key_mr_32),
-    .key_mr_64(key_mr_64),
-    .key_mr_128(key_mr_128),
     .auto_zoom_active(auto_zoom_active),
     .sync_from_auto_zoom(auto_zoom_handoff),
     .sync_center_x(az_center_x),
@@ -522,32 +502,16 @@ wire [11:0] pipe_result_iter;
 wire        pipe_result_escaped;
 
 // Mariani-Silver toggle (OSD bit 25). When 0, the classic coord_generator
-// drives the dispatch port and there is no fill-bypass write traffic. When 1,
-// region_manager drives boundary-only coords to the pipeline and emits
-// interior-fill pixels directly to the framebuffer write mux.
-// Mariani-Silver toggle (OSD bit 25, override via S/A keys via ms_override).
-wire ms_enable = (ms_override == 2'b10) ? 1'b1 :
-                 (ms_override == 2'b01) ? 1'b0 :
-                                          status[25];
+// Mariani-Silver was attempted (region_manager.v + S/A keys + OSD toggle)
+// but exhibited an intermittent hang at MR=16 (most reliable) and at
+// MR=64/128/sometimes-32 (less so). The diagnosed root-cause fix breaks
+// HDMI synchronization on the MiSTer scaler. Until we can debug it
+// properly with simulation (see docs/SIMULATION.md), MS is disabled in
+// the shipping core. region_manager.v stays in the tree for future work.
+// See docs/MR16_HANG_REPORT.md / _V2.md and MR16_HANG_CHATGPT_PRO_V2.md
+// for the investigation transcript.
 
-// Min-region-dim selector: status[27:26] picks {16, 32, 64, 128}, override
-// via 1/2/3/4 keys via mr_override. Smaller values let Mariani-Silver
-// subdivide further (more decision overhead but finer fills); larger values
-// short-circuit to full-dispatch sooner.
-// mr_sel is the canonical 2-bit selector — used for both the lookup and the
-// telemetry strip encoding so they always agree.
-wire [1:0] mr_sel = (mr_override == 3'b001) ? 2'b00 :
-                    (mr_override == 3'b010) ? 2'b01 :
-                    (mr_override == 3'b011) ? 2'b10 :
-                    (mr_override == 3'b100) ? 2'b11 :
-                                              status[27:26];
-
-wire [7:0] ms_min_region_dim = (mr_sel == 2'b00) ? 8'd16  :
-                               (mr_sel == 2'b01) ? 8'd32  :
-                               (mr_sel == 2'b10) ? 8'd64  :
-                                                   8'd128;
-
-// ---- Coord source A: classic raster-order generator ----
+// ---- Coord source: classic raster-order generator (only source) ----
 wire                    cg_valid, cg_ready;
 wire [10:0]             cg_px;
 wire [9:0]              cg_py;
@@ -559,69 +523,25 @@ coord_generator #(
 ) u_coord_gen (
     .clk(clk), .rst_n(rst_n),
     .mode_640(effective_mode_640),
-    .start_frame(start_render & ~ms_enable),
+    .start_frame(start_render),
     .center_x(center_x), .center_y(center_y), .step(step),
     .ready(cg_ready), .valid(cg_valid),
     .pixel_x(cg_px), .pixel_y(cg_py),
     .cr(cg_cr), .ci(cg_ci), .frame_done(cg_frame_done)
 );
 
-// ---- Coord source B: Mariani-Silver region manager ----
-// N_SLOTS=4 / N_SLOTS=2 both blew the device budget (155% / 149% ALMs),
-// because muxing the coord-table read address through disp_slot prevented
-// M10K inference (combinational read → tables synthesized as 56K registers
-// = ~31K extra ALMs).  Falling back to N_SLOTS=1 (= sequential region v1
-// behaviour, single read path, M10K inferred cleanly).  Pipelining can be
-// revisited later by adding a register stage on the coord-table read.
+// ---- Pipeline coord port — direct pass-through from coord_generator ----
 localparam RID_W = 1;
-wire                    rm_valid, rm_ready;
-wire [10:0]             rm_px;
-wire [9:0]              rm_py;
-wire signed [WIDTH-1:0] rm_cr, rm_ci;
-wire [RID_W-1:0]        rm_region_id;
-wire                    rm_frame_done;
-wire                    rm_fill_valid;
-wire [10:0]             rm_fill_x;
-wire [9:0]              rm_fill_y;
-wire [11:0]             rm_fill_iter;
-wire                    rm_fill_escaped;
-wire [RID_W-1:0]        pipe_result_region_id;
-
-region_manager #(
-    .WIDTH(WIDTH), .FRAC_BITS(FRAC_BITS), .N_SLOTS(1), .RID_W(RID_W)
-) u_region_manager (
-    .clk(clk), .rst_n(rst_n),
-    .mode_640(effective_mode_640),
-    .start_frame(start_render & ms_enable),
-    .frame_done(rm_frame_done),
-    .min_region_dim(ms_min_region_dim),
-    .center_x(center_x), .center_y(center_y), .step(step),
-    .max_iter(max_iter),
-    .coord_ready(rm_ready),
-    .coord_valid(rm_valid),
-    .coord_px(rm_px), .coord_py(rm_py),
-    .coord_cr(rm_cr), .coord_ci(rm_ci),
-    .coord_region_id(rm_region_id),
-    .result_valid(pipe_result_valid),
-    .result_x(pipe_result_x), .result_y(pipe_result_y),
-    .result_iter(pipe_result_iter), .result_escaped(pipe_result_escaped),
-    .result_region_id(pipe_result_region_id),
-    .fill_valid(rm_fill_valid),
-    .fill_x(rm_fill_x), .fill_y(rm_fill_y),
-    .fill_iter(rm_fill_iter), .fill_escaped(rm_fill_escaped)
-);
-
-// ---- Mux: pipeline coord port ----
-wire                    pipe_coord_valid       = ms_enable ? rm_valid       : cg_valid;
-wire [10:0]             pipe_coord_px          = ms_enable ? rm_px          : cg_px;
-wire [9:0]              pipe_coord_py          = ms_enable ? rm_py          : cg_py;
-wire signed [WIDTH-1:0] pipe_coord_cr          = ms_enable ? rm_cr          : cg_cr;
-wire signed [WIDTH-1:0] pipe_coord_ci          = ms_enable ? rm_ci          : cg_ci;
-wire [RID_W-1:0]        pipe_coord_region_id   = ms_enable ? rm_region_id   : {RID_W{1'b0}};
-wire                    pipe_coord_frame_done  = ms_enable ? rm_frame_done  : cg_frame_done;
+wire                    pipe_coord_valid       = cg_valid;
+wire [10:0]             pipe_coord_px          = cg_px;
+wire [9:0]              pipe_coord_py          = cg_py;
+wire signed [WIDTH-1:0] pipe_coord_cr          = cg_cr;
+wire signed [WIDTH-1:0] pipe_coord_ci          = cg_ci;
+wire [RID_W-1:0]        pipe_coord_region_id   = {RID_W{1'b0}};
+wire                    pipe_coord_frame_done  = cg_frame_done;
 wire                    pipe_coord_ready;
-assign cg_ready = ~ms_enable & pipe_coord_ready;
-assign rm_ready =  ms_enable & pipe_coord_ready;
+wire [RID_W-1:0]        pipe_result_region_id;
+assign cg_ready = pipe_coord_ready;
 
 pixel_pipeline #(
     .N_ITERATORS(N_ITERATORS),
@@ -695,16 +615,13 @@ end
 // Write addr: y*H_RES + x.
 //   320 mode: y*320 + x = (y<<8) + (y<<6) + x
 //   640 mode: y*640 + x = (y<<9) + (y<<7) + x
-// Two write sources: (a) pipe_result_valid (iter pipeline output) and
-// (b) rm_fill_valid (region_manager interior-fill bypass, Mariani-Silver
-// only). They never collide in v1 because region_manager waits for the iter
-// pipeline to drain before entering its S_FILL state.
-wire        fb_use_fill = rm_fill_valid;
-wire [10:0] fb_wr_pixel_x = fb_use_fill ? rm_fill_x        : pipe_result_x;
-wire [9:0]  fb_wr_pixel_y = fb_use_fill ? rm_fill_y        : pipe_result_y;
-wire [11:0] fb_wr_iter    = fb_use_fill ? rm_fill_iter     : pipe_result_iter;
-wire        fb_wr_escaped = fb_use_fill ? rm_fill_escaped  : pipe_result_escaped;
-wire        fb_wr_en      = fb_use_fill | pipe_result_valid;
+// Single write source: pipe_result_valid (iter pipeline output).
+// (Mariani-Silver fill-bypass was removed when MS was disabled.)
+wire [10:0] fb_wr_pixel_x = pipe_result_x;
+wire [9:0]  fb_wr_pixel_y = pipe_result_y;
+wire [11:0] fb_wr_iter    = pipe_result_iter;
+wire        fb_wr_escaped = pipe_result_escaped;
+wire        fb_wr_en      = pipe_result_valid;
 
 wire [FB_ADDR_WIDTH-1:0] wr_y = {9'd0, fb_wr_pixel_y[8:0]};
 wire [FB_ADDR_WIDTH-1:0] wr_x = {7'd0, fb_wr_pixel_x[10:0]};
@@ -868,15 +785,11 @@ end
 // In benchmark mode, encode machine-readable telemetry into 32 tiny 4x4
 // color blocks at the top-left:
 //   bits 31..28 = magic A
-//   bit  27     = ms_enable
-//   bits 26..25 = mr_sel  (00=16, 01=32, 10=64, 11=128)
-//   bits 24..23 = spare
+//   bits 27..23 = spare (was ms_enable + mr_sel + 2 spare; MS dropped)
 //   bits 22..16 = scene index (7 bits — 86-POI catalogue)
 //   bits 15..12 = iter_tier
 //   bits 11..0  = F10
-// The Python decoder (tools/bench_decode_screenshot.py) must match this
-// layout exactly.
-wire [31:0] benchmark_telemetry = {4'hA, ms_enable, mr_sel, 2'b0,
+wire [31:0] benchmark_telemetry = {4'hA, 5'b0,
                                    benchmark_idx[6:0],
                                    bench_iter_tier,
                                    last_bench_window_frames[11:0]};

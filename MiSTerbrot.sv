@@ -153,14 +153,10 @@ localparam CONF_STR = {
 	"O[22],Resolution,320x240,640x240;",
 	"O[23],Overlay BG,Transparent,Dimmed;",
 	"O[17:15],Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
-	"P1,Optimisations;",
-	"P1-;",
-	"P1-, Toggle each optimisation independently to see how much it buys;",
-	"P1-, you on different POIs. Off = always iterate every pixel.;",
-	"P1-;",
-	"P1O[25],Mariani-Silver (A1),Off,On;",
-	"P1O[27:26],Min Region (A1),16,32,64,128;",
-	"P1O[18],Buffer,Double,Single;",
+	// Mariani-Silver was on the Optimisations page but had an intermittent
+	// hang and the diagnosed fix breaks HDMI. MS dropped from the shipping
+	// core. See docs/MR16_HANG_REPORT_V2.md and MR16_HANG_CHATGPT_PRO_V2.md.
+	"O[18],Buffer,Double,Single;",
 		"-;",
 	"-, Arrows/WASD/D-Pad: Pan;",
 	"-, +/-/PgUp/PgDn: Zoom;",
@@ -173,7 +169,6 @@ localparam CONF_STR = {
 	"-, B: Benchmark mode toggle;",
 	"-, V: Benchmark next scene;",
 	"-, S/A: Mariani-Silver On/Off;",
-	"-, 1/2/3/4: Min Region 16/32/64/128;",
 	"-, G/H: Overlay BG Dim On/Off;",
 	"-, K/L: Overlay Blanking On/Off;",
 	"-, Y/R/Home: Reset View;",

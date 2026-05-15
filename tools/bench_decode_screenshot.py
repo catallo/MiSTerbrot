@@ -39,11 +39,9 @@ def decode_at(img, x0, y):
     for bit in bits:
         value = (value << 1) | bit
 
-    # 32-bit layout:
+    # 32-bit layout (MS was dropped — see docs/MR16_HANG_REPORT_V2.md):
     #   [31:28] magic 0xA
-    #   [27]    ms_enable
-    #   [26:25] mr_sel (00=16, 01=32, 10=64, 11=128)
-    #   [24:23] spare
+    #   [27:23] spare (was ms_enable + mr_sel + 2 spare)
     #   [22:16] scene[6:0]
     #   [15:12] iter_tier[3:0]
     #   [11:0]  f10[11:0]
@@ -51,13 +49,9 @@ def decode_at(img, x0, y):
     if magic != MAGIC:
         return None
 
-    mr_sel = (value >> 25) & 0x3
     return {
         "bits": "".join(str(bit) for bit in bits),
         "magic": magic,
-        "ms_enable": (value >> 27) & 0x1,
-        "mr_sel": mr_sel,
-        "mr_dim": [16, 32, 64, 128][mr_sel],
         "scene": (value >> 16) & 0x7F,
         "iter_tier": (value >> 12) & 0xF,
         "f10": value & 0xFFF,
@@ -91,7 +85,6 @@ def main(argv):
     fps = result["f10"] / 10.0
     print(
         f"magic=0x{result['magic']:X} scene={result['scene']} "
-        f"ms={'On' if result['ms_enable'] else 'Off'} mr={result['mr_dim']} "
         f"iter_tier={result['iter_tier']} "
         f"f10={result['f10']} fps={fps:.1f} bits={result['bits']}"
     )
