@@ -161,6 +161,7 @@ RTL:
 - `rtl/auto_zoom.v`: screensaver / playlist-driven auto-zoom controller (67 POIs, snap-mode S_HOLD/S_SNAP_LOAD states)
 - `rtl/poi_generated.vh`: auto-generated POI data (rom_cx/cy, target_max_zoom_x10, target_zoom_int, target_name_full case bodies). Source: `tools/poi_master.json` via `tools/poi_encode.py`. Do not hand-edit.
 - `rtl/fractal_osd.v`: decodes MiSTer OSD status bits into core parameters
+- `rtl/region_manager.v`: Mariani-Silver quadtree region splitter. **Not instantiated** by `fractal_top.v` in the shipping core (Quartus optimises it away). Kept in tree for future sim-driven debug — see `docs/MR16_HANG_REPORT*.md` for why MS was disabled.
 
 MiSTer framework support:
 

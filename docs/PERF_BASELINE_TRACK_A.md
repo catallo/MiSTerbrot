@@ -25,6 +25,16 @@ with `tools/bench_diff.py <before.json> <after.json>`.
 > **gone for good**. F10=596 on a fast scene means "≥60 fps"; the few scenes
 > faster than 60 fps don't need precise measurement anyway.
 
+> **Mariani-Silver — disabled in shipping core (since 2026-05-15).** MS
+> (region_manager.v + S/A keys + 1/2/3/4 keys + OSD toggle) was end-to-end
+> functional in earlier sessions but exhibits an intermittent hang. The
+> diagnosed root-cause fix breaks HDMI scaler synchronization regardless of
+> timing margin. Until a Verilator harness lets us debug the HDMI-side
+> interaction, MS is dropped from the shipping core and from the bench
+> sweep. Track A's per-POI `prefers_ms` plan (was A1.4) is paused.
+> Investigation transcript: `docs/MR16_HANG_REPORT*.md` and
+> `docs/MR16_HANG_CHATGPT_PRO*.md`.
+
 ---
 
 ## 2026-05-14 · `86poi-vsync-clean` — Full 86-POI catalogue baseline

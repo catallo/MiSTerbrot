@@ -19,24 +19,24 @@ Going to 640×480 doubles the framebuffer to ~1 MB, which doesn't fit in BRAM. S
 
 Five low-risk improvements that compound. Done before resolution change, they make 480p feel viable rather than painful.
 
-### A1. Mariani–Silver interior detection — implemented (v1 shipped, v2 in flight)
+### A1. Mariani–Silver interior detection — **deferred pending sim**
 
 Classical fractal speedup. Trace the boundary of a rectangular region of pixels; if all boundary pixels classify identically (all interior, or all exterior with similar escape count), fill the interior of the rectangle from that classification *without* iterating each pixel.
 
-**Reality check from v1 bench**: original 5–10× estimate was too optimistic. MS dispatches the boundary, which is geometrically nearest the fractal — i.e. the pixels with the **highest** iter counts. Baseline averages those in with cheap interior (max_iter via precheck) and cheap deep-exterior; MS concentrates on the expensive subset. Net result: 2 wins out of 10 bench scenes (TRIPLE SPIRAL +83%, JULIA ISLANDS +73%), most other scenes flat or worse. See `PERF_BASELINE_TRACK_A.md` for details.
+**Status (2026-05-15):** code is in `rtl/region_manager.v` (still in tree, still in `files.qip` but not instantiated by `fractal_top.v`). The shipping core does **not** use MS — it was disabled when an intermittent hang surfaced that turned out to be a top-level race in `fractal_top.v`'s render FSM, not in `region_manager` itself. The diagnosed two-line fix removes the hang on VGA but breaks HDMI scaler synchronization regardless of timing margin. Until we have a Verilator harness to debug the HDMI-side interaction, MS is off the critical path. Full investigation transcript in `docs/MR16_HANG_REPORT.md`, `docs/MR16_HANG_REPORT_V2.md`, `docs/MR16_HANG_CHATGPT_PRO.md`, `docs/MR16_HANG_CHATGPT_PRO_V2.md`.
 
-This drove a re-scoping of A1 into sub-items:
+**Reality check from v1 bench** (when MS was usable): original 5–10× estimate was too optimistic. MS dispatches the boundary, which is geometrically nearest the fractal — i.e. the pixels with the **highest** iter counts. Baseline averages those in with cheap interior (max_iter via precheck) and cheap deep-exterior; MS concentrates on the expensive subset. Net result: 2 wins out of 10 bench scenes (TRIPLE SPIRAL +83%, JULIA ISLANDS +73%), most other scenes flat or worse. See `PERF_BASELINE_TRACK_A.md` for details.
 
-- **A1.1 ✓** — `MIN_REGION_DIM` exposed as OSD knob (16/32/64/128). Sweep showed best MR varies per-scene by 8×, no global setting works.
-- **A1.2** (build in flight) — 4-slot region pipelining + region_id tag through `pixel_pipeline.v`. Removes iterator starvation between regions. Expected 1.3–1.5× on slow scenes.
-- **A1.3** (pending) — cache parent-boundary iter results so split children skip the shared boundary pixels. Direct attack on the redundant-work overhead at deep recursion.
-- **A1.4** (planned) — per-POI `prefers_ms` flag in `tools/poi_master.json`, driven by an expanded 86-POI benchmark. MS toggles automatically per POI based on empirical data. This is the headline UX win — preserve the gains, eliminate the regressions.
-- **A1.bench** — vsync-bypass in benchmark mode so F10 reflects raw compute, not the 60 fps display cap.
+The originally-planned sub-items (kept for reference; all blocked on the MS hang resolution):
+
+- **A1.1 ✓** — `MIN_REGION_DIM` exposed as OSD knob (16/32/64/128). Sweep showed best MR varies per-scene by 8×, no global setting works. *(Now: OSD entry removed; MR was hardcoded to 32 as the only verified-stable value before MS was disabled.)*
+- **A1.2** (parked) — 4-slot region pipelining + region_id tag through `pixel_pipeline.v`. Removes iterator starvation between regions. Expected 1.3–1.5× on slow scenes.
+- **A1.3** (parked) — cache parent-boundary iter results so split children skip the shared boundary pixels. Direct attack on the redundant-work overhead at deep recursion.
+- **A1.4** (parked) — per-POI `prefers_ms` flag in `tools/poi_master.json`, driven by the 86-POI benchmark. MS toggles automatically per POI based on empirical data. This was the planned headline UX win.
+- **A1.bench** — ~~vsync-bypass in benchmark mode so F10 reflects raw compute~~. Reverted: bypass broke HDMI + screenshots. F10 is now permanently capped at vsync (~60 fps); see `docs/PERF_BASELINE_TRACK_A.md`.
 - **A1.fix** — closed clk_iter timing at +0.424 ns slack via seed sweep (Quartus seed 5).
 
-Cost: ~600 lines RTL total (`region_manager.v` + minimal pixel_pipeline + fractal_top changes), 9 M10K blocks for coord tables. No new DSPs.
-
-Effort: ~1 week so far. A1.4 (per-POI flag + 86-scene bench expansion) is the next deliverable.
+**Prerequisite for resuming A1:** Verilator harness for `fractal_top.v` + `region_manager.v` so the render-FSM race + HDMI scaler interaction can be probed cycle-accurately without burning 25-min build cycles per experiment. See `docs/SIMULATION.md`.
 
 ### A2. Real-axis symmetry (cy = 0 POIs)
 

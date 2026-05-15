@@ -75,9 +75,7 @@ MiSTer scaler on its way to HDMI):
 | Bits  | Field        | Notes                                              |
 |------:|--------------|----------------------------------------------------|
 | 31:28 | magic `0xA`  | self-check; rejects non-bench captures             |
-| 27    | `ms_enable`  | Mariani-Silver state (1 = on)                      |
-| 26:25 | `mr_sel`     | Min Region: 00=16, 01=32, 10=64, 11=128            |
-| 24:23 | spare        | reserved for future use                            |
+| 27:23 | spare        | reserved for future use (was `ms_enable` + `mr_sel`) |
 | 22:16 | `scene_idx`  | 7 bits — 86-POI catalogue                          |
 | 15:12 | `iter_tier`  | max-iteration tier (see table below)               |
 | 11:0  | `F10`        | frames completed in the last 10-second window      |
@@ -119,9 +117,7 @@ from the wrong core, or with unexpected capture scaling/cropping.
 | Block(s) | Bit(s)  | Field        |
 |---------:|---------|--------------|
 | 0–3      | 31..28  | magic `0xA` (Y B Y B)      |
-| 4        | 27      | MS state                   |
-| 5–6      | 26..25  | MR selector                |
-| 7–8      | 24..23  | spare                      |
+| 4–8      | 27..23  | spare                      |
 | 9–15     | 22..16  | scene index                |
 | 16–19    | 15..12  | iter tier                  |
 | 20–31    | 11..0   | F10                        |
@@ -132,16 +128,10 @@ from the wrong core, or with unexpected capture scaling/cropping.
 |-----|----------------------------------------|
 | B   | Toggle benchmark mode                  |
 | V   | Advance to next benchmark scene        |
-| S   | Force Mariani-Silver ON  (overrides OSD)|
-| A   | Force Mariani-Silver OFF (overrides OSD)|
-| 1   | Force MIN_REGION_DIM = 16              |
-| 2   | Force MIN_REGION_DIM = 32              |
-| 3   | Force MIN_REGION_DIM = 64              |
-| 4   | Force MIN_REGION_DIM = 128             |
 
-S/A and 1/2/3/4 are sticky after first press (OSD value wins until you press
-one). Per the verification-key convention, there is no "follow OSD again"
-reset until core reload.
+(S/A and 1/2/3/4 used to control Mariani-Silver and MIN_REGION_DIM
+respectively, but Mariani-Silver was dropped from the shipping core. See
+`docs/MR16_HANG_REPORT_V2.md` and the related ChatGPT Pro analysis.)
 
 ## Capture And Decode
 
