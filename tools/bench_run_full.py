@@ -1,53 +1,53 @@
 #!/usr/bin/env python3
-"""Full Track A sweep: 86 POIs × 5 (MS, MR) conditions = 430 measurements.
+"""Multi-condition Track A sweep driver.
 
-Conditions:
-  1. MS off            (MR irrelevant when MS is off)
-  2. MS on + MR = 16
-  3. MS on + MR = 32
-  4. MS on + MR = 64
-  5. MS on + MR = 128
+For each (label, key_sequence) entry in CONDITIONS, reload the core, send
+the keys to set up the configuration, then invoke bench_run.py to walk the
+86 scenes. One JSON per condition lands in tools/benchmark_results_full/.
 
-For each condition: reload the core (resets all sticky key overrides), press
-S/A to set MS, optionally press 1/2/3/4 to set MR, then invoke bench_run.py
-to walk the 86 scenes. Each condition takes ~18 minutes; total ~95 min.
+Currently a single condition: MS off (Mariani-Silver dropped from the
+shipping core — see docs/MR16_HANG_REPORT_V2.md). Add new conditions to
+CONDITIONS as future features land:
 
-Output: one JSON per condition in tools/benchmark_results_full/.
+  ("label",  ["key1", "key2", ...])
 
 Usage:
     tools/bench_run_full.py
     tools/bench_run_full.py --host 10.0.0.8
-    tools/bench_run_full.py --conditions ms-off,ms-on-mr16   # subset
+    tools/bench_run_full.py --rbf MiSTerbrot_20260516.rbf
+    tools/bench_run_full.py --conditions ms-off
 """
 
 import argparse
 import subprocess
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MISTERCLAW = ROOT / "tools" / "misterclaw-send"
 BENCH_RUN = ROOT / "tools" / "bench_run.py"
 DEFAULT_HOST = "10.0.0.8"
-RBF_PATH = "/media/fat/_Other/MiSTerbrot_20260514.rbf"
+DEFAULT_RBF = "MiSTerbrot_" + datetime.now().strftime("%Y%m%d") + ".rbf"
 
-# (label, ms_key, mr_key)  —  ms_key sets MS via S/A; mr_key (or None) sets MR via 1/2/3/4
+# (label, key_sequence) — keys are sent in order between core reload and
+# bench_run.py invocation. Empty list = run with default config.
 CONDITIONS = [
-    ("ms-off",       "A", None),
-    ("ms-on-mr16",   "S", "1"),
-    ("ms-on-mr32",   "S", "2"),
-    ("ms-on-mr64",   "S", "3"),
-    ("ms-on-mr128",  "S", "4"),
+    ("ms-off",  []),
+    # Future examples (add when supported):
+    # ("ms-on",   ["S"]),
+    # ("ms-on-mr64", ["S", "3"]),
+    # ("palette-fire", ["P", "P"]),  # whatever
 ]
 
 
-def reload_core(host):
+def reload_core(host, rbf):
     subprocess.run(
         ["sshpass", "-p", "1", "ssh",
          "-o", "StrictHostKeyChecking=accept-new",
          f"root@{host}",
-         f"echo 'load_core {RBF_PATH}' > /dev/MiSTer_cmd"],
+         f"echo 'load_core /media/fat/_Other/{rbf}' > /dev/MiSTer_cmd"],
         check=True, capture_output=True, timeout=15,
     )
     time.sleep(6)  # let the core fully reload
@@ -62,15 +62,13 @@ def send_key(host, key):
     time.sleep(0.5)
 
 
-def run_condition(host, label, ms_key, mr_key, wait, out_dir):
+def run_condition(host, rbf, label, keys, wait, out_dir):
     print(f"\n========== {label} ==========")
-    print(f">> Reloading core")
-    reload_core(host)
-    print(f">> Setting MS via key '{ms_key}'")
-    send_key(host, ms_key)
-    if mr_key is not None:
-        print(f">> Setting MR via key '{mr_key}'")
-        send_key(host, mr_key)
+    print(f">> Reloading core ({rbf})")
+    reload_core(host, rbf)
+    for key in keys:
+        print(f">> Sending key '{key}'")
+        send_key(host, key)
     out_path = out_dir / f"benchmark_results_{label}.json"
     print(f">> bench_run.py → {out_path}")
     rc = subprocess.run(
@@ -90,12 +88,15 @@ def run_condition(host, label, ms_key, mr_key, wait, out_dir):
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--host", default=DEFAULT_HOST)
+    p.add_argument("--rbf", default=DEFAULT_RBF,
+                   help=f"RBF filename to load (default: {DEFAULT_RBF})")
     p.add_argument("--wait", type=float, default=12.0,
                    help="bench_run --wait per scene (default 12)")
     p.add_argument("--out-dir", default="tools/benchmark_results_full",
                    help="Output directory for per-condition JSONs")
     p.add_argument("--conditions", default=None,
-                   help="Comma-separated labels to run (default: all 5)")
+                   help=f"Comma-separated labels to run (default: all "
+                        f"{len(CONDITIONS)})")
     args = p.parse_args()
 
     out_dir = Path(args.out_dir)
@@ -114,8 +115,9 @@ def main():
     print(f"Out: {out_dir}")
 
     results = {}
-    for label, ms_key, mr_key in conditions:
-        ok = run_condition(args.host, label, ms_key, mr_key, args.wait, out_dir)
+    for label, keys in conditions:
+        ok = run_condition(args.host, args.rbf, label, keys,
+                           args.wait, out_dir)
         results[label] = "ok" if ok else "FAILED"
 
     print("\n\n========== SUMMARY ==========")
