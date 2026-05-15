@@ -37,6 +37,48 @@ with `tools/bench_diff.py <before.json> <after.json>`.
 
 ---
 
+## 2026-05-16 · `a2-sym` — A2 real-axis symmetry exploitation
+
+Real-axis symmetry: when `center_y == 0` we iterate only rows 0..120 and
+mirror-write rows 121..239 from row `(240-y)` via a 32-deep FIFO that drains
+into the framebuffer write port whenever the pipeline isn't producing a
+result. Latched per-frame so auto-zoom drift can't corrupt mid-frame.
+
+Build: `MiSTerbrot_20260516.rbf` (Quartus 17.0.2 Lite). Worst-case setup
+slack +0.414 ns on FPGA_CLK1_50. 109 warnings, 0 errors. ~24 min build.
+
+Diff vs `ms-off` (2026-05-15) over the full 86-POI catalogue:
+
+```
+Geometric mean speedup: 1.11x (+11.3%)
+```
+
+17 of 86 POIs have `center_y == 0`. Of those:
+
+| Outcome | Count | Examples |
+|---|---|---|
+| ~2.00× (clean halving) | 8 | P3 ISLAND, P3 ISLAND TIP, P6 SUB BULB, CONCHA APPROACH, M_4,2 CASCADE 1, R2T P7 ISLAND, MERCATOR P189, MERCATOR P38 |
+| 1.50× | 2 | EJS CAULI, M_8,4 CASCADE 2 |
+| 1.79–1.96× | 3 | FEIGENBAUM ZOOM, FEIGENBAUM DEEP, R2T P6 ISLAND |
+| 1.34–1.67× (other bottleneck) | 2 | M_16,8 CASCADE 3, FEIGENBAUM |
+| 1.00× (already vsync-capped at 59.6) | 2 | MISIUREWICZ -1.94, MISIUREWICZ -1.84 |
+
+Non-real-axis POIs: all within ±2 % of baseline (measurement noise — F10
+resolution is 1 frame in 10 s = 0.1 fps).
+
+Visual verification: confirmed by reading FEIGENBAUM and P3 ISLAND
+screenshots from the bench sweep. Both perfectly symmetric across the
+horizontal centerline. The thin black horizontal line at `y=120` visible in
+some scenes is the actual Mandelbrot antenna along the real axis, not a
+rendering artefact.
+
+Why slightly under prediction (+11.3% measured vs +13% predicted): 2 POIs
+were already vsync-saturated at 59.6 fps in baseline, and a few have
+secondary bottlenecks (probably write-FIFO serialization — a 2× compute
+reduction needs the write rate to actually halve too).
+
+---
+
 ## 2026-05-14 · `86poi-vsync-clean` — Full 86-POI catalogue baseline
 
 First sweep over the full 86-POI benchmark catalogue (`gen_full_benchmarks.py`

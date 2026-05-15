@@ -511,6 +511,26 @@ wire        pipe_result_escaped;
 // See docs/MR16_HANG_REPORT.md / _V2.md and MR16_HANG_CHATGPT_PRO_V2.md
 // for the investigation transcript.
 
+// ---- Real-axis symmetry detection (A2) ----
+// Mandelbrot is symmetric across ci = 0.  When the view is centred on
+// the real axis (center_y == 0), we can compute only rows 0..120 and
+// mirror-write rows 121..239 — ~1.98× speedup on applicable POIs (real
+// axis Feigenbaum / antenna / half the seahorse cascade).
+//
+// Latched at start_render so it can't change mid-frame (auto_zoom drift
+// could otherwise change center_y between scan and finish).
+//
+// Strict equality `== 0` is intentional: catalogue real-axis POIs use
+// exactly 0.  As soon as auto-zoom drifts to non-zero, sym_active goes
+// false and we render the full frame — no risk of asymmetric corruption
+// when center_y is "almost" 0.
+wire cy_is_zero       = (center_y == {WIDTH{1'b0}});
+reg  sym_active_frame;
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n)             sym_active_frame <= 1'b0;
+    else if (start_render)  sym_active_frame <= cy_is_zero;
+end
+
 // ---- Coord source: classic raster-order generator (only source) ----
 wire                    cg_valid, cg_ready;
 wire [10:0]             cg_px;
@@ -524,6 +544,7 @@ coord_generator #(
     .clk(clk), .rst_n(rst_n),
     .mode_640(effective_mode_640),
     .start_frame(start_render),
+    .symmetry_active(sym_active_frame),
     .center_x(center_x), .center_y(center_y), .step(step),
     .ready(cg_ready), .valid(cg_valid),
     .pixel_x(cg_px), .pixel_y(cg_py),
@@ -611,17 +632,86 @@ always @(posedge clk or negedge rst_n) begin
     end
 end
 
+// ---- Mirror-write FIFO (real-axis symmetry, A2) ----
+// When sym_active_frame, every pipeline result for row y in [1..119]
+// also needs a mirror write to row (240-y).  The framebuffer has a
+// single write port per bank, so we serialise: original on the cycle
+// pipe_result_valid asserts, mirror drains when no original is
+// pending.
+//
+// Sizing: pipeline result rate ~0.28/cycle average (24 iterators,
+// hundreds of cycles per pixel), so steady-state enqueue rate (with
+// mirroring) is ~0.56/cycle — well under the 1/cycle drain rate.
+// Worst-case burst: collect FSM walks 24 consecutive done slots,
+// queueing 24 mirrors before pipeline goes quiet for at least the
+// next-batch-completion time.  Depth 32 absorbs that with margin.
+//
+// Flushed on start_render — pending mirrors from a now-stale frame
+// must not bleed into the new one.
+localparam SYMQ_DEPTH = 32;
+localparam SYMQ_AW    = 5;   // log2(SYMQ_DEPTH)
+reg [10:0] symq_x    [0:SYMQ_DEPTH-1];
+reg [9:0]  symq_y    [0:SYMQ_DEPTH-1];
+reg [11:0] symq_iter [0:SYMQ_DEPTH-1];
+reg        symq_esc  [0:SYMQ_DEPTH-1];
+reg [SYMQ_AW:0] symq_wr_ptr, symq_rd_ptr;  // 1 extra bit for full/empty
+
+wire symq_empty = (symq_wr_ptr == symq_rd_ptr);
+wire symq_full  = (symq_wr_ptr[SYMQ_AW-1:0] == symq_rd_ptr[SYMQ_AW-1:0]) &&
+                  (symq_wr_ptr[SYMQ_AW]     != symq_rd_ptr[SYMQ_AW]);
+
+wire need_mirror_now = sym_active_frame &&
+                       (pipe_result_y >= 10'd1) &&
+                       (pipe_result_y <= 10'd119);
+wire mirror_drain    = !pipe_result_valid && !symq_empty;
+
+wire [10:0] mirror_x    = symq_x   [symq_rd_ptr[SYMQ_AW-1:0]];
+wire [9:0]  mirror_y    = symq_y   [symq_rd_ptr[SYMQ_AW-1:0]];
+wire [11:0] mirror_iter = symq_iter[symq_rd_ptr[SYMQ_AW-1:0]];
+wire        mirror_esc  = symq_esc [symq_rd_ptr[SYMQ_AW-1:0]];
+
+integer symqi;
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        symq_wr_ptr <= {(SYMQ_AW+1){1'b0}};
+        symq_rd_ptr <= {(SYMQ_AW+1){1'b0}};
+        for (symqi = 0; symqi < SYMQ_DEPTH; symqi = symqi + 1) begin
+            symq_x[symqi]    <= 11'd0;
+            symq_y[symqi]    <= 10'd0;
+            symq_iter[symqi] <= 12'd0;
+            symq_esc[symqi]  <= 1'b0;
+        end
+    end else if (start_render) begin
+        // Frame restart — discard pending mirror writes from the
+        // aborted frame; they'd land in the wrong bank or wrong rows.
+        symq_wr_ptr <= {(SYMQ_AW+1){1'b0}};
+        symq_rd_ptr <= {(SYMQ_AW+1){1'b0}};
+    end else begin
+        if (pipe_result_valid && need_mirror_now && !symq_full) begin
+            symq_x   [symq_wr_ptr[SYMQ_AW-1:0]] <= pipe_result_x;
+            symq_y   [symq_wr_ptr[SYMQ_AW-1:0]] <= 10'd240 - pipe_result_y;
+            symq_iter[symq_wr_ptr[SYMQ_AW-1:0]] <= pipe_result_iter;
+            symq_esc [symq_wr_ptr[SYMQ_AW-1:0]] <= pipe_result_escaped;
+            symq_wr_ptr <= symq_wr_ptr + 1'b1;
+        end
+        if (mirror_drain) begin
+            symq_rd_ptr <= symq_rd_ptr + 1'b1;
+        end
+    end
+end
+
 // ---- Framebuffer ----
 // Write addr: y*H_RES + x.
 //   320 mode: y*320 + x = (y<<8) + (y<<6) + x
 //   640 mode: y*640 + x = (y<<9) + (y<<7) + x
-// Single write source: pipe_result_valid (iter pipeline output).
-// (Mariani-Silver fill-bypass was removed when MS was disabled.)
-wire [10:0] fb_wr_pixel_x = pipe_result_x;
-wire [9:0]  fb_wr_pixel_y = pipe_result_y;
-wire [11:0] fb_wr_iter    = pipe_result_iter;
-wire        fb_wr_escaped = pipe_result_escaped;
-wire        fb_wr_en      = pipe_result_valid;
+// Two write sources, muxed:
+//   1. pipe_result_valid → original write (priority on its cycle)
+//   2. mirror FIFO drain → row-mirrored write when pipeline idle
+wire [10:0] fb_wr_pixel_x = pipe_result_valid ? pipe_result_x       : mirror_x;
+wire [9:0]  fb_wr_pixel_y = pipe_result_valid ? pipe_result_y       : mirror_y;
+wire [11:0] fb_wr_iter    = pipe_result_valid ? pipe_result_iter    : mirror_iter;
+wire        fb_wr_escaped = pipe_result_valid ? pipe_result_escaped : mirror_esc;
+wire        fb_wr_en      = pipe_result_valid | mirror_drain;
 
 wire [FB_ADDR_WIDTH-1:0] wr_y = {9'd0, fb_wr_pixel_y[8:0]};
 wire [FB_ADDR_WIDTH-1:0] wr_x = {7'd0, fb_wr_pixel_x[10:0]};

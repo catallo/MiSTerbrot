@@ -26,6 +26,11 @@ module coord_generator #(
 
     // Control
     input  wire                    start_frame,
+    // Real-axis symmetry: when 1, scan only rows 0..120 (the top half +
+    // center axis).  Caller mirror-writes rows 121..239 from the
+    // (240-y) result.  Latched at start_frame so it can't change
+    // mid-scan.
+    input  wire                    symmetry_active,
     input  wire signed [WIDTH-1:0] center_x,
     input  wire signed [WIDTH-1:0] center_y,
     input  wire signed [WIDTH-1:0] step,
@@ -45,6 +50,10 @@ module coord_generator #(
 // Per-mode resolution
 wire [10:0] H_PIXELS = mode_640 ? 11'd640 : 11'd320;
 localparam [9:0]  V_PIXELS = 10'd240;
+// Last row to emit when symmetry is active.  Row 120 is the center
+// (ci = center_y exactly when center_y = 0); rows 0..120 cover the
+// top half + axis; the caller mirrors rows 1..119 to 239..121.
+localparam [9:0]  V_PIXELS_SYM_LAST = 10'd120;
 
 // step_x: in 640 mode, halve step so 640 pixels cover same complex-plane
 // horizontal extent as 320 pixels did. Vertical step stays at `step`.
@@ -76,6 +85,12 @@ localparam [1:0] S_IDLE  = 2'd0,
 
 reg [1:0] state;
 
+// Per-frame latched copy of symmetry_active so the scan range can't
+// change between IDLE and DONE even if the caller toggles the input
+// while a frame is in flight.
+reg sym_frame;
+wire [9:0] py_last = sym_frame ? V_PIXELS_SYM_LAST : (V_PIXELS - 10'd1);
+
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         state        <= S_IDLE;
@@ -90,6 +105,7 @@ always @(posedge clk or negedge rst_n) begin
         pixel_y      <= 10'd0;
         cr           <= {WIDTH{1'b0}};
         ci           <= {WIDTH{1'b0}};
+        sym_frame    <= 1'b0;
     end else begin
         case (state)
         S_IDLE: begin
@@ -101,6 +117,7 @@ always @(posedge clk or negedge rst_n) begin
                 cr_accum     <= cr_start;
                 ci_accum     <= ci_start;
                 cr_row_start <= cr_start;
+                sym_frame    <= symmetry_active;
                 state        <= S_SCAN;
             end
         end
@@ -116,8 +133,8 @@ always @(posedge clk or negedge rst_n) begin
 
                 // Advance to next pixel
                 if (px == H_PIXELS - 11'd1) begin
-                    if (py == V_PIXELS - 10'd1) begin
-                        // End of frame
+                    if (py == py_last) begin
+                        // End of frame (full or symmetric half)
                         state <= S_DONE;
                     end else begin
                         // Next row
@@ -143,6 +160,7 @@ always @(posedge clk or negedge rst_n) begin
                 cr_accum     <= cr_start;
                 ci_accum     <= ci_start;
                 cr_row_start <= cr_start;
+                sym_frame    <= symmetry_active;
                 frame_done   <= 1'b0;
                 state        <= S_SCAN;
             end

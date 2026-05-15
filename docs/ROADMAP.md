@@ -38,14 +38,24 @@ The originally-planned sub-items (kept for reference; all blocked on the MS hang
 
 **Prerequisite for resuming A1:** Verilator harness for `fractal_top.v` + `region_manager.v` so the render-FSM race + HDMI scaler interaction can be probed cycle-accurately without burning 25-min build cycles per experiment. See `docs/SIMULATION.md`.
 
-### A2. Real-axis symmetry (cy = 0 POIs)
+### A2. Real-axis symmetry (cy = 0 POIs) — **DONE 2026-05-16**
 
-Mandelbrot is symmetric across `y = 0`. For POIs centred on the real axis (Feigenbaum cascade, antenna POIs, half the Seahorse Valley descent — ~20+ entries in our 86-POI catalogue) we compute only `y ≥ 0` and mirror-write `y < 0`.
+Mandelbrot is symmetric across `y = 0`. For POIs centred on the real axis we now compute only rows `y ∈ [0..120]` (top half + axis) and mirror-write rows `y ∈ [121..239]` from row `(240-y)`.
 
-- ~1.9× faster for applicable POIs.
-- Implementation: detect `cy ≈ 0` in `coord_generator.v`, skip lower-half dispatch, framebuffer write mirroring.
-- Cost: ~50 lines but careful CDC across `clk_sys` / `clk_iter`.
-- Effort: **1–2 days**.
+**Implementation:** `rtl/coord_generator.v` accepts a new `symmetry_active` input that's latched at frame start; when high it stops the scan at `y=120`. `rtl/fractal_top.v` detects `center_y == 0` (strict equality is intentional — auto-zoom drift to ε is not symmetric and must fall through to the full-frame path), latches per-frame, and feeds a small 32-deep mirror-write FIFO that drains into the framebuffer write port whenever the pipeline isn't producing a result. No CDC concerns — the FIFO lives entirely on `clk_sys`. ~120 lines net.
+
+**Result on the 86-POI sweep** (vs the same shipping core minus A2):
+
+| | Count |
+|---|---|
+| Real-axis POIs hitting ~2.00× | 8 |
+| Real-axis POIs at 1.5–2.0× | 5 |
+| Real-axis POIs at 1.34–1.99× (other bottlenecks) | 2 |
+| Real-axis POIs already vsync-capped (no opportunity) | 2 |
+| Non-real-axis POIs (regression check) | All ±2% (measurement noise) |
+| **Geomean catalogue-wide** | **+11.3%** |
+
+Visual: clean. The "thin horizontal line" sometimes visible at `y=120` is the actual Mandelbrot antenna along the real axis, not a rendering artefact.
 
 ### A3. Additional interior preches
 
