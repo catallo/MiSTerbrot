@@ -41,7 +41,8 @@ def decode_at(img, x0, y):
 
     # 32-bit layout (MS was dropped — see docs/MR16_HANG_REPORT_V2.md):
     #   [31:28] magic 0xA
-    #   [27:23] spare (was ms_enable + mr_sel + 2 spare)
+    #   [27]    sym_overflow_sticky (A2 mirror FIFO ever overflowed)
+    #   [26:23] spare
     #   [22:16] scene[6:0]
     #   [15:12] iter_tier[3:0]
     #   [11:0]  f10[11:0]
@@ -52,6 +53,7 @@ def decode_at(img, x0, y):
     return {
         "bits": "".join(str(bit) for bit in bits),
         "magic": magic,
+        "sym_overflow": (value >> 27) & 1,
         "scene": (value >> 16) & 0x7F,
         "iter_tier": (value >> 12) & 0xF,
         "f10": value & 0xFFF,

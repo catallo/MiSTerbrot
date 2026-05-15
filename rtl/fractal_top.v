@@ -355,6 +355,8 @@ localparam [24:0] FPS_SAMPLE_TICKS = 25'd25000000;
 
 reg  bank_sel;
 reg  frame_complete;  // Latched on frame_done, cleared on swap
+reg  swap_pending;    // Bank-swap requested at vblank_rise, deferred
+                      // until the A2 mirror FIFO drains (symq_empty)
 wire frame_done;
 reg  frame_done_prev;
 wire frame_done_rise;
@@ -375,21 +377,38 @@ end
 wire vblank_rise = vblank & ~vblank_prev;
 assign frame_done_rise = frame_done & ~frame_done_prev;
 
+// Mirror-write FIFO empty flag (driven in the A2 symmetry block below).
+// Forward-declared here so the bank-swap state machine can wait on it.
+wire symq_empty;
+
 // Bank swap state machine
+//
+// Two-step: vblank_rise + frame_complete sets `swap_pending`; the
+// actual bank toggle defers until the mirror-write FIFO has drained
+// (symq_empty).  Otherwise late mirror writes would land on the
+// freshly-toggled bank — which is the previous front-bank that's
+// still being scanned out — causing visible corruption.  VBLANK is
+// thousands of cycles long, the FIFO drains in ≤32, so deferring
+// inside the same VBLANK is always safe.
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
-        bank_sel       <= 1'b0;
-        frame_complete <= 1'b0;
+        bank_sel        <= 1'b0;
+        frame_complete  <= 1'b0;
         frame_done_prev <= 1'b0;
+        swap_pending    <= 1'b0;
     end else begin
         frame_done_prev <= frame_done;
 
         if (frame_done_rise)
             frame_complete <= 1'b1;
 
-        if (vblank_rise && (frame_complete || frame_done_rise)) begin
+        if (vblank_rise && (frame_complete || frame_done_rise))
+            swap_pending <= 1'b1;
+
+        if (swap_pending && symq_empty) begin
             bank_sel       <= ~bank_sel;
             frame_complete <= 1'b0;
+            swap_pending   <= 1'b0;
         end
     end
 end
@@ -470,8 +489,11 @@ always @(posedge clk or negedge rst_n) begin
         end
 
         RS_WAIT_SWAP: begin
-            // Wait for VBLANK swap before starting next render
-            if (vblank_rise && frame_complete) begin
+            // Wait for the bank swap to actually happen before starting the
+            // next render — the swap is gated on the A2 mirror FIFO being
+            // empty (see swap_pending logic above), so we wait on that same
+            // condition here to stay in lockstep.
+            if (swap_pending && symq_empty) begin
                 if (view_changed || settings_changed || need_rerender ||
                     benchmark_active) begin
                     // benchmark_active forces a continuous re-render so F10
@@ -656,9 +678,9 @@ reg [11:0] symq_iter [0:SYMQ_DEPTH-1];
 reg        symq_esc  [0:SYMQ_DEPTH-1];
 reg [SYMQ_AW:0] symq_wr_ptr, symq_rd_ptr;  // 1 extra bit for full/empty
 
-wire symq_empty = (symq_wr_ptr == symq_rd_ptr);
-wire symq_full  = (symq_wr_ptr[SYMQ_AW-1:0] == symq_rd_ptr[SYMQ_AW-1:0]) &&
-                  (symq_wr_ptr[SYMQ_AW]     != symq_rd_ptr[SYMQ_AW]);
+assign symq_empty = (symq_wr_ptr == symq_rd_ptr);  // wire fwd-declared above
+wire symq_full   = (symq_wr_ptr[SYMQ_AW-1:0] == symq_rd_ptr[SYMQ_AW-1:0]) &&
+                   (symq_wr_ptr[SYMQ_AW]     != symq_rd_ptr[SYMQ_AW]);
 
 wire need_mirror_now = sym_active_frame &&
                        (pipe_result_y >= 10'd1) &&
@@ -670,17 +692,29 @@ wire [9:0]  mirror_y    = symq_y   [symq_rd_ptr[SYMQ_AW-1:0]];
 wire [11:0] mirror_iter = symq_iter[symq_rd_ptr[SYMQ_AW-1:0]];
 wire        mirror_esc  = symq_esc [symq_rd_ptr[SYMQ_AW-1:0]];
 
-integer symqi;
+// Sticky overflow flag — set if a mirror write was ever silently
+// dropped because the FIFO was full.  Statistically should never fire
+// (depth 32 vs ~24 worst-case burst), but a silent visual glitch
+// would be otherwise invisible to debug.  Surfaced in the benchmark
+// telemetry strip (bit 27) so a bench sweep would catch it.
+// Sticky for the lifetime of a power cycle; reset only via rst_n.
+reg sym_overflow_sticky;
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        sym_overflow_sticky <= 1'b0;
+    end else if (pipe_result_valid && need_mirror_now && symq_full) begin
+        sym_overflow_sticky <= 1'b1;
+    end
+end
+
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         symq_wr_ptr <= {(SYMQ_AW+1){1'b0}};
         symq_rd_ptr <= {(SYMQ_AW+1){1'b0}};
-        for (symqi = 0; symqi < SYMQ_DEPTH; symqi = symqi + 1) begin
-            symq_x[symqi]    <= 11'd0;
-            symq_y[symqi]    <= 10'd0;
-            symq_iter[symqi] <= 12'd0;
-            symq_esc[symqi]  <= 1'b0;
-        end
+        // FIFO entries are not reset — rd_ptr starts at 0 and only ever
+        // reads slots that were previously written, so initial garbage is
+        // never observed.  Skipping reset saves ~50 FFs of dead silicon.
     end else if (start_render) begin
         // Frame restart — discard pending mirror writes from the
         // aborted frame; they'd land in the wrong bank or wrong rows.
@@ -875,11 +909,13 @@ end
 // In benchmark mode, encode machine-readable telemetry into 32 tiny 4x4
 // color blocks at the top-left:
 //   bits 31..28 = magic A
-//   bits 27..23 = spare (was ms_enable + mr_sel + 2 spare; MS dropped)
+//   bits 27     = sym_overflow_sticky (A2 mirror FIFO ever overflowed)
+//   bits 26..23 = spare
 //   bits 22..16 = scene index (7 bits — 86-POI catalogue)
 //   bits 15..12 = iter_tier
 //   bits 11..0  = F10
-wire [31:0] benchmark_telemetry = {4'hA, 5'b0,
+wire [31:0] benchmark_telemetry = {4'hA,
+                                   sym_overflow_sticky, 4'b0,
                                    benchmark_idx[6:0],
                                    bench_iter_tier,
                                    last_bench_window_frames[11:0]};

@@ -140,8 +140,14 @@ def main():
             continue
         fps = r["f10"] / 10.0
         match = "" if r["scene"] == idx else f"  (!!) decoded scene={r['scene']}"
+        # A2 mirror-FIFO overflow is sticky for the lifetime of a power
+        # cycle, so once it sets every subsequent scene reports it too.
+        # Still worth flagging loudly — visible glitches in the bottom
+        # half of the framebuffer would otherwise look like POI bugs.
+        sym_overflow = r.get("sym_overflow", 0)
+        sym_warn = "  (!!) SYM_OVERFLOW" if sym_overflow else ""
         print(f"  [{idx:2d}] {scene_def['name']:<24}  "
-              f"f10={r['f10']:>4d}  fps={fps:5.1f}{match}")
+              f"f10={r['f10']:>4d}  fps={fps:5.1f}{match}{sym_warn}")
         results.append({
             "idx": idx,
             "name": scene_def["name"],
@@ -151,6 +157,7 @@ def main():
             "fps": round(fps, 2),
             "decoded_scene": r["scene"],
             "decoded_iter_tier": r["iter_tier"],
+            "sym_overflow": sym_overflow,
             "screenshot": str(png_path),
         })
 
