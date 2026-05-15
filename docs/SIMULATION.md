@@ -1,12 +1,19 @@
 # Simulation
 
-There is currently no active simulation infrastructure in this project. The
-previous `sim/` directory (Verilator harnesses for `iter_pair.v` and
-`mandelbrot_iterator.v`) was removed alongside those modules during the
-iter_quad refactor.
+Verilator harness setup is in progress. First module covered:
 
-This document is a forward-looking brief: **when and how to add sim back if
-the project ever needs it.**
+- **`sim/iter_quad/`** — Verilator + C++ testbench + Python golden
+  model for `rtl/iter_quad.v`. See `sim/iter_quad/README.md` for usage.
+  Currently 7/8 cases match the software reference exactly; one
+  off-by-one at the escape boundary remains to investigate.
+
+The previous `sim/` directory (Verilator harnesses for `iter_pair.v` and
+`mandelbrot_iterator.v`) was removed when those modules were retired during
+the iter_quad refactor. The new structure is per-module folders under
+`sim/`, each with its own Makefile + harness + golden model.
+
+The rest of this document is a forward-looking brief: **when each
+remaining module needs sim, and what each testbench should cover.**
 
 ## When sim becomes worth the setup cost
 
@@ -32,25 +39,27 @@ would. Bring sim back when one of these starts:
 
 ## What to cover
 
-### `iter_quad.v` — bit-exact arithmetic regression
+### `iter_quad.v` — bit-exact arithmetic regression — **implemented**
 
-This is the most valuable target. Build it first.
+See `sim/iter_quad/` (`Makefile`, `tb_iter_quad.cpp`, `golden.py`,
+`README.md`). Initial coverage:
 
-- **Harness**: pure-C++ Verilator testbench. Drive `cr`, `ci`, `max_iter` for
-  each of the 5 contexts; capture `iter_count` and `escaped` when `done`
-  fires.
-- **Golden model**: a Python (or C) reference that computes the same
-  truncated 64×64 multiply path in software using `int128` or arbitrary
-  precision. Compare bit-exactly.
-- **Test vectors**:
-  - `c = 0`: trivial interior, should return `max_iter`.
-  - `c = 2 + 0i`: escapes on iter 1.
-  - Boundary points (canonical POI coords) at low/high `max_iter`: expected
-    escape count from the Python renderer in `tools/poi_render.py`.
-  - Cardioid/bulb precheck points: confirm interior is detected on the
-    cardioid (e.g., `c = -0.1 + 0i`) and the period-2 bulb (`c = -1 + 0i`).
-  - All 5 contexts running concurrently with different `c` values — verify
-    they don't cross-contaminate.
+- 8 directed test cases: precheck points (origin, cardioid, P2 bulb),
+  fast-escape points, near-cusp / interior boundary, Seahorse Valley.
+- Golden model in `golden.py` matches the truncated 64×64 multiply
+  bit-by-bit (skips the `a_lo*b_lo` term per `rtl/mul_trunc64.v`).
+- 7/8 cases match RTL exactly. Remaining off-by-one (escape boundary)
+  documented in the README — investigate when iterator math next
+  changes.
+
+Still TODO on this harness:
+
+- Multi-context concurrency: drive all 6 contexts (A–F) with different
+  `c` values simultaneously and verify they don't cross-contaminate.
+- POI catalogue regression: sweep canonical POI coords from
+  `tools/poi_master.json` at `max_iter ∈ {512, 1024, 2048, 4095}` and
+  diff against `tools/poi_render.py` (the Python escape-count
+  renderer). Catches precision drift.
 
 ### `auto_zoom.v` — playlist + snap state machine
 
@@ -70,6 +79,35 @@ This is the most valuable target. Build it first.
   one pulse fires on `clk_iter` per request.
 - **Slot fairness**: dispatch with N iterators busy and verify round-robin
   collection order matches dispatch order.
+
+**Critical for Track B (SDRAM-backed framebuffer + 480p)**: that work
+adds a new clock domain for the SDRAM controller, with CDC against both
+`clk_sys` and `clk_iter`. CDC bugs there would be intermittent on real
+hardware and very hard to root-cause without sim. Build this harness
+before starting Track B.
+
+### `region_manager.v` + `fractal_top.v` render FSM — for MS revival
+
+The Mariani-Silver feature was disabled in the shipping core because
+of an intermittent hang at MR=16 (and lower rates at MR=64/128).
+ChatGPT Pro analysis (`docs/MR16_HANG_CHATGPT_PRO_V2.md`) traced it to
+a race in `fractal_top.v`'s render FSM where the bank-swap block
+consumes a same-cycle `frame_done_rise` that the render FSM was about
+to use to exit `RS_WAIT_SWAP`. The proposed two-line fix removes the
+hang on VGA but breaks HDMI scaler synchronization regardless of timing
+margin.
+
+A combined `fractal_top` + `region_manager` testbench would let us:
+- Reproduce the hang deterministically (one specific clock-edge
+  alignment).
+- Verify the proposed fix removes it.
+- Investigate the HDMI side-effect by simulating arcade_video's HSync /
+  VSync / CE_PIXEL outputs and modelling what the scaler expects.
+- Add a frame/epoch tag to dispatched coords so stale results from a
+  previous region can't be miscounted into the next.
+
+This is the prerequisite for resuming Track A's per-POI `prefers_ms`
+work (was A1.4).
 
 ## What NOT to cover in sim
 
