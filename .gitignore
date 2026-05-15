@@ -49,3 +49,4 @@ tools/*
 !tools/bench_diff.py
 !tools/gen_full_benchmarks.py
 !tools/bench_run_full.py
+sim/iter_quad/__pycache__/

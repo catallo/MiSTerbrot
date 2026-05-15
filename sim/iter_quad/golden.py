@@ -162,14 +162,27 @@ def iter_quad_golden(cr: float, ci: float, max_iter: int) -> tuple[int, bool]:
 
 
 CASES = {
+    # Interior / precheck cases
     "origin":         (0.0,    0.0,   100),
     "cardioid_-0.25": (-0.25,  0.0,   100),
     "p2_bulb_-1":     (-1.0,   0.0,   100),
-    "escape_2":       (2.0,    0.0,   100),
-    "escape_1":       (1.0,    0.0,   100),
     "near_cusp":      (0.249,  0.0,   500),
     "p3_island":      (-1.75,  0.0,   500),
-    "seahorse_edge":  (-0.745, 0.113, 500),
+
+    # Escape cases at varied depths — used to characterise the
+    # RTL-vs-golden iter_count gap.  Probed via boundary scans; the
+    # exact `c` values are arbitrary, only the depth distribution
+    # matters.
+    "escape_2":       (2.0,    0.0,   100),  # ~iter 2-3 (very shallow)
+    "escape_1":       (1.0,    0.0,   100),  # ~iter 3
+    "esc_d13":        (0.30,   0.0,   500),  # ~iter 13
+    "esc_d21":        (0.27,   0.0,   500),  # ~iter 21
+    "esc_d31":        (0.26,   0.0,   500),  # ~iter 31
+    "esc_d52":        (-0.235, 0.74,  500),  # ~iter 52  (elephant valley)
+    "esc_d99":        (-0.745, 0.10,  500),  # ~iter 99  (seahorse area)
+    "seahorse_edge":  (-0.745, 0.113, 500),  # ~iter 128 (original off-by-one)
+    "esc_d386":       (-0.745, 0.110, 500),  # ~iter 386 (deep seahorse)
+    "esc_d461":       (-0.746, 0.115, 500),  # ~iter 461 (deepest sampled)
 }
 
 

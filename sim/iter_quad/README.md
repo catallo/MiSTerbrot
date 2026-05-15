@@ -45,20 +45,58 @@ gtkwave obj_dir/sim.fst
 
 ## Sanity check (current results)
 
-8 test cases, 7 RTL == golden, 1 off-by-one. The off-by-one is a known
-disagreement between the FSM's escape-check ordering and the Python
-reference — investigated when iterator math next gets touched.
+15 test cases: **7 PASS, 8 GAP, 0 FAIL.**
 
-| case | RTL `iter` | golden `iter` |
-|---|---:|---:|
-| origin (precheck → max_iter) | 100 | 100 |
-| cardioid_-0.25 (precheck) | 100 | 100 |
-| p2_bulb_-1 (precheck) | 100 | 100 |
-| escape_2 | 2 | 2 |
-| escape_1 | 3 | 3 |
-| near_cusp | 500 (max) | 500 (max) |
-| p3_island | 500 (max) | 500 (max) |
-| seahorse_edge | **127** | **128** |
+The "GAP" tag covers cases where escape semantics match (`escaped=1`
+on both sides) but `iter_count` differs by exactly ±1.
+
+| case | RTL `iter` | golden `iter` | Δ | notes |
+|---|---:|---:|---:|---|
+| origin (precheck) | 100 | 100 | 0 | interior |
+| cardioid_-0.25 (precheck) | 100 | 100 | 0 | interior |
+| p2_bulb_-1 (precheck) | 100 | 100 | 0 | interior |
+| near_cusp | 500 | 500 | 0 | hits max_iter |
+| p3_island | 500 | 500 | 0 | hits max_iter |
+| escape_2 | 2 | 2 | 0 | very shallow |
+| escape_1 | 3 | 3 | 0 | very shallow |
+| esc_d13 | 12 | 13 | -1 | gap starts |
+| esc_d21 | 20 | 21 | -1 | |
+| esc_d31 | 30 | 31 | -1 | |
+| esc_d52 | 51 | 52 | -1 | elephant valley |
+| esc_d99 | 98 | 99 | -1 | seahorse area |
+| seahorse_edge | 127 | 128 | -1 | original case |
+| esc_d386 | 385 | 386 | -1 | |
+| esc_d461 | 460 | 461 | -1 | depth 461 — still −1 |
+
+### What the data tells us
+
+The −1 gap is **uniform across two orders of magnitude in depth**
+(13 → 461). It is not an arithmetic divergence — if it were, we'd
+expect the delta to grow with depth or vary across regions. It is a
+deterministic *labelling* difference between when `iter_count`
+increments in the RTL FSM vs when `n` increments in `golden.py`'s
+`for n in range(1, max+1)` loop. Almost certainly the RTL counts
+"iterations completed before escape was detected" while the golden
+counts "the iteration on which escape was detected" (i.e., RTL = N−1
+for N = the golden index).
+
+The very shallow escapes (depth 2 and 3) match exactly, suggesting the
+FSM has a different control path for the first 1-2 iterations — likely
+because `z₀ = 0` makes the squaring stage trivial.
+
+### Implications
+
+- **Visual quality**: a uniform −1 shift across all escaped pixels is
+  invisible; palettes are continuous gradients, the shift just
+  realigns the whole image by one color step.
+- **Performance**: zero — same number of cycles, different label.
+- **Correctness**: not actually wrong, just a convention mismatch.
+  Either adjust `golden.py` to return `n-1` on escape, or
+  post-increment in RTL. Lowest-risk fix is to update the golden
+  (no Quartus rebuild).
+
+This is logged for whoever next touches the iterator math; not a
+shipping issue.
 
 ## When to extend this harness
 

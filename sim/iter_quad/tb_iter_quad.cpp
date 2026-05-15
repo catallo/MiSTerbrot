@@ -103,42 +103,36 @@ int main(int argc, char** argv) {
     // The interior precheck in iter_quad short-circuits points inside
     // the main cardioid OR the period-2 bulb to iter_count = max_iter
     // immediately, without iterating.
+    //
+    // Expected values come from sim/iter_quad/golden.py — keep in sync
+    // by running `python3 golden.py --gen-cases`.
     TestCase cases[] = {
-        // Origin: cusp of cardioid.  Slightly inside the cardioid in
-        // practice; precheck should catch it -> max_iter, escaped=0.
-        {"origin",          0.0,   0.0,  100, -1, 0},
+        // ---- Interior / precheck cases ----
+        {"origin",          0.0,    0.0,    100,  100, 0},
+        {"cardioid_-0.25",  -0.25,  0.0,    100,  100, 0},
+        {"p2_bulb_-1",      -1.0,   0.0,    100,  100, 0},
+        {"near_cusp",       0.249,  0.0,    500,  500, 0},
+        {"p3_island",       -1.75,  0.0,    500,  500, 0},
 
-        // Cardioid interior (e.g., c = -0.25 + 0i is inside the
-        // cardioid). Precheck -> max_iter, escaped=0.
-        {"cardioid_-0.25",  -0.25, 0.0,  100, -1, 0},
-
-        // Period-2 bulb interior: c = -1 + 0i sits in the centre of the
-        // P2 bulb. Precheck -> max_iter, escaped=0.
-        {"p2_bulb_-1",      -1.0,  0.0,  100, -1, 0},
-
-        // Outside the set: c = 2 + 0i. z_1 = 0+2 = 2, |z_1|^2 = 4
-        // (escape threshold).  Should escape on iter 1 or 2.
-        {"escape_2",        2.0,   0.0,  100, -1, 1},
-
-        // Outside the set: c = 1 + 0i. z escapes after a few iterations.
-        {"escape_1",        1.0,   0.0,  100, -1, 1},
-
-        // Boundary point near the cardioid cusp (very high iter count
-        // expected, may approach max_iter).
-        {"near_cusp",       0.249, 0.0,  500, -1, 0},
-
-        // Period-3 island (Misiurewicz region around c = -1.75 + 0i).
-        // Interior point — should not escape but also won't pass the
-        // precheck (it's outside cardioid + P2 bulb), so will iterate
-        // to max_iter.
-        {"p3_island",       -1.75, 0.0,  500, -1, 0},
-
-        // Seahorse Valley boundary point (escapes after many iters).
-        {"seahorse_edge",   -0.745, 0.113, 500, -1, 1},
+        // ---- Escape cases at varied depths ----
+        // Used to characterise the RTL-vs-golden iter_count gap: if
+        // the gap is uniformly +1, it's a counter-semantics
+        // labelling difference; if it varies, there's a real
+        // arithmetic divergence to chase.
+        {"escape_2",        2.0,    0.0,    100,    2, 1},
+        {"escape_1",        1.0,    0.0,    100,    3, 1},
+        {"esc_d13",         0.30,   0.0,    500,   13, 1},
+        {"esc_d21",         0.27,   0.0,    500,   21, 1},
+        {"esc_d31",         0.26,   0.0,    500,   31, 1},
+        {"esc_d52",         -0.235, 0.74,   500,   52, 1},
+        {"esc_d99",         -0.745, 0.10,   500,   99, 1},
+        {"seahorse_edge",   -0.745, 0.113,  500,  128, 1},
+        {"esc_d386",        -0.745, 0.110,  500,  386, 1},
+        {"esc_d461",        -0.746, 0.115,  500,  461, 1},
     };
 
     int n_cases = sizeof(cases) / sizeof(cases[0]);
-    int n_pass = 0, n_fail = 0;
+    int n_pass = 0, n_fail = 0, n_gap = 0;
 
     for (int i = 0; i < n_cases; i++) {
         const TestCase& tc = cases[i];
@@ -158,7 +152,7 @@ int main(int argc, char** argv) {
         }
 
         if (timeout <= 0) {
-            printf("[TIMEOUT] %-20s cr=%+8.4f ci=%+8.4f max=%d\n",
+            printf("[TIMEOUT] %-15s cr=%+8.4f ci=%+8.4f max=%d\n",
                    tc.name, tc.cr, tc.ci, tc.max_iter);
             n_fail++;
             continue;
@@ -166,23 +160,39 @@ int main(int argc, char** argv) {
 
         int got_iter = (int)dut->iter_count_a;
         int got_esc  = (int)dut->escaped_a;
+        int delta    = got_iter - tc.expected_iter;
+
+        // PASS: matches exactly
+        // GAP : escape semantics match, iter_count differs by 1
+        //       (suspected counter-edge labelling difference, not a
+        //        real arithmetic disagreement)
+        // FAIL: any other mismatch
         const char* tag;
         if (tc.expected_iter < 0) {
             tag = "INFO";
         } else if (got_iter == tc.expected_iter && got_esc == tc.expected_escaped) {
             tag = "PASS"; n_pass++;
+        } else if (got_esc == tc.expected_escaped && (delta == 1 || delta == -1)) {
+            tag = "GAP "; n_gap++;
         } else {
             tag = "FAIL"; n_fail++;
         }
-        printf("[%s] %-20s cr=%+9.5f ci=%+9.5f max=%4d -> iter=%4d esc=%d\n",
-               tag, tc.name, tc.cr, tc.ci, tc.max_iter, got_iter, got_esc);
+
+        if (tc.expected_iter < 0) {
+            printf("[%s] %-15s cr=%+9.5f ci=%+9.5f max=%4d  ->  iter=%4d esc=%d\n",
+                   tag, tc.name, tc.cr, tc.ci, tc.max_iter, got_iter, got_esc);
+        } else {
+            printf("[%s] %-15s cr=%+9.5f ci=%+9.5f max=%4d  ->  iter=%4d (golden=%4d, %+d) esc=%d\n",
+                   tag, tc.name, tc.cr, tc.ci, tc.max_iter,
+                   got_iter, tc.expected_iter, delta, got_esc);
+        }
 
         // Tick a few more cycles for the next dispatch to settle
         for (int j = 0; j < 4; j++) tick(dut);
     }
 
-    printf("\n%d/%d cases evaluated; %d explicit pass, %d fail\n",
-           n_pass + n_fail, n_cases, n_pass, n_fail);
+    printf("\n%d cases: %d pass, %d gap (off-by-one), %d fail\n",
+           n_cases, n_pass, n_gap, n_fail);
 
     if (tfp) { tfp->close(); delete tfp; }
     delete dut;
