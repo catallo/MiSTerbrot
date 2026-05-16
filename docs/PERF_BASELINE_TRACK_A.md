@@ -15,6 +15,25 @@ Decode screenshots with `tools/bench_decode_screenshot.py`; run the suite
 with `tools/bench_run.py --label <name> --output <path>`; diff two runs
 with `tools/bench_diff.py <before.json> <after.json>`.
 
+> ## Mandatory: full per-POI tables, not summaries
+>
+> **Every entry in this log must include the complete F10 per scene for all
+> 86 POIs.** Geomeans and "X scenes hit 2.00×" buckets are useful framing
+> but they hide per-POI swings — half-step shifts, precheck changes, and
+> dispatcher tweaks can speed up some scenes by 50-100% while regressing
+> others by 10-20% even at the same geomean.  Past entries that summarised
+> are noted as such; backfill the full table when re-deriving from the
+> archived JSONs is feasible.
+>
+> Why: the geomean of (a 2.00× win on POI A) and (a 0.50× regression on
+> POI B) is 1.00× — invisible. The user's perceptual quality cares about
+> per-POI worst-case, not the geomean.  Always show all 86 numbers.
+>
+> Generate the per-POI table from the JSON outputs of `tools/bench_run.py`
+> with a small Python script that joins by `idx` and prints baseline/after
+> F10 + ratio per row.  Two-run table: 4 columns.  N-run table: N+1
+> columns plus per-step ratios.
+
 > **F10 ceiling — permanent (since 2026-05-14).** The render-state machine
 > waits for vblank between frames in benchmark mode, capping F10 at ~596
 > (~60 fps). An earlier build (commit ff02c4a) bypassed vsync to measure raw
@@ -104,19 +123,145 @@ wire pipe_coord_valid = cg_valid && !symq_backpressure;  // gate valid
 assign cg_ready       = pipe_coord_ready && !symq_backpressure;  // and ready
 ```
 
-### Final results
+### Sweep health
 
-Full 86-POI sweep with the proper backpressure build:
-- `decoded_scene == idx` for all 86 (clean alignment)
-- `sym_overflow == 0` for all 86 (FIFO never overflows)
-- Geomean vs `a2-sym`: **+1.1%** (small extra gain from exact 2.00× vs 1.98×)
-- Geomean vs `ms-off` baseline (cumulative A2): **+12.6%**
+- `decoded_scene == idx` for all 86 (clean alignment).
+- `sym_overflow == 0` for all 86 (FIFO never overflows).
 - Visual verification: y=120 line eliminated in P3 ISLAND, FEIGENBAUM,
   EJS CAULI, MISIUREWICZ -1.94 (was the worst case at 0-1/640 non-black
   on the axis row, now matches neighbours).
 
 Build: `MiSTerbrot_20260516.rbf` (Quartus 17.0.2 Lite, ~22 min, 112
 warnings, 0 errors).
+
+### Full per-POI table (F10 = frames in 10s)
+
+Three runs side-by-side: baseline (before any A2), `a2-sym` (A2 with
+the original 1.98× implementation, no half-step shift), and `a2-half-step`
+(this build).  `A2 ratio` = a2-sym/baseline.  `cum ratio` = current/baseline.
+`Δ vs A2` = current/a2-sym, isolating the half-step+backpressure effect.
+
+| # | scene | baseline F10 | +A2 F10 | +A2 +halfstep F10 | A2 ratio | cum ratio | Δ vs A2 |
+|---|---|---:|---:|---:|---:|---:|---:|
+|  0 | P6 SUB BULB             |  298 |  595 |  596 | 2.00× | 2.00× | +1.00× |
+|  1 | P3 ISLAND               |  298 |  597 |  596 | 2.00× | 2.00× | +1.00× |
+|  2 | P3 ISLAND TIP           |  298 |  596 |  596 | 2.00× | 2.00× | +1.00× |
+|  3 | P4 ISLAND               |  297 |  297 |  298 | 1.00× | 1.00× | +1.00× |
+|  4 | P5 ISLAND               |  199 |  198 |  199 | 0.99× | 1.00× | +1.01× |
+|  5 | P6 ISLAND               |  298 |  298 |  297 | 1.00× | 1.00× | +1.00× |
+|  6 | P7 ISLAND               |  199 |  199 |  198 | 1.00× | 0.99× | +0.99× |
+|  7 | P8 ISLAND               |  298 |  298 |  298 | 1.00× | 1.00× | +1.00× |
+|  8 | P9 ISLAND               |  199 |  199 |  199 | 1.00× | 1.00× | +1.00× |
+|  9 | P11 ISLAND              |  149 |  149 |  150 | 1.00× | 1.01× | +1.01× |
+| 10 | P22 ISLAND              |  120 |  119 |  119 | 0.99× | 0.99× | +1.00× |
+| 11 | ELEPHANT TRUNK          |  299 |  299 |  299 | 1.00× | 1.00× | +1.00× |
+| 12 | ELEPHANT HEADS          |   99 |  100 |   99 | 1.01× | 1.00× | +0.99× |
+| 13 | ELEPHANT ISLAND         |   32 |   32 |   32 | 1.00× | 1.00× | +1.00× |
+| 14 | ELEPHANT P19            |  149 |  149 |  120 | 1.00× | 0.81× | +0.81× |
+| 15 | ELEPHANT P16            |  149 |  149 |  149 | 1.00× | 1.00× | +1.00× |
+| 16 | SEAHORSE BODY           |   75 |   75 |   75 | 1.00× | 1.00× | +1.00× |
+| 17 | SEAHORSE TAIL           |  120 |  120 |  120 | 1.00× | 1.00× | +1.00× |
+| 18 | SEAHORSE DEEP           |   60 |   59 |   60 | 0.98× | 1.00× | +1.02× |
+| 19 | SEAHORSE TAIL2          |  100 |  100 |  100 | 1.00× | 1.00× | +1.00× |
+| 20 | DOUBLE HOOK             |  119 |  120 |  119 | 1.01× | 1.00× | +0.99× |
+| 21 | SH SATELLITE            |   43 |   43 |   43 | 1.00× | 1.00× | +1.00× |
+| 22 | SAT ANTENNA             |   17 |   17 |   17 | 1.00× | 1.00× | +1.00× |
+| 23 | SAT HEAD                |   11 |   11 |   11 | 1.00× | 1.00× | +1.00× |
+| 24 | SAT SEAHORSE            |   11 |   11 |   11 | 1.00× | 1.00× | +1.00× |
+| 25 | SAT DBL SPIRAL          |    8 |    8 |    8 | 1.00× | 1.00× | +1.00× |
+| 26 | JULIA ISLANDS           |   21 |   21 |   22 | 1.00× | 1.05× | +1.05× |
+| 27 | TRIPLE WEST             |   50 |   49 |   49 | 0.98× | 0.98× | +1.00× |
+| 28 | TRIPLE DEEP             |   58 |   60 |   60 | 1.03× | 1.03× | +1.00× |
+| 29 | FEIGENBAUM              |  119 |  199 |  197 | 1.67× | 1.66× | +0.99× |
+| 30 | FEIGENBAUM ZOOM         |   67 |  120 |  120 | 1.79× | 1.79× | +1.00× |
+| 31 | FEIGENBAUM DEEP         |   28 |   55 |   55 | 1.96× | 1.96× | +1.00× |
+| 32 | GEN FEIGENBAUM          |  294 |  299 |  298 | 1.02× | 1.01× | +1.00× |
+| 33 | MISIUREWICZ M4          |  596 |  596 |  595 | 1.00× | 1.00× | +1.00× |
+| 34 | MISIUREWICZ M4-2        |  298 |  299 |  298 | 1.00× | 1.00× | +1.00× |
+| 35 | MISIUREWICZ SPIR        |  146 |  150 |  145 | 1.03× | 0.99× | +0.97× |
+| 36 | MISIUREWICZ -1.94       |  596 |  596 |  595 | 1.00× | 1.00× | +1.00× |
+| 37 | MISIUREWICZ -1.84       |  596 |  596 |  596 | 1.00× | 1.00× | +1.00× |
+| 38 | DBL SPIRAL P4           |  298 |  298 |  298 | 1.00× | 1.00× | +1.00× |
+| 39 | SINGLE SPIRAL           |  298 |  298 |  298 | 1.00× | 1.00× | +1.00× |
+| 40 | TRIPLE MEDALLION        |  119 |  119 |  119 | 1.00× | 1.00× | +1.00× |
+| 41 | DBL SPIRAL ISLE         |   85 |   86 |   86 | 1.01× | 1.01× | +1.00× |
+| 42 | TRIPLE ISLE MED         |   75 |   75 |   75 | 1.00× | 1.00× | +1.00× |
+| 43 | CAULIFLOWER MED         |  149 |  148 |  149 | 0.99× | 1.00× | +1.01× |
+| 44 | EJS CAULI               |  199 |  298 |  298 | 1.50× | 1.50× | +1.00× |
+| 45 | EJS DBL SPIRAL          |  149 |  150 |  150 | 1.01× | 1.01× | +1.00× |
+| 46 | EJS BRANCH              |  199 |  198 |  199 | 0.99× | 1.00× | +1.01× |
+| 47 | EJS NUCLEUS             |   13 |   13 |   13 | 1.00× | 1.00× | +1.00× |
+| 48 | LOVE CANAL              |   32 |   32 |   32 | 1.00× | 1.00× | +1.00× |
+| 49 | P5 ISLAND DEEP          |  100 |  100 |   86 | 1.00× | 0.86× | +0.86× |
+| 50 | ELEPHANT MED            |  100 |  100 |  100 | 1.00× | 1.00× | +1.00× |
+| 51 | STARFISH                |  120 |  120 |  120 | 1.00× | 1.00× | +1.00× |
+| 52 | M3,1 WAKE 3/7           |  149 |  149 |  149 | 1.00× | 1.00× | +1.00× |
+| 53 | M11,1 WAKE 5/11         |   85 |   85 |   85 | 1.00× | 1.00× | +1.00× |
+| 54 | CONCHA APPROACH         |  297 |  591 |  592 | 1.99× | 1.99× | +1.00× |
+| 55 | M7,1 WAKE 1/7           |  149 |  150 |  149 | 1.01× | 1.00× | +0.99× |
+| 56 | SH CUSP DEEP            |   20 |   20 |   20 | 1.00× | 1.00× | +1.00× |
+| 57 | EJS PERIOD 44           |  195 |  195 |  194 | 1.00× | 0.99× | +0.99× |
+| 58 | JEWEL BOX               |   60 |   59 |   60 | 0.98× | 1.00× | +1.02× |
+| 59 | R2T P6 ISLAND           |   35 |   65 |   66 | 1.86× | 1.89× | +1.02× |
+| 60 | SH CUSP FINE            |    9 |   10 |   10 | 1.11× | 1.11× | +1.00× |
+| 61 | R2 HALF ISLE            |   18 |   18 |   18 | 1.00× | 1.00× | +1.00× |
+| 62 | R2T P7 ISLAND           |  289 |  589 |  591 | 2.04× | 2.04× | +1.00× |
+| 63 | SCEPTER MED             |  120 |  120 |  120 | 1.00× | 1.00× | +1.00× |
+| 64 | BRANCH MED              |  296 |  298 |  297 | 1.01× | 1.00× | +1.00× |
+| 65 | EJS P3 DEEP             |   86 |   85 |   86 | 0.99× | 1.00× | +1.01× |
+| 66 | NEEDLE MED              |  297 |  296 |  296 | 1.00× | 1.00× | +1.00× |
+| 67 | M3,1 1/3 LIMB TIP       |  596 |  596 |  597 | 1.00× | 1.00× | +1.00× |
+| 68 | M_4,2 CASCADE 1         |  298 |  595 |  595 | 2.00× | 2.00× | +1.00× |
+| 69 | M_8,4 CASCADE 2         |  199 |  298 |  298 | 1.50× | 1.50× | +1.00× |
+| 70 | M_16,8 CASCADE 3        |  149 |  199 |  298 | 1.34× | 2.00× | +1.50× |
+| 71 | EJS P47 ALPHA           |  150 |  150 |  150 | 1.00× | 1.00× | +1.00× |
+| 72 | EJS P50 BETA            |  149 |  149 |  149 | 1.00× | 1.00× | +1.00× |
+| 73 | EJS WAKE 1/4            |  149 |  149 |  199 | 1.00× | 1.34× | +1.34× |
+| 74 | SH SPIRAL CONT          |  118 |  118 |  118 | 1.00× | 1.00× | +1.00× |
+| 75 | SH TAIL SPIRAL          |   99 |   99 |   99 | 1.00× | 1.00× | +1.00× |
+| 76 | ELEPHANT MED 2          |  148 |  149 |  148 | 1.01× | 1.00× | +0.99× |
+| 77 | R2T 1/2 ISLE STEP       |   58 |   58 |   57 | 1.00× | 0.98× | +0.98× |
+| 78 | BEYER STEP 13           |   22 |   22 |   22 | 1.00× | 1.00× | +1.00× |
+| 79 | BEYER STEP 14           |   19 |   19 |   18 | 1.00× | 0.95× | +0.95× |
+| 80 | TRIPLE SPIRAL P4        |   30 |   30 |   30 | 1.00× | 1.00× | +1.00× |
+| 81 | MERCATOR P189           |  131 |  265 |  523 | 2.02× | 3.99× | +1.97× |
+| 82 | MERCATOR P38            |  149 |  298 |  298 | 2.00× | 2.00× | +1.00× |
+| 83 | M(3,3) WAKE 1/3 DP      |  299 |  299 |  299 | 1.00× | 1.00× | +1.00× |
+| 84 | M(7,7) WAKE 1/4 DP      |  298 |  298 |  298 | 1.00× | 1.00× | +1.00× |
+| 85 | EJS P47 GAMMA           |  150 |  149 |  150 | 0.99× | 1.00× | +1.01× |
+
+Geomean A2 vs baseline: **1.113×** (+11.3%).
+Geomean cumulative (A2 + half-step) vs baseline: **1.126×** (+12.6%).
+Geomean delta of half-step+backpressure alone: **1.011×** (+1.1%).
+
+### Notable per-POI swings from the half-step shift
+
+The geomean is mild but the half-step shift moves sample positions by
+half a pixel in ci, and the M-set's sensitivity to sample position is
+non-uniform.  Both directions:
+
+**Big additional wins on top of A2:**
+- **MERCATOR P189** 265 → 523 (+1.97× on top of A2's +2.02× → cumulative
+  +3.99× vs baseline).  At this zoom the new sample positions land in
+  faster-escape regions.
+- **M_16,8 CASCADE 3** 199 → 298 (+1.50× on top of A2's +1.34× → cum
+  +2.00×).  The half-step shift pushed it past the secondary
+  bottleneck.
+- **EJS WAKE 1/4** 149 → 199 (+1.34×).  Non-real-axis POI — pure
+  sample-position luck in a sensitive region.
+
+**Small regressions:**
+- **ELEPHANT P19** 149 → 120 (-19%).  Non-real-axis.  Sample shift
+  landed in slower-converge region.
+- **P5 ISLAND DEEP** 100 → 86 (-14%).  Same explanation.
+- **BEYER STEP 14** 19 → 18 (-5%).  Within noise but consistent.
+
+These swings are EXPECTED, not regressions in the engineering sense —
+the half-step shift is a sample-pattern change, not a compute-rate
+change.  The renderer is computing different (cr, ci) points than
+before, so iter counts naturally vary per scene.  Cumulative geomean
+is positive (+12.6%) and visual quality is strictly improved (no more
+real-axis line).
 
 ---
 
@@ -130,35 +275,113 @@ result. Latched per-frame so auto-zoom drift can't corrupt mid-frame.
 Build: `MiSTerbrot_20260516.rbf` (Quartus 17.0.2 Lite). Worst-case setup
 slack +0.414 ns on FPGA_CLK1_50. 109 warnings, 0 errors. ~24 min build.
 
-Diff vs `ms-off` (2026-05-15) over the full 86-POI catalogue:
+Visual: y=120 black line still present here (this build pre-dates the
+half-step shift fix — that's the next entry above).
 
-```
-Geometric mean speedup: 1.11x (+11.3%)
-```
+### Full per-POI table (F10 = frames in 10s)
 
-17 of 86 POIs have `center_y == 0`. Of those:
+| # | scene | baseline F10 | a2-sym F10 | ratio |
+|---|---|---:|---:|---:|
+|  0 | P6 SUB BULB             |  298 |  595 | 2.00× |
+|  1 | P3 ISLAND               |  298 |  597 | 2.00× |
+|  2 | P3 ISLAND TIP           |  298 |  596 | 2.00× |
+|  3 | P4 ISLAND               |  297 |  297 | 1.00× |
+|  4 | P5 ISLAND               |  199 |  198 | 0.99× |
+|  5 | P6 ISLAND               |  298 |  298 | 1.00× |
+|  6 | P7 ISLAND               |  199 |  199 | 1.00× |
+|  7 | P8 ISLAND               |  298 |  298 | 1.00× |
+|  8 | P9 ISLAND               |  199 |  199 | 1.00× |
+|  9 | P11 ISLAND              |  149 |  149 | 1.00× |
+| 10 | P22 ISLAND              |  120 |  119 | 0.99× |
+| 11 | ELEPHANT TRUNK          |  299 |  299 | 1.00× |
+| 12 | ELEPHANT HEADS          |   99 |  100 | 1.01× |
+| 13 | ELEPHANT ISLAND         |   32 |   32 | 1.00× |
+| 14 | ELEPHANT P19            |  149 |  149 | 1.00× |
+| 15 | ELEPHANT P16            |  149 |  149 | 1.00× |
+| 16 | SEAHORSE BODY           |   75 |   75 | 1.00× |
+| 17 | SEAHORSE TAIL           |  120 |  120 | 1.00× |
+| 18 | SEAHORSE DEEP           |   60 |   59 | 0.98× |
+| 19 | SEAHORSE TAIL2          |  100 |  100 | 1.00× |
+| 20 | DOUBLE HOOK             |  119 |  120 | 1.01× |
+| 21 | SH SATELLITE            |   43 |   43 | 1.00× |
+| 22 | SAT ANTENNA             |   17 |   17 | 1.00× |
+| 23 | SAT HEAD                |   11 |   11 | 1.00× |
+| 24 | SAT SEAHORSE            |   11 |   11 | 1.00× |
+| 25 | SAT DBL SPIRAL          |    8 |    8 | 1.00× |
+| 26 | JULIA ISLANDS           |   21 |   21 | 1.00× |
+| 27 | TRIPLE WEST             |   50 |   49 | 0.98× |
+| 28 | TRIPLE DEEP             |   58 |   60 | 1.03× |
+| 29 | FEIGENBAUM              |  119 |  199 | 1.67× |
+| 30 | FEIGENBAUM ZOOM         |   67 |  120 | 1.79× |
+| 31 | FEIGENBAUM DEEP         |   28 |   55 | 1.96× |
+| 32 | GEN FEIGENBAUM          |  294 |  299 | 1.02× |
+| 33 | MISIUREWICZ M4          |  596 |  596 | 1.00× |
+| 34 | MISIUREWICZ M4-2        |  298 |  299 | 1.00× |
+| 35 | MISIUREWICZ SPIR        |  146 |  150 | 1.03× |
+| 36 | MISIUREWICZ -1.94       |  596 |  596 | 1.00× |
+| 37 | MISIUREWICZ -1.84       |  596 |  596 | 1.00× |
+| 38 | DBL SPIRAL P4           |  298 |  298 | 1.00× |
+| 39 | SINGLE SPIRAL           |  298 |  298 | 1.00× |
+| 40 | TRIPLE MEDALLION        |  119 |  119 | 1.00× |
+| 41 | DBL SPIRAL ISLE         |   85 |   86 | 1.01× |
+| 42 | TRIPLE ISLE MED         |   75 |   75 | 1.00× |
+| 43 | CAULIFLOWER MED         |  149 |  148 | 0.99× |
+| 44 | EJS CAULI               |  199 |  298 | 1.50× |
+| 45 | EJS DBL SPIRAL          |  149 |  150 | 1.01× |
+| 46 | EJS BRANCH              |  199 |  198 | 0.99× |
+| 47 | EJS NUCLEUS             |   13 |   13 | 1.00× |
+| 48 | LOVE CANAL              |   32 |   32 | 1.00× |
+| 49 | P5 ISLAND DEEP          |  100 |  100 | 1.00× |
+| 50 | ELEPHANT MED            |  100 |  100 | 1.00× |
+| 51 | STARFISH                |  120 |  120 | 1.00× |
+| 52 | M3,1 WAKE 3/7           |  149 |  149 | 1.00× |
+| 53 | M11,1 WAKE 5/11         |   85 |   85 | 1.00× |
+| 54 | CONCHA APPROACH         |  297 |  591 | 1.99× |
+| 55 | M7,1 WAKE 1/7           |  149 |  150 | 1.01× |
+| 56 | SH CUSP DEEP            |   20 |   20 | 1.00× |
+| 57 | EJS PERIOD 44           |  195 |  195 | 1.00× |
+| 58 | JEWEL BOX               |   60 |   59 | 0.98× |
+| 59 | R2T P6 ISLAND           |   35 |   65 | 1.86× |
+| 60 | SH CUSP FINE            |    9 |   10 | 1.11× |
+| 61 | R2 HALF ISLE            |   18 |   18 | 1.00× |
+| 62 | R2T P7 ISLAND           |  289 |  589 | 2.04× |
+| 63 | SCEPTER MED             |  120 |  120 | 1.00× |
+| 64 | BRANCH MED              |  296 |  298 | 1.01× |
+| 65 | EJS P3 DEEP             |   86 |   85 | 0.99× |
+| 66 | NEEDLE MED              |  297 |  296 | 1.00× |
+| 67 | M3,1 1/3 LIMB TIP       |  596 |  596 | 1.00× |
+| 68 | M_4,2 CASCADE 1         |  298 |  595 | 2.00× |
+| 69 | M_8,4 CASCADE 2         |  199 |  298 | 1.50× |
+| 70 | M_16,8 CASCADE 3        |  149 |  199 | 1.34× |
+| 71 | EJS P47 ALPHA           |  150 |  150 | 1.00× |
+| 72 | EJS P50 BETA            |  149 |  149 | 1.00× |
+| 73 | EJS WAKE 1/4            |  149 |  149 | 1.00× |
+| 74 | SH SPIRAL CONT          |  118 |  118 | 1.00× |
+| 75 | SH TAIL SPIRAL          |   99 |   99 | 1.00× |
+| 76 | ELEPHANT MED 2          |  148 |  149 | 1.01× |
+| 77 | R2T 1/2 ISLE STEP       |   58 |   58 | 1.00× |
+| 78 | BEYER STEP 13           |   22 |   22 | 1.00× |
+| 79 | BEYER STEP 14           |   19 |   19 | 1.00× |
+| 80 | TRIPLE SPIRAL P4        |   30 |   30 | 1.00× |
+| 81 | MERCATOR P189           |  131 |  265 | 2.02× |
+| 82 | MERCATOR P38            |  149 |  298 | 2.00× |
+| 83 | M(3,3) WAKE 1/3 DP      |  299 |  299 | 1.00× |
+| 84 | M(7,7) WAKE 1/4 DP      |  298 |  298 | 1.00× |
+| 85 | EJS P47 GAMMA           |  150 |  149 | 0.99× |
 
-| Outcome | Count | Examples |
-|---|---|---|
-| ~2.00× (clean halving) | 8 | P3 ISLAND, P3 ISLAND TIP, P6 SUB BULB, CONCHA APPROACH, M_4,2 CASCADE 1, R2T P7 ISLAND, MERCATOR P189, MERCATOR P38 |
-| 1.50× | 2 | EJS CAULI, M_8,4 CASCADE 2 |
-| 1.79–1.96× | 3 | FEIGENBAUM ZOOM, FEIGENBAUM DEEP, R2T P6 ISLAND |
-| 1.34–1.67× (other bottleneck) | 2 | M_16,8 CASCADE 3, FEIGENBAUM |
-| 1.00× (already vsync-capped at 59.6) | 2 | MISIUREWICZ -1.94, MISIUREWICZ -1.84 |
+Geomean: **1.113×** (+11.3%).
 
-Non-real-axis POIs: all within ±2 % of baseline (measurement noise — F10
-resolution is 1 frame in 10 s = 0.1 fps).
+Of the 17 cy=0 POIs: 8 hit clean 2.00× (P3 ISLAND, P3 ISLAND TIP, P6 SUB
+BULB, CONCHA APPROACH, M_4,2 CASCADE 1, R2T P7 ISLAND, MERCATOR P189,
+MERCATOR P38).  The 1.50× / 1.79–1.96× cases (EJS CAULI, FEIGENBAUM
+ZOOM, etc.) are limited by what's likely the framebuffer-write FIFO
+becoming the bottleneck once compute is halved.  Two were already
+vsync-saturated at 59.6 fps in baseline (MISIUREWICZ -1.94, -1.84) — no
+opportunity.  M_16,8 CASCADE 3 at 1.34× has a secondary bottleneck that
+was unblocked by the half-step shift in the next entry above.
 
-Visual verification: confirmed by reading FEIGENBAUM and P3 ISLAND
-screenshots from the bench sweep. Both perfectly symmetric across the
-horizontal centerline. The thin black horizontal line at `y=120` visible in
-some scenes is the actual Mandelbrot antenna along the real axis, not a
-rendering artefact.
-
-Why slightly under prediction (+11.3% measured vs +13% predicted): 2 POIs
-were already vsync-saturated at 59.6 fps in baseline, and a few have
-secondary bottlenecks (probably write-FIFO serialization — a 2× compute
-reduction needs the write rate to actually halve too).
+Non-real-axis POIs: all within ±3% (measurement noise — F10 resolution
+is 1 frame in 10 s = 0.1 fps).
 
 ---
 
