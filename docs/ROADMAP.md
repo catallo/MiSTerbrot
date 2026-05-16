@@ -88,6 +88,39 @@ Effort: ~4–5 days (render-scheduler rewrite, mask-based dilated writes, swap-p
 
 **Decision: defer.** The combined gain from A1-A4 alone makes the average frame fast enough that long stalls become uncommon. Revisit only if specific deep-zoom POIs still feel choppy after Track A lands.
 
+### A6. Framebuffer dual-port write (unblock A2's "secondary bottleneck")
+
+A2's bench data (see `docs/PERF_BASELINE_TRACK_A.md`) showed that several real-axis POIs don't reach a clean 2.00× speedup after A2 — instead they sit at 1.34× (M_16,8 CASCADE 3), 1.50× (EJS CAULI, M_8,4 CASCADE 2), or 1.67–1.79× (FEIGENBAUM, FEIGENBAUM ZOOM). The math is halved, the iterators are idle plenty of the time, but the per-cycle framebuffer write port becomes the bottleneck once A2 doubles the writes per result (original + mirror serialized through the FIFO).
+
+Cyclone V M10K supports true dual-port mode. Adding a second write port to `framebuffer.v` lets us write the original AND the mirror in the same cycle when A2 is active, removing the FIFO drain dependency entirely.
+
+- Expected gain: pulls the 1.34–1.79× POIs toward clean 2.00×. Geomean improvement ~3–5% on top of A2 (concentrated on the ~5 POIs currently bottlenecked).
+- Cost: rewrite `rtl/framebuffer.v` to use Quartus's `RAM_BLOCK_TYPE` true-dual-port template (or migrate to an explicit M10K instance with two write ports). Remove or simplify the mirror FIFO in `fractal_top.v` — direct two-port write replaces serialized drain.
+- Risk: BRAM utilisation might shift; current usage is 78% so room exists. Read-port behaviour during simultaneous writes needs verification (Quartus templates handle this; pick "old data" or "no-change" mode for the read).
+- Effort: **2–3 days**.
+
+### A7. Per-POI `max_iter` tuning
+
+Currently `max_iter` is set by the zoom-tier auto-iter ladder (512 / 1024 / 2048 / 4095 by zoom depth). This is a one-size-fits-all heuristic; some POIs run far above what they need (e.g., the SAT series sits at 0.8–1.7 fps because every pixel iterates the full 1024 even though most escape quickly).
+
+- Profile each POI's actual iter histogram (instrument `pixel_pipeline.v` to count escape distribution, or run a Python pre-pass on the catalogue with the existing golden model).
+- For each POI, find the smallest `max_iter` where >99.5% of escapes happen, plus a safety margin.
+- Bake into `tools/poi_master.json` as a per-POI override; the existing benchmark generator (`tools/gen_full_benchmarks.py`) already plumbs `max_iter` per scene.
+- Expected gain: scene-dependent. SAT POIs could gain 1.5–2× (currently tier-capped at 1024 when 256 might suffice). Catalogue geomean impact modest (~5–10%) but specific POIs become noticeably smoother.
+- Cost: profiling pass + catalogue edits + a re-bench. No RTL changes.
+- Effort: **1 day** if profiling tooling is straightforward; **2 days** if we need to add iter-distribution telemetry to the FPGA.
+
+### A8. Period detection in `iter_quad.v`
+
+The cardioid + period-2 bulb prechecks (and A3's period-3 bulbs) catch interior points that fall inside known-shape regions. But many interior points sit OUTSIDE all those regions and converge to a long-period attractor — the iteration runs to `max_iter` even though `z` is visiting a small loop after the first dozen steps.
+
+A period-detection check tracks `|z_n - z_{n-k}|` for some small `k` (e.g., 4, 8, 16) and declares interior the moment a near-cycle is detected. Saves the rest of the iteration budget for those points.
+
+- Expected gain: highest on **deep-zoom and near-boundary POIs** where many pixels converge to long-period attractors but aren't precheck-able by shape. Could be 1.3–2× on those scenes; near-zero on POIs dominated by fast-escape pixels.
+- Cost: extra registers per iter_quad context to hold `z_{n-k}` history. Comparator + magnitude check on the difference. Probably ~50–100 ALMs per quad. Tight DSP budget so the magnitude approximation needs to be cheap (Manhattan distance, or `|zr - zr_old| + |zi - zi_old|` instead of squared euclidean).
+- Risk: false positives (declaring interior on a near-cycle that would eventually escape) → visible coloring errors near boundaries. Period detection is approximate by nature; tuning `k` and threshold requires iteration.
+- Effort: **3–5 days** including hardware bring-up and tuning.
+
 ### Combined Track A target — revised after A1 v1 data
 
 Original estimates assumed MS would deliver 5–10× as a global win. The
@@ -96,11 +129,14 @@ bench data showed that's only true for a subset of POIs. Revised targets:
 | Combination | Mechanism | Expected gain |
 |---|---|---|
 | A1 MS (per-POI, with pipelining + caching) | Per-POI flag picks the win path; no losses | ~1.5–2× on the MS-friendly half of POIs, no regression on the rest |
-| A2 Symmetry (applicable POIs) | Compute only y≥0, mirror y<0 | 1.9× on real-axis POIs |
+| A2 Symmetry (applicable POIs) — **DONE** | Compute only y≥0, mirror y<0 | Measured: clean 2.00× on 8 POIs, 1.34–1.99× on 7 more (limited by FB write bottleneck — see A6); **+12.6% catalogue geomean** |
 | A3 Period-3 bulbs | Skip the two extra interior precheck-able bulbs | ~5–15% catalogue-wide |
 | A4 Higher iter clock | Constraint tightening 100→110 MHz | 10% throughput |
-| **Stacked, MS-friendly POI** | A1+A2+A3+A4 | ~2.5–4× |
-| **Stacked, MS-neutral POI** | A2+A3+A4 only | ~1.2–1.5× |
+| A6 FB dual-port write | Removes A2's serialization bottleneck on the 1.34–1.79× POIs | ~3–5% on top of A2 (concentrated on ~5 POIs) |
+| A7 Per-POI iter caps | Avoid over-iterating POIs the auto-tier ladder over-budgets | scene-dependent, 1.5–2× on under-tuned POIs; ~5–10% geomean |
+| A8 Period detection | Skip rest-of-iteration when z hits a near-cycle | 1.3–2× on long-period interior POIs; near-zero on fast-escape scenes |
+| **Stacked, MS-friendly POI** | A1+A2+A3+A4+A6+A7+A8 | ~3–5× |
+| **Stacked, MS-neutral POI** | A2+A3+A4+A6+A7+A8 only | ~1.4–1.8× |
 
 The shift from "uniform 5–10× win" to "per-POI 2–4× win + per-POI 1.2–1.5× win"
 is the honest revision. **The core stays BRAM-only, double-buffered, 240p.**
@@ -258,12 +294,23 @@ Independent of resolution/framerate work. Worth pursuing whenever Track A/B has 
 
 ## Recommended sequencing
 
-1. **Track A first** (frame-rate optimisations). Cheap, no architectural change, immediate quality improvement. **1.5–2 weeks.**
-2. **Track B 480i** on top of Track A. Single PLL output, simpler timing. **~2 weeks.**
-3. **Track B 480p** as a final step. Adds PLL reconfig and 31 kHz timing. **~1 week on top of 480i.**
-4. **Variety enhancements** interleaved as recovery sprints between tracks.
+Within Track A, taking A2 as already shipped:
 
-Total: **~5 weeks** of focused work to land 480p with Mariani-Silver + symmetry savings.
+1. **A3** first — period-3 prechecks. Cheapest sure win, opens up `iter_quad.v` for opportunistic co-located fixes (e.g., the documented off-by-one labelling). **~1 day.**
+2. **A4** next — `clk_iter` 100→110 MHz. Pure timing-closure work, no logic changes. Revertible if it doesn't close. **0.5–2 days.**
+3. **A6 or A1** — these are the next-tier wins requiring more infrastructure:
+   - **A6** (FB dual-port write): smaller win but lower risk, ~2–3 days, no sim work needed.
+   - **A1** (Mariani-Silver revival): bigger potential win on MS-friendly POIs, but needs the `fractal_top + region_manager` Verilator harness first (~2–4 days for the harness, then 2–3 days for the MS fix).
+4. **A7** (per-POI iter caps) — interleave any time. Profiling pass + catalogue edits. **~1 day.**
+5. **A8** (period detection) — biggest individual logic addition. Schedule once A3/A4/A6 wins are stable. **~3–5 days.**
+
+Then on to Track B:
+
+1. **Track B 480i** on top of Track A. Single PLL output, simpler timing. **~2 weeks.**
+2. **Track B 480p** as a final step. Adds PLL reconfig and 31 kHz timing. **~1 week on top of 480i.**
+3. **Variety enhancements** interleaved as recovery sprints between tracks.
+
+Total: **~5–6 weeks** of focused work to land 480p with the full Track A stack.
 
 ## Out of scope
 
