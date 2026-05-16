@@ -42,33 +42,57 @@ def auto_max_iter_for_zoom(z: float) -> int:
     return 4095
 
 
-# Threshold for "visually identical": fraction of pixels that differ by
-# more than COLOR_TOL (per channel) must be below DIFF_FRAC_TOL.
-COLOR_TOL = 16   # 0-255 per channel
-DIFF_FRAC_TOL = 0.001  # 0.1% of pixels
+# Threshold for "visually identical": fraction of pixels that differ
+# STRUCTURALLY (one is interior, other is escaped) must be below
+# DIFF_FRAC_TOL.  We deliberately ignore color-cycling differences in
+# the ESCAPE colors — those don't represent iter behaviour, they
+# represent palette phase.  What matters is whether each pixel was
+# classified as interior (iter_count == max_iter) or escaped.
+DIFF_FRAC_TOL = 0.005  # 0.5% of pixels structurally different
 
 
-def diff_screenshots(path_a: Path, path_b: Path) -> float:
-    """Return the fraction of pixels that differ by >COLOR_TOL per channel."""
-    a = np.asarray(Image.open(path_a).convert("RGB"), dtype=np.int16)
-    b = np.asarray(Image.open(path_b).convert("RGB"), dtype=np.int16)
-    if a.shape != b.shape:
+def interior_mask(path: Path) -> np.ndarray:
+    """Return a boolean array: True where the pixel is M-set interior
+    (rendered as the constant interior color — pure black across all
+    90 palettes in color_mapper.v)."""
+    a = np.asarray(Image.open(path).convert("RGB"))
+    if a.size == 0:
+        return np.zeros((0, 0), dtype=bool)
+    # Pure black = interior.  All palettes map iter==max_iter (escaped=0)
+    # to (0,0,0) regardless of color-cycling phase.
+    is_interior = (a[:, :, 0] == 0) & (a[:, :, 1] == 0) & (a[:, :, 2] == 0)
+    # Mask out the telemetry strip (top ~8 display rows × ~256 display
+    # cols).  The strip contains black '0' bits which would falsely
+    # count as interior.
+    h, w = is_interior.shape
+    mask_h = max(8, h // 60)
+    mask_w = max(256, w // 2)
+    is_interior[:mask_h, :mask_w] = False
+    # Mask out the bottom overlay (POI name + coords + IT value).  Up to
+    # ~40 display rows depending on font size.  Be generous.
+    is_interior[-50:, :] = False
+    # Top-right "CC: ON" / FPS counter (small region, last ~80 cols × top 8).
+    is_interior[:8, -80:] = False
+    return is_interior
+
+
+def diff_screenshots(path_low: Path, path_ref: Path) -> float:
+    """Return the fraction of pixels that are interior at `path_low` but
+    NOT interior at `path_ref`.  Those are pixels where the lower
+    max_iter cut off an escape that would have happened in the reference
+    setting — visible quality loss.
+
+    Cycling-friendly: only looks at interior/escaped classification,
+    ignores escape-pixel colours.
+    """
+    low = interior_mask(path_low)
+    ref = interior_mask(path_ref)
+    if low.shape != ref.shape:
         return 1.0
-    # crop the telemetry strip (top 4 native rows × 128 native px wide
-    # = top 8 display rows × 256 display px wide for 2× capture).
-    # Telemetry differs by iter_tier between sweeps — exclude it.
-    h, w = a.shape[:2]
-    mask_h = max(8, h // 60)   # ~8 px at 480-tall capture
-    mask_w = max(256, w // 2)  # leftmost ~256 px
-    a[:mask_h, :mask_w] = 0
-    b[:mask_h, :mask_w] = 0
-    # Also exclude the bottom overlay region (last ~30 display rows).
-    # The overlay shows "IT: NNNN" which differs between sweeps.
-    a[-30:, :] = 0
-    b[-30:, :] = 0
-
-    diff = np.any(np.abs(a - b) > COLOR_TOL, axis=2)
-    return float(diff.mean())
+    # "False positive interior" at low = pixel reports interior at low
+    # setting but was actually escaped at ref → max_iter was too low.
+    extra_interior = low & ~ref
+    return float(extra_interior.mean())
 
 
 def classify(per_setting: dict, current_auto: int,

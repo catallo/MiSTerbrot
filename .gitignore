@@ -53,3 +53,4 @@ tools/*
 !tools/profile_max_iter.py
 !tools/analyze_max_iter.py
 sim/iter_quad/__pycache__/
+!tools/compose_iter_grid.py
