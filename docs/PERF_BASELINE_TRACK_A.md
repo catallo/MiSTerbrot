@@ -56,6 +56,39 @@ with `tools/bench_diff.py <before.json> <after.json>`.
 
 ---
 
+## 2026-05-16 · `frame-snapshot` — coord_generator latches step + mode_640 at frame start
+
+Visual correctness fix, **not a perf change**.  Included here because
+it's a release-relevant code change that ships in the same build as A3.
+
+**Symptom**: on low-fps scenes (auto-zoom approach + hold on slow POIs,
+or manual deep-zoom drift), the rendered image showed a continuous
+geometric "warp" — top rows used one effective step value, bottom rows
+another, producing a stretched/sheared appearance only visible at
+≤10 fps.
+
+**Cause**: `coord_generator.v`'s S_SCAN block read `step` and `mode_640`
+live from input wires every cycle.  Auto_zoom updates these
+continuously while interpolating between POIs.  On slow renders the
+drift between top-of-frame and bottom-of-frame was large enough for
+the per-pixel `cr` increment (uses `step_x`) and per-row `ci`
+increment (uses `step`) to visibly vary mid-frame.
+
+**Fix**: latch `step` and `mode_640` into `step_frame` / `mode_640_frame`
+at `start_frame` (same pattern as the existing `sym_frame` latch).
+S_SCAN now uses the latched copies via `step_x_frame` and
+`H_PIXELS_frame`.  `cr_start` / `ci_start` (combinational from live
+step) are only used at start_frame, so the live values get
+implicitly latched at the same posedge as `step_frame`.
+
+**Impact**: zero on F10 measurements (step is constant in benchmark
+mode, so bench is unaffected).  Pure visual correctness fix.  Verified
+on hardware: auto-zoom approach + hold no longer warps.
+
+12-line diff in `rtl/coord_generator.v`.
+
+---
+
 ## 2026-05-16 · `a3-perpoi-osd` — A3 period-3 bulb prechecks (per-POI opt-in + OSD control)
 
 A3 lands.  Three changes shipped together:

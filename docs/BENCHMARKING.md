@@ -72,13 +72,14 @@ Benchmark mode encodes data into **32 tiny 4x4-pixel color blocks** at the top-l
 of the final video output (128 px wide, 4 px tall — doubled to 8 px tall by the
 MiSTer scaler on its way to HDMI):
 
-| Bits  | Field        | Notes                                              |
-|------:|--------------|----------------------------------------------------|
-| 31:28 | magic `0xA`  | self-check; rejects non-bench captures             |
-| 27:23 | spare        | reserved for future use (was `ms_enable` + `mr_sel`) |
-| 22:16 | `scene_idx`  | 7 bits — 86-POI catalogue                          |
-| 15:12 | `iter_tier`  | max-iteration tier (see table below)               |
-| 11:0  | `F10`        | frames completed in the last 10-second window      |
+| Bits  | Field                  | Notes                                              |
+|------:|------------------------|----------------------------------------------------|
+| 31:28 | magic `0xA`            | self-check; rejects non-bench captures             |
+| 27    | `sym_overflow_sticky`  | A2 mirror FIFO ever overflowed — should be 0       |
+| 26:23 | spare                  | reserved for future use                            |
+| 22:16 | `scene_idx`            | 7 bits — 90-POI catalogue                          |
+| 15:12 | `iter_tier`            | max-iteration tier (see table below)               |
+| 11:0  | `F10`                  | frames completed in the last 10-second window      |
 
 Max-iteration tiers are:
 
@@ -114,13 +115,14 @@ from the wrong core, or with unexpected capture scaling/cropping.
 
 ### Visible block positions (counting from leftmost)
 
-| Block(s) | Bit(s)  | Field        |
-|---------:|---------|--------------|
-| 0–3      | 31..28  | magic `0xA` (Y B Y B)      |
-| 4–8      | 27..23  | spare                      |
-| 9–15     | 22..16  | scene index                |
-| 16–19    | 15..12  | iter tier                  |
-| 20–31    | 11..0   | F10                        |
+| Block(s) | Bit(s)  | Field                       |
+|---------:|---------|-----------------------------|
+| 0–3      | 31..28  | magic `0xA` (Y B Y B)       |
+| 4        | 27      | `sym_overflow_sticky`       |
+| 5–8      | 26..23  | spare                       |
+| 9–15     | 22..16  | scene index                 |
+| 16–19    | 15..12  | iter tier                   |
+| 20–31    | 11..0   | F10                         |
 
 ### Runtime keys (verification mode)
 

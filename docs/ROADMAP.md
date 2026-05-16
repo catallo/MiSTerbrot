@@ -129,16 +129,15 @@ Effort: ~4–5 days (render-scheduler rewrite, mask-based dilated writes, swap-p
 
 **Decision: defer.** The combined gain from A1-A4 alone makes the average frame fast enough that long stalls become uncommon. Revisit only if specific deep-zoom POIs still feel choppy after Track A lands.
 
-### A6. Framebuffer dual-port write (unblock A2's "secondary bottleneck")
+### A6. Framebuffer dual-port write (unblock A2's "secondary bottleneck") — **shelved**
 
-A2's bench data (see `docs/PERF_BASELINE_TRACK_A.md`) showed that several real-axis POIs don't reach a clean 2.00× speedup after A2 — instead they sit at 1.34× (M_16,8 CASCADE 3), 1.50× (EJS CAULI, M_8,4 CASCADE 2), or 1.67–1.79× (FEIGENBAUM, FEIGENBAUM ZOOM). The math is halved, the iterators are idle plenty of the time, but the per-cycle framebuffer write port becomes the bottleneck once A2 doubles the writes per result (original + mirror serialized through the FIFO).
+Originally proposed as a fix for real-axis POIs that don't reach a clean 2.00× speedup after A2 (FEIGENBAUM 1.67×, EJS CAULI 1.50×, M_16,8 CASCADE 3 1.34×, etc.).  Hypothesis: the per-cycle framebuffer write port is the bottleneck once A2 doubles writes per result.
 
-Cyclone V M10K supports true dual-port mode. Adding a second write port to `framebuffer.v` lets us write the original AND the mirror in the same cycle when A2 is active, removing the FIFO drain dependency entirely.
+**Re-analysis shelved this item.**  The bench data is dominated by **vsync harmonic snap**: render times snap to multiples of ~16.66 ms (because the render FSM waits for vblank between frames), so observed fps values are 60/N for integer N (59.6, 29.8, 19.9, 14.9, 11.9, …).  M_16,8 CASCADE 3 at A2 19.9 fps means render takes ~50 ms (N=3 harmonic); baseline at 14.9 fps is ~67 ms (N=4).  A2's compute savings shifted between harmonic floors; the 1.34× ratio is the floor-to-floor ratio, NOT a write-port bottleneck.
 
-- Expected gain: pulls the 1.34–1.79× POIs toward clean 2.00×. Geomean improvement ~3–5% on top of A2 (concentrated on the ~5 POIs currently bottlenecked).
-- Cost: rewrite `rtl/framebuffer.v` to use Quartus's `RAM_BLOCK_TYPE` true-dual-port template (or migrate to an explicit M10K instance with two write ports). Remove or simplify the mirror FIFO in `fractal_top.v` — direct two-port write replaces serialized drain.
-- Risk: BRAM utilisation might shift; current usage is 78% so room exists. Read-port behaviour during simultaneous writes needs verification (Quartus templates handle this; pick "old data" or "no-change" mode for the read).
-- Effort: **2–3 days**.
+For A6 to deliver any visible fps gain, it would need to (a) actually be the bottleneck and (b) save enough wall-clock time to cross a harmonic boundary.  Pipeline result rate analysis shows FB write isn't even close to the limit on those POIs (typical iter takes 30+ cycles per pixel; FB write port is 1/cycle).  And saving small amounts of time rarely crosses a harmonic for fps ≥ 20.
+
+A6 stays here as an artifact of the original hypothesis.  Don't pursue unless we find a concrete scene with measured pipeline-saturation evidence.
 
 ### A7. Per-POI `max_iter` tuning
 
@@ -170,14 +169,14 @@ bench data showed that's only true for a subset of POIs. Revised targets:
 | Combination | Mechanism | Expected gain |
 |---|---|---|
 | A1 MS (per-POI, with pipelining + caching) | Per-POI flag picks the win path; no losses | ~1.5–2× on the MS-friendly half of POIs, no regression on the rest |
-| A2 Symmetry (applicable POIs) — **DONE** | Compute only y≥0, mirror y<0 | Measured: clean 2.00× on 8 POIs, 1.34–1.99× on 7 more (limited by FB write bottleneck — see A6); **+12.6% catalogue geomean** |
+| A2 Symmetry (applicable POIs) — **DONE** | Compute only y≥0, mirror y<0 | Measured: clean 2.00× on 8 POIs, 1.34–1.99× on 7 more (limited by **vsync harmonic snap** — render times snap to 16.66 ms multiples, the 1.34-1.79× POIs are at a 16.66 ms harmonic edge); **+12.6% catalogue geomean** |
 | A3 Period-3 bulbs | Skip the two extra interior precheck-able bulbs | ~5–15% catalogue-wide |
 | A4 Higher iter clock | Constraint tightening 100→110 MHz | 10% throughput |
-| A6 FB dual-port write | Removes A2's serialization bottleneck on the 1.34–1.79× POIs | ~3–5% on top of A2 (concentrated on ~5 POIs) |
+| A6 FB dual-port write | **Shelved** — bottleneck is vsync harmonic snap, not FB write | ~0 (re-analysed) |
 | A7 Per-POI iter caps | Avoid over-iterating POIs the auto-tier ladder over-budgets | scene-dependent, 1.5–2× on under-tuned POIs; ~5–10% geomean |
 | A8 Period detection | Skip rest-of-iteration when z hits a near-cycle | 1.3–2× on long-period interior POIs; near-zero on fast-escape scenes |
-| **Stacked, MS-friendly POI** | A1+A2+A3+A4+A6+A7+A8 | ~3–5× |
-| **Stacked, MS-neutral POI** | A2+A3+A4+A6+A7+A8 only | ~1.4–1.8× |
+| **Stacked, MS-friendly POI** | A1+A2+A3+A4+A7+A8 | ~3–5× |
+| **Stacked, MS-neutral POI** | A2+A3+A4+A7+A8 only | ~1.4–1.8× |
 
 The shift from "uniform 5–10× win" to "per-POI 2–4× win + per-POI 1.2–1.5× win"
 is the honest revision. **The core stays BRAM-only, double-buffered, 240p.**
@@ -335,23 +334,42 @@ Independent of resolution/framerate work. Worth pursuing whenever Track A/B has 
 
 ## Recommended sequencing
 
-Within Track A, taking A2 as already shipped:
+Project releases follow a three-release plan with MiSTer-convention CalVer tags (`MiSTerbrot_YYYYMMDD.rbf`):
 
-1. **A3** first — period-3 prechecks. Cheapest sure win, opens up `iter_quad.v` for opportunistic co-located fixes (e.g., the documented off-by-one labelling). **~1 day.**
-2. **A4** next — `clk_iter` 100→110 MHz. Pure timing-closure work, no logic changes. Revertible if it doesn't close. **0.5–2 days.**
-3. **A6 or A1** — these are the next-tier wins requiring more infrastructure:
-   - **A6** (FB dual-port write): smaller win but lower risk, ~2–3 days, no sim work needed.
-   - **A1** (Mariani-Silver revival): bigger potential win on MS-friendly POIs, but needs the `fractal_top + region_manager` Verilator harness first (~2–4 days for the harness, then 2–3 days for the MS fix).
-4. **A7** (per-POI iter caps) — interleave any time. Profiling pass + catalogue edits. **~1 day.**
-5. **A8** (period detection) — biggest individual logic addition. Schedule once A3/A4/A6 wins are stable. **~3–5 days.**
+### Release 2 — polished 640×240 (current cycle)
 
-Then on to Track B:
+A2 + A3 + the coord_generator frame-snapshot fix are shipped on `main`.  Remaining for Release 2:
 
-1. **Track B 480i** on top of Track A. Single PLL output, simpler timing. **~2 weeks.**
-2. **Track B 480p** as a final step. Adds PLL reconfig and 31 kHz timing. **~1 week on top of 480i.**
+1. **Other polish items the user has noticed** — TBD list (catalogue cleanup, OSD wording, palette work, etc.).
+2. **A7** (per-POI `max_iter` tuning) — last item.  Profile each slow POI in software (use `tools/poi_render.py` + `sim/iter_quad/golden.py` for bit-exact verification), find the smallest viable `max_iter` per POI, bake into `tools/poi_master.json` as a per-POI override.  Should be **~1 day** with software profiling first (vs the failed hardware-only attempt that gave up after a few rebuild cycles).
+3. **Final full bench sweep** to capture the v2 baseline.
+4. **Update README, ROADMAP, PERF_BASELINE_TRACK_A** at release time.
+5. **Tag the release.**
+
+### Release 3 — Verilator harness, MS revival, then SDRAM/480i
+
+The Verilator harness for `fractal_top + region_manager` is the gating dependency for **both** A1 (Mariani-Silver) and Track B (SDRAM).  Doing them in the same release amortises the harness investment.
+
+1. **Verilator harness** for `fractal_top + region_manager` (~2–4 days).  Goal: reproduce the MR=16 hang deterministically + verify the ChatGPT Pro two-line fix removes it + investigate why the fix breaks HDMI scaler synchronisation by diff'ing waveforms.
+2. **A1 (MS revival)** with sim-driven debug (~2–3 days on top of the harness).  Includes A1.4 (per-POI `prefers_ms` flag, same pattern as A3's per-POI flag).
+3. **A4** (clk_iter 100→110 MHz) — opportunistic.  Tight harmonic-snap budget, may not deliver visible fps gain.  Try if it's quick.
+4. **A8** (period detection) — biggest individual logic addition.  Schedule late in this release if there's budget.
+
+### Release 4 — SDRAM-backed 480i then 480p (Track B)
+
+After Release 3's harness is proven on MS, Track B becomes tractable:
+
+1. **Track B 480i** on top of Release 3.  Same line rate (15.625 kHz), 15-kHz-CRT-compatible.  **~2 weeks.**
+2. **Track B 480p** as a final step.  Adds PLL reconfig and 31 kHz timing — breaks strict 15 kHz CRT support.  **~1 week on top of 480i.**
 3. **Variety enhancements** interleaved as recovery sprints between tracks.
 
-Total: **~5–6 weeks** of focused work to land 480p with the full Track A stack.
+### Shelved / deprioritised
+
+- **A6** (FB dual-port write): re-analysis showed the bottleneck on A2-residual POIs is vsync harmonic snap, not FB write port.  Don't pursue unless we find concrete pipeline-saturation evidence on a specific scene.
+
+### Total budget
+
+End-to-end (R2 + R3 + R4): **~5–7 weeks** of focused work to land 480p with the full Track A stack, MS, and SDRAM.
 
 ## Out of scope
 

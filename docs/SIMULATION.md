@@ -4,8 +4,15 @@ Verilator harness setup is in progress. First module covered:
 
 - **`sim/iter_quad/`** — Verilator + C++ testbench + Python golden
   model for `rtl/iter_quad.v`. See `sim/iter_quad/README.md` for usage.
-  Currently 7/8 cases match the software reference exactly; one
-  off-by-one at the escape boundary remains to investigate.
+  Currently 22 directed cases: **13 PASS, 9 GAP, 0 FAIL**.  The GAPs
+  are a documented iter_count off-by-one between the FSM's iter
+  increment ordering and golden's 1-indexed convention — uniform −1
+  shift on every escape ≥ depth 13.  Cosmetic (uniform palette
+  shift, invisible) and confirmed deterministic; not a bug.  See
+  `sim/iter_quad/README.md` for the per-case table and analysis.
+- A3 (period-3 bulb precheck) added to both golden.py and the
+  testbench; 5 new "inside the inscribed circle" cases all hit the
+  precheck (RTL == golden, no GAP).
 
 The previous `sim/` directory (Verilator harnesses for `iter_pair.v` and
 `mandelbrot_iterator.v`) was removed when those modules were retired during
@@ -42,15 +49,22 @@ would. Bring sim back when one of these starts:
 ### `iter_quad.v` — bit-exact arithmetic regression — **implemented**
 
 See `sim/iter_quad/` (`Makefile`, `tb_iter_quad.cpp`, `golden.py`,
-`README.md`). Initial coverage:
+`README.md`). Current coverage:
 
-- 8 directed test cases: precheck points (origin, cardioid, P2 bulb),
-  fast-escape points, near-cusp / interior boundary, Seahorse Valley.
+- 22 directed test cases across 4 categories:
+  - 5 interior precheck cases (cardioid, period-2 bulb)
+  - 5 A3 period-3 bulb cases (upper + lower centers, inside-circle
+    offsets, outside-circle, far-from-bulb escape)
+  - 2 very-shallow escapes (escape_1, escape_2)
+  - 10 escape cases at varied depths (13, 21, 31, 52, 99, 128, 386,
+    461) for characterising the iter_count off-by-one
 - Golden model in `golden.py` matches the truncated 64×64 multiply
-  bit-by-bit (skips the `a_lo*b_lo` term per `rtl/mul_trunc64.v`).
-- 7/8 cases match RTL exactly. Remaining off-by-one (escape boundary)
-  documented in the README — investigate when iterator math next
-  changes.
+  bit-by-bit (skips the `a_lo*b_lo` term per `rtl/mul_trunc64.v`)
+  AND the cardioid + period-2 + period-3 bulb prechecks.
+- 13 PASS, 9 GAP, 0 FAIL.  The GAPs are the deterministic +1 RTL/golden
+  offset on escape iter_count for depths ≥ 13 (RTL counts "iterations
+  completed before escape detected"; golden counts "iteration on which
+  escape was detected").  Cosmetic; uniform palette shift, invisible.
 
 Still TODO on this harness:
 

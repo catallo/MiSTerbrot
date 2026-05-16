@@ -19,11 +19,11 @@ MiSTerbrot is a MiSTer FPGA core for real-time Mandelbrot set rendering on the D
   - **Secondary**: LG C1 OLED via HDMI
 - **15 kHz CRT support is a hard requirement** even though we cannot test it locally. Many MiSTer users drive RGB SCART / arcade monitors at the SD line rate, and the core's native 240p timing (15.625 kHz line rate, ~59.7 Hz refresh) is what makes that work. Any change to `rtl/video_timing.v` or the analog video path must preserve this — break 15 kHz output and we lose a chunk of the user base. Validate on the multisync VGA CRT here at minimum; defer to community feedback for true 15 kHz fixed-frequency displays.
 - Build implications: do **not** enable `MISTER_DISABLE_YC` even though we don't deliberately use Y/C output — the analog addon board path shares framework code with the YC encoder, and removing it has not been validated against the CRT. Audio is unused, so `MISTER_DISABLE_ALSA` is safe.
-- Current fitted build resource usage from `output_files/MiSTerbrot.fit.summary`:
-  - `24,155 / 41,910` ALMs (`58%`)
-  - `30,560` registers
-  - `3,309,893 / 5,662,720` block memory bits (`58%`)
-  - `427 / 553` RAM blocks (`77%`)
+- Current fitted build resource usage from `output_files/MiSTerbrot.fit.summary` (post-A2 + A3):
+  - `35,676 / 41,910` ALMs (`85%`) — significantly up since A2 mirror FIFO + A3 prechecks landed
+  - `35,459` registers
+  - `3,310,917 / 5,662,720` block memory bits (`58%`)
+  - `429 / 553` RAM blocks (`78%`)
   - `112 / 112` DSP blocks (`100%`)
   - `3 / 6` PLLs (`50%`)
 
@@ -63,27 +63,33 @@ Major blocks:
 - `rtl/coord_generator.v`
   - Scans the frame in raster order and maps pixels into complex-plane coordinates from `center_x`, `center_y`, and `step`. Receives `mode_640` so the scan range matches the active resolution.
   - **Complex-plane aspect is always 4:3, regardless of `mode_640`.** 320 mode covers `320·step × 240·step`; 640 mode covers the same complex-plane region but at 2× horizontal resolution via `step_x = step >>> 1`. Both modes evaluate `cr_start = center_x − 160·step` (no mux needed). This invariant is the source-of-truth for the Python reference renderer: `tools/poi_render.py` uses `H_OVERSAMPLE = 2` and `step_x = step / 2` when rendering at 640×240 so its complex-plane coverage matches the FPGA pixel-for-pixel.
+  - **Half-step ci grid shift** (`ci_start = center_y − 120·step + step/2`): no pixel row ever lands on `ci=0` exactly.  This avoids the canonical "horizontal line" artifact on views crossing the real axis — `M ∩ ℝ = [-2, 0.25]` is a 1D line of zero imaginary width and a single-sample renderer hitting it would produce dramatically different iter counts than `ci=±step` neighbours.  See Cheritat (math.univ-toulouse.fr) for the underlying description; cost is one constant changed, side-effect is a sub-pixel image shift in ci.
+  - **Frame-start parameter snapshot.** `step` and `mode_640` are latched into `step_frame` / `mode_640_frame` on `start_frame` (S_IDLE → S_SCAN and S_DONE → S_SCAN transitions), and the per-pixel cr increment / per-row ci increment / H_PIXELS check use the latched values.  Without this, auto_zoom's continuous interpolation of `step` between POIs would cause the per-pixel and per-row increments to drift mid-frame, producing visible geometric warping on slow renders (visible at <10 fps).  Same pattern as `sym_frame` (real-axis symmetry per-frame latch).
+  - **Real-axis symmetry mode** (A2): when `symmetry_active=1` (latched per-frame as `sym_frame`), the scan terminates after row 119 instead of row 239.  The caller (`fractal_top.v`) mirror-writes the remaining 120 rows.  Used when `center_y == 0` exactly.
 - `rtl/pixel_pipeline.v`
-  - `20` logical iterators total (`N_ITERATORS=20`)
-  - Implemented as `4` instances of `rtl/iter_quad.v`, each serving five alternating contexts (5-stage pipeline, 5 contexts per quad)
+  - `24` logical iterators total (`N_ITERATORS=24`)
+  - Implemented as `4` instances of `rtl/iter_quad.v`, each serving six alternating contexts (6-context DSP time-share)
   - Dispatch and collect FSMs run in `clk_sys`; the iterator math runs in `clk_iter`. Round-robin dispatch fills idle slots; result valid pulses on clk_sys when a slot completes.
+  - **A3 plumbing**: `p3_precheck_enable` input (CDC-synced to `clk_iter` with a 2-FF chain, same pattern as `max_iter`) gates the period-3 bulb precheck in iter_quad.  Driven by `fractal_top.v` from the OSD setting + per-POI bench flag.
 - `rtl/iter_quad.v`
-  - Five Mandelbrot iterators sharing seven truncated `64×64` multiplies via 5-context DSP time-multiplexing
-  - 5-stage pipeline: Stage 1 DSP partial products → Stage 2a1 lower-half adds → Stage 2a2 upper-half adds → Stage 2b1 mag_sq/escape/compares → Stage 2b2 final adds + state writeback
-  - Mandelbrot interior precheck (main cardioid + period-2 bulb) reuses the multiplier pipeline; interior points return `iter_count=max_iter` immediately.
+  - Six Mandelbrot iterators sharing the multiplier pipeline via 6-context DSP time-multiplexing
+  - 5-stage pipeline: Stage 1 DSP partial products → Stage 2a1 lower-half adds → Stage 2a2 upper-half adds → Stage 2b1 mag_sq/escape/precheck compares → Stage 2b2 final adds + state writeback
+  - **Mandelbrot interior prechecks**: main cardioid (`S_CARDIOID`), period-2 bulb (`S_BULB`), period-3 bulbs (`S_BULB3`, A3, gated by `p3_precheck_enable`).  All three reuse the multiplier pipeline; interior points return `iter_count=max_iter` immediately and skip the iteration loop.
+  - The two period-3 bulbs (centred at `(-0.1226, ±0.7449)` — non-real roots of `c³+2c²+c+1=0`) are caught with `|ci|` symmetry in one test: `(cr - P3_CX)² + (|ci| - P3_CY)² < r²` where `r=0.075` (inscribed-circle radius, multiplier max ~0.81 inside, no false positives possible).
   - Supports up to `4095` iterations with a `12-bit` iteration count (Auto mode uses up to 4095 at deep zooms; manual selection caps at 2048)
-  - ~14 DSP blocks per quad × 4 quads
+  - ~14 DSP blocks per quad × 4 quads = 112 total (100% of the device)
 - `rtl/framebuffer.v`
   - Double-buffered BRAM framebuffer
   - Per-pixel width is `13 bits`: `{escaped, iter_count[11:0]}`
   - `ADDR_WIDTH=18`; per-bank depth is `153,600` entries (`640×240`, sized for max resolution). In 320 mode only the lower half is used.
-  - Swap occurs only on VBLANK rising edge to avoid tearing.
+  - Swap occurs only on VBLANK rising edge to avoid tearing.  **A2 addition**: bank swap deferred until the mirror-write FIFO has drained (otherwise late mirror writes would land on the freshly-swapped front-buffer being scanned out).  VBLANK is thousands of cycles long and the FIFO drains in ≤32, so the deferral always fits inside the same VBLANK window.
   - Single-buffer mode is selectable via OSD for live render visualization (flickers; not the default).
 - `rtl/color_mapper.v`
   - Integer escape-count based mapping
   - Uses only `iter_count[7:0]` as the palette index, so colors wrap every `256` iterations
   - Color cycling (On/Off toggle) uses a `12-bit` phase accumulator for palette offset plus 4-bit adjacent-entry blending. Toggled via OSD, keyboard `C`, or joystick `B`.
   - `90` procedural palettes (indices `7'd0`..`7'd89`)
+- **A2 mirror-write FIFO** (in `fractal_top.v`, not a separate module): when `sym_active_frame=1` (real-axis POI), every pipeline result for rows `0..119` also needs a mirror write to row `(239-y)`.  The framebuffer has a single write port per bank, so the mirror is enqueued into a 32-deep FIFO and drained on cycles where the pipeline isn't producing a result.  Backpressure on `coord_generator` (both `cg_valid` and `cg_ready` gated) prevents overflow on sustained-fast scenes.  Both sides of the valid/ready handshake must be gated — gating only `cg_ready` lets the pipeline redispatch the held pixel into every free slot, causing 24× redundant work (discovered the hard way).
 - `rtl/text_overlay.v`
   - Rendered directly in the video stream
   - Top-left: 2-char FPS counter (small box, no padding)
@@ -111,7 +117,7 @@ Mandelbrot only. Every iterator runs `z = z² + c` with the per-pixel `c` from t
 
 ### Auto-zoom target system
 
-- `67` cross-validated canonical POIs (Seahorse, Elephant, Triple-Spiral, Misiurewicz, Feigenbaum, Period-N bulbs/minibrots, deep medallions, Bourke waypoints). Coords + canonical zoom levels live in `tools/poi_master.json`; `tools/poi_encode.py` generates `rtl/poi_generated.vh` (four `\`define case-body macros consumed by `auto_zoom.v` and `text_overlay.v`). Each POI has a `target_max_zoom_x10` zoom endpoint (10-bit fixed point, value = zoom_level × 10) plus a `target_zoom_int` shift amount used by snap mode.
+- `90` cross-validated canonical POIs (Seahorse, Elephant, Triple-Spiral, Misiurewicz, Feigenbaum, Period-N bulbs/minibrots, deep medallions, Bourke waypoints, Period-3 bulb additions). Coords + canonical zoom levels live in `tools/poi_master.json`; `tools/poi_encode.py` generates `rtl/poi_generated.vh` (four `\`define case-body macros consumed by `auto_zoom.v` and `text_overlay.v`). Each POI has a `target_max_zoom_x10` zoom endpoint (10-bit fixed point, value = zoom_level × 10) plus a `target_zoom_int` shift amount used by snap mode.  POIs may additionally carry a `precheck_p3: true` flag opting into the period-3 bulb precheck (A3) when used in benchmark mode under OSD `Auto`.
 - Comparison uses `zoom_level_x10 = zoom_exp * 10 + zoom_frac_tenth` for sub-integer precision.
 - `skip_next` input allows jumping to next target mid-zoom (`N` key / `Y` button).
 - `snap_next` input (`M` key / `X` button) jumps the view directly to a POI's canonical center + zoom (verification mode); state machine enters `S_HOLD` and stays there until snap_next pulses again (advances + re-snaps) or auto-zoom is disabled with Z.
@@ -147,20 +153,21 @@ Top-level and build files:
 
 RTL:
 
-- `rtl/fractal_top.v`: top-level core datapath and control integration
+- `rtl/fractal_top.v`: top-level core datapath and control integration.  Hosts the A2 mirror-write FIFO, the A3 p3_precheck_enable derivation (OSD + per-POI bench flag), the render FSM, the bank-swap state machine, and the benchmark telemetry strip generator.
 - `rtl/input_handler.v`: joystick/keyboard/manual state
-- `rtl/coord_generator.v`: pixel-to-complex coordinate generation (mode-aware)
-- `rtl/pixel_pipeline.v`: dual-clock dispatch/collect wrapper around `iter_quad` instances
-- `rtl/iter_quad.v`: 5-stage / 5-context iterator engine
+- `rtl/coord_generator.v`: pixel-to-complex coordinate generation (mode-aware) with per-frame snapshot of step/mode_640/symmetry to prevent mid-frame drift; half-step ci grid shift to avoid the real-axis sampling artifact
+- `rtl/pixel_pipeline.v`: dual-clock dispatch/collect wrapper around `iter_quad` instances.  Includes the `p3_precheck_enable` passthrough CDC sync.
+- `rtl/iter_quad.v`: 5-stage / 6-context iterator engine with cardioid + period-2 + period-3 interior prechecks
 - `rtl/mul_trunc64.v`: truncated 64×64 multiply primitive
 - `rtl/framebuffer.v`: double-buffered on-chip framebuffer (sized for 640×240)
-- `rtl/color_mapper.v`: 47 procedural palettes and color cycling
+- `rtl/color_mapper.v`: 90 procedural palettes and color cycling
 - `rtl/video_timing.v`: native 240p timing generator (mode-aware)
 - `rtl/text_overlay.v`: in-frame text overlay
 - `rtl/bcd_serial.v`: serial BCD converter for overlay coordinates
-- `rtl/auto_zoom.v`: screensaver / playlist-driven auto-zoom controller (67 POIs, snap-mode S_HOLD/S_SNAP_LOAD states)
+- `rtl/auto_zoom.v`: screensaver / playlist-driven auto-zoom controller (90 POIs, snap-mode S_HOLD/S_SNAP_LOAD states)
 - `rtl/poi_generated.vh`: auto-generated POI data (rom_cx/cy, target_max_zoom_x10, target_zoom_int, target_name_full case bodies). Source: `tools/poi_master.json` via `tools/poi_encode.py`. Do not hand-edit.
-- `rtl/fractal_osd.v`: decodes MiSTer OSD status bits into core parameters
+- `rtl/benchmark_generated.vh`: auto-generated benchmark scene table.  Source: `tools/poi_master.json` → `tools/gen_full_benchmarks.py` → `tools/benchmarks.json` → `tools/bench_encode.py`.  Do not hand-edit.
+- `rtl/fractal_osd.v`: decodes MiSTer OSD status bits into core parameters (including the new A3 `p3_mode` from `status[26:25]`)
 - `rtl/region_manager.v`: Mariani-Silver quadtree region splitter. **Not instantiated** by `fractal_top.v` in the shipping core (Quartus optimises it away). Kept in tree for future sim-driven debug — see `docs/MR16_HANG_REPORT*.md` for why MS was disabled.
 
 MiSTer framework support:
@@ -186,6 +193,7 @@ Build artifacts and release notes:
 | `O[21]`   | Always Show POI/Palette       |
 | `O[22]`   | Resolution (320×240 / 640×240)|
 | `O[23]`   | Overlay BG (Transparent/Dimmed) |
+| `O[26:25]`| P3 Bulb Precheck (Auto/On/Off) — Auto uses per-POI flag in bench mode |
 | `O[122:121]` | Aspect ratio               |
 
 ### Keyboard verification-mode overrides
@@ -234,25 +242,33 @@ two 2-bit override registers — under 10 ALMs.
 ### Deterministic benchmarking
 
 Track A performance measurement uses `tools/benchmarks.json` as the source of
-truth and `tools/bench_encode.py` to generate `rtl/benchmark_generated.vh`.
-Benchmark mode is toggled with `B`; `V` advances scenes. While active, the core
-forces the benchmark scene's center, step, resolution, palette, and fixed
-`max_iter`, then continuously re-renders the static scene.
+truth and `tools/bench_encode.py` to generate `rtl/benchmark_generated.vh`
+(`90` scenes — the full POI catalogue).  Benchmark mode is toggled with `B`;
+`V` advances scenes.  While active, the core forces the benchmark scene's
+center, step, resolution, palette, fixed `max_iter`, and per-POI A3
+precheck flag (`bench_precheck_p3`), then continuously re-renders the static
+scene.
 
-The normal text overlay is not used for benchmark measurement. Instead,
-benchmark mode encodes a 24-bit machine-readable strip into the top-left pixels
-of the final video output:
+The normal text overlay is not used for benchmark measurement.  Instead,
+benchmark mode encodes a **32-bit** machine-readable strip into the top-left
+pixels of the final video output:
 
 ```text
-bits 23..20 = magic A
-bits 19..16 = scene index
-bits 15..12 = max-iter tier
-bits 11..0  = F10
+bits 31..28 = magic A
+bit  27     = sym_overflow_sticky (A2 mirror FIFO ever overflowed — should be 0)
+bits 26..23 = spare
+bits 22..16 = scene index (7 bits — 90-POI catalogue)
+bits 15..12 = iter_tier (max_iter encoded as 0..5)
+bits 11..0  = F10 (completed frames in last 10s)
 ```
 
-`F10` is completed frames in the last 10-second window. Decode screenshots with
-`tools/bench_decode_screenshot.py`; sustained FPS is `F10 / 10`. See
-`docs/BENCHMARKING.md` for the capture workflow.
+`F10` is completed frames in the last 10-second window; sustained FPS is
+`F10 / 10`.  Vsync cap puts the maximum measurable at F10≈596 (≈60 fps) —
+the render FSM waits for vblank between frames, so render times snap to
+multiples of ~16.66 ms.  Decode screenshots with
+`tools/bench_decode_screenshot.py`.  See `docs/BENCHMARKING.md` for the
+capture workflow and `docs/PERF_BASELINE_TRACK_A.md` for the historical
+per-POI table at every shipped build.
 
 ## Build Instructions
 
@@ -390,21 +406,26 @@ Requires Python 3 with `numpy` and `Pillow`. The pipeline is the source of truth
 
 - MiSTer core wrapper and OSD integration
 - Native 240p output at runtime-selectable `320×240` or `640×240`
-- Mandelbrot rendering
+- Mandelbrot rendering with main-cardioid, period-2 bulb, and period-3 bulb (A3) interior prechecks
+- Real-axis symmetry exploitation (A2): half the iteration work on `cy=0` POIs, mirror-written
 - Manual pan and zoom from controller/keyboard
-- Manual palette cycling (47 palettes)
+- Manual palette cycling (90 palettes)
 - Configurable max iterations: Auto (zoom-adaptive 512–4095) or fixed (128/256/512/1024/2048)
-- Auto-zoom screensaver with 73 shuffled POIs and 47 shuffled palettes (independent playlist positions)
+- Auto-zoom screensaver with 90 shuffled POIs and 90 shuffled palettes (independent playlist positions)
 - `N` key / `Y` joystick button = skip to next POI in auto-zoom playlist
+- `M` key / `X` joystick button = snap to next POI's canonical zoom (S_HOLD verification)
 - Double-buffered tear-free framebuffer swap on VBLANK edge (single-buffer mode optional)
+- A2 mirror-FIFO bank-swap deferral: bank toggle waits for mirror FIFO drain to prevent late writes hitting the new front-buffer
 - In-frame text overlay with current bottom-left coordinates and zoom display
 - Color cycling toggle
 - Dual-clock pipeline: clk_sys 50 MHz / clk_iter 100 MHz with CDC at the iter_quad boundary
-- ~2× iteration throughput vs. the prior single-clock design (≈200 → ≈400 Miter/s, same DSP count)
+- 6-context iter_quad × 4 quads = 24 logical iterators time-sharing the multiplier pipeline (vs the original 5-context × 4 = 20)
+- Frame-start parameter snapshot in coord_generator: `step` and `mode_640` latched per-frame to prevent mid-frame geometric warping during auto-zoom drift
 
 ### Throughput / timing
 
-- Build closes timing at `clk_iter = 100 MHz` with marginal positive slack (typically +0.013 to +0.07 ns; placement-variant). Works on real silicon at room temp.
+- Build closes timing at `clk_iter = 100 MHz` with marginal positive slack (typically +0.013 to +0.42 ns; placement-variant, seed-sensitive). Works on real silicon at room temp.
+- Per the 90-POI bench sweep: real-axis POIs reach clean 2.00× speedup from A2 on the half that aren't vsync-capped already; period-3 bulb POIs go from 2.5-6.7 fps to vsync-cap or close (P3 BULB DEEP 2.5 → 59.7 fps via A3, P3 BULB UPPER/LOWER 6.7 → 12.0 fps).  Catalogue geomean is up ~13% vs the pre-A2 baseline.
 
 ## Known Issues
 
@@ -418,7 +439,9 @@ The fitted reports include latch-related warnings. `output_files/MiSTerbrot.fit.
 
 ### Missing / TODO
 
-- No active simulation. The previous `sim/` tree (Verilator harnesses for the deleted `iter_pair` / `mandelbrot_iterator` modules) was deleted; see `docs/SIMULATION.md` for what a future testbench should cover.
+- **Simulation coverage is partial.** `sim/iter_quad/` exists with a Verilator harness, Python golden model, and 22-case directed test suite (currently 13 PASS, 9 GAP, 0 FAIL — the GAPs are a documented iter_count off-by-one between the FSM's iter increment ordering and golden's convention, cosmetic).  The next sim target per `docs/SIMULATION.md` is a `fractal_top + region_manager` harness — prerequisite for both Mariani-Silver revival (deferred) and Track B SDRAM work.
+- **Mariani-Silver disabled.** `rtl/region_manager.v` is in tree but not instantiated.  The diagnosed top-level FSM race fix breaks HDMI scaler synchronisation; sim-driven debugging is the path forward.  See `docs/MR16_HANG_REPORT*.md` and `docs/MR16_HANG_CHATGPT_PRO*.md`.
+- **Track B (SDRAM-backed framebuffer for 480i/480p)**: gating dependency for any resolution beyond 640×240.  See `docs/ROADMAP.md` for the architectural plan.
 
 ## Design Constraints
 
@@ -427,10 +450,10 @@ The fitted reports include latch-related warnings. `output_files/MiSTerbrot.fit.
 - Core math currently relies on `8.56` fixed-point and truncated multiply decomposition; changing this has wide impact.
 - The active framebuffer is on-chip BRAM, sized for `640×240` × 13 bits per bank.
 - Double buffering and VBLANK-only swap are core correctness constraints.
-- Project headroom:
+- Project headroom (post-A2 + A3):
   - `100%` DSP usage (no headroom)
   - `78%` RAM blocks
-  - `61%` ALMs
+  - `85%` ALMs — significantly tighter than pre-A2.  Future work adding state machines (e.g., Track B SDRAM controller, MS region_manager re-instantiation) needs ALM budget consideration.
   - clk_iter at 100 MHz with marginal positive slack
 - Any feature work that increases arithmetic width, palette logic depth, framebuffer width, or control complexity must be evaluated against those limits first.
 
