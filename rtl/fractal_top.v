@@ -320,7 +320,15 @@ wire [6:0] palette_sel  = benchmark_active     ? bench_palette :
                           input_palette_override ? input_palette_sel :
                           auto_zoom_active       ? az_palette_idx  : input_palette_sel;
 reg  [11:0] input_max_iter;
-wire [11:0] max_iter     = benchmark_active ? bench_max_iter : input_max_iter;
+// In benchmark mode, the per-scene `bench_max_iter` from the catalogue
+// is used UNLESS the OSD Iterations setting is anything other than Auto
+// (input_iter_sel != 3'd5).  This lets an automated profiling pass
+// sweep through {128, 256, 512, 1024, 2048} for every scene by simply
+// toggling the OSD setting between bench runs — no per-scene catalogue
+// edit needed for the profiling itself.  See `tools/profile_max_iter.py`.
+wire [11:0] max_iter = (benchmark_active && input_iter_sel == 3'd5)
+                       ? bench_max_iter   // bench + OSD-Auto: per-scene catalogue value
+                       : input_max_iter;  // otherwise: OSD-driven (Auto-ladder or fixed)
 reg  [6:0] palette_sel_prev;
 reg  [11:0] max_iter_prev;
 reg         mode_640_prev;

@@ -81,7 +81,12 @@ def main():
     p.add_argument("--label", default=None,
                    help="Label for this run (e.g., 'baseline', 'after-A1')")
     p.add_argument("--keep-screenshots", action="store_true",
-                   help="Leave /tmp screenshots after the run for inspection")
+                   help="Leave screenshots after the run for inspection")
+    p.add_argument("--screenshots-dir", default=None,
+                   help="Directory to save screenshots into.  Default: "
+                        "/tmp/bench_run_<timestamp>/.  Use an absolute path "
+                        "or path relative to project root for persistent "
+                        "storage (e.g. screenshots/bench_iter_profile/...).")
     p.add_argument("--no-toggle", action="store_true",
                    help="Skip pressing B at start/end (assume bench mode already on)")
     p.add_argument("--keep-mister-screenshots", action="store_true",
@@ -104,7 +109,12 @@ def main():
         if args.scenes else set(range(len(scenes)))
     )
 
-    tmp_dir = Path("/tmp") / f"bench_run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    if args.screenshots_dir:
+        tmp_dir = Path(args.screenshots_dir)
+        if not tmp_dir.is_absolute():
+            tmp_dir = ROOT / tmp_dir
+    else:
+        tmp_dir = Path("/tmp") / f"bench_run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     tmp_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"host        : {args.host}")
