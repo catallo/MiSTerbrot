@@ -48,7 +48,6 @@ module coord_generator #(
 );
 
 // Per-mode resolution
-wire [10:0] H_PIXELS = mode_640 ? 11'd640 : 11'd320;
 localparam [9:0]  V_PIXELS = 10'd240;
 // Last row to emit when symmetry is active.  With the half-step ci
 // grid shift below, the symmetry axis lies *between* rows 119 and
@@ -57,9 +56,22 @@ localparam [9:0]  V_PIXELS = 10'd240;
 // clean 2.00× speedup, no center-axis row to special-case.
 localparam [9:0]  V_PIXELS_SYM_LAST = 10'd119;
 
+// Per-frame latched copies of step and mode_640.  Without these
+// latches the per-pixel cr-increment and per-row ci-increment use
+// the LIVE input values, which drift continuously when auto_zoom is
+// interpolating between POIs.  On slow scenes (~few fps) the drift
+// is large enough between top-of-frame and bottom-of-frame to cause
+// visible geometric warping — the top half samples with one step,
+// the bottom with another.  Latching here is the same pattern as
+// `sym_frame` below.
+reg signed [WIDTH-1:0] step_frame;
+reg                    mode_640_frame;
+
+wire [10:0]             H_PIXELS_frame = mode_640_frame ? 11'd640 : 11'd320;
 // step_x: in 640 mode, halve step so 640 pixels cover same complex-plane
-// horizontal extent as 320 pixels did. Vertical step stays at `step`.
-wire signed [WIDTH-1:0] step_x = mode_640 ? (step >>> 1) : step;
+// horizontal extent as 320 pixels did.  Uses the latched step.
+wire signed [WIDTH-1:0] step_x_frame   = mode_640_frame ? (step_frame >>> 1)
+                                                        : step_frame;
 
 // Internal pixel counters
 reg [10:0] px;
@@ -105,32 +117,36 @@ wire [9:0] py_last = sym_frame ? V_PIXELS_SYM_LAST : (V_PIXELS - 10'd1);
 
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
-        state        <= S_IDLE;
-        valid        <= 1'b0;
-        frame_done   <= 1'b0;
-        px           <= 11'd0;
-        py           <= 10'd0;
-        cr_accum     <= {WIDTH{1'b0}};
-        ci_accum     <= {WIDTH{1'b0}};
-        cr_row_start <= {WIDTH{1'b0}};
-        pixel_x      <= 11'd0;
-        pixel_y      <= 10'd0;
-        cr           <= {WIDTH{1'b0}};
-        ci           <= {WIDTH{1'b0}};
-        sym_frame    <= 1'b0;
+        state          <= S_IDLE;
+        valid          <= 1'b0;
+        frame_done     <= 1'b0;
+        px             <= 11'd0;
+        py             <= 10'd0;
+        cr_accum       <= {WIDTH{1'b0}};
+        ci_accum       <= {WIDTH{1'b0}};
+        cr_row_start   <= {WIDTH{1'b0}};
+        pixel_x        <= 11'd0;
+        pixel_y        <= 10'd0;
+        cr             <= {WIDTH{1'b0}};
+        ci             <= {WIDTH{1'b0}};
+        sym_frame      <= 1'b0;
+        step_frame     <= {WIDTH{1'b0}};
+        mode_640_frame <= 1'b0;
     end else begin
         case (state)
         S_IDLE: begin
             valid      <= 1'b0;
             frame_done <= 1'b0;
             if (start_frame) begin
-                px           <= 11'd0;
-                py           <= 10'd0;
-                cr_accum     <= cr_start;
-                ci_accum     <= ci_start;
-                cr_row_start <= cr_start;
-                sym_frame    <= symmetry_active;
-                state        <= S_SCAN;
+                px             <= 11'd0;
+                py             <= 10'd0;
+                cr_accum       <= cr_start;
+                ci_accum       <= ci_start;
+                cr_row_start   <= cr_start;
+                sym_frame      <= symmetry_active;
+                step_frame     <= step;
+                mode_640_frame <= mode_640;
+                state          <= S_SCAN;
             end
         end
 
@@ -144,7 +160,7 @@ always @(posedge clk or negedge rst_n) begin
                 ci      <= ci_accum;
 
                 // Advance to next pixel
-                if (px == H_PIXELS - 11'd1) begin
+                if (px == H_PIXELS_frame - 11'd1) begin
                     if (py == py_last) begin
                         // End of frame (full or symmetric half)
                         state <= S_DONE;
@@ -153,12 +169,12 @@ always @(posedge clk or negedge rst_n) begin
                         px           <= 11'd0;
                         py           <= py + 10'd1;
                         cr_accum     <= cr_row_start;
-                        ci_accum     <= ci_accum + step;
+                        ci_accum     <= ci_accum + step_frame;
                     end
                 end else begin
                     // Next pixel in row
                     px       <= px + 11'd1;
-                    cr_accum <= cr_accum + step_x;
+                    cr_accum <= cr_accum + step_x_frame;
                 end
             end
         end
@@ -167,14 +183,16 @@ always @(posedge clk or negedge rst_n) begin
             valid      <= 1'b0;
             frame_done <= 1'b1;
             if (start_frame) begin
-                px           <= 11'd0;
-                py           <= 10'd0;
-                cr_accum     <= cr_start;
-                ci_accum     <= ci_start;
-                cr_row_start <= cr_start;
-                sym_frame    <= symmetry_active;
-                frame_done   <= 1'b0;
-                state        <= S_SCAN;
+                px             <= 11'd0;
+                py             <= 10'd0;
+                cr_accum       <= cr_start;
+                ci_accum       <= ci_start;
+                cr_row_start   <= cr_start;
+                sym_frame      <= symmetry_active;
+                step_frame     <= step;
+                mode_640_frame <= mode_640;
+                frame_done     <= 1'b0;
+                state          <= S_SCAN;
             end
         end
 
