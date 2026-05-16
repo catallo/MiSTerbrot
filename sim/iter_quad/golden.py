@@ -94,6 +94,19 @@ QUARTER_FIXED    = 1 << (56 - 2)              # 0.25
 ONE_FIXED        = 1 << 56
 BULB_THRESHOLD   = 1 << (56 - 4)              # 1/16
 
+# A3: period-3 bulb prechecks.  The two large period-3 bulbs attached to
+# the upper/lower 1/3 limbs of the main cardioid have super-attracting
+# centers (-0.1225611669, ±0.7448617666) — non-real roots of
+# c^3 + 2c^2 + c + 1 = 0.  By symmetry across the real axis, one test
+# with |ci| catches both bulbs:
+#     (cr - P3_CX)^2 + (|ci| - P3_CY)^2  <  P3_R_SQ
+# Inscribed-circle radius r = 0.075 (r^2 = 0.005625) chosen so the
+# period-3 multiplier max ~0.81 inside the circle — comfortably inside
+# the bulb, no risk of false positives.
+P3_CX_FIXED      = to_8_56(-0.1225611669)  # uint64 two's-complement of signed 8.56
+P3_CY_FIXED      = to_8_56(0.7448617666)
+P3_R_SQ_FIXED    = to_8_56(0.005625)
+
 
 def cardioid_precheck(cr_raw: int, ci_raw: int) -> bool:
     """Main-cardioid interior test: (cr - 0.25)^2 + ci^2 < ... etc.
@@ -125,6 +138,32 @@ def bulb_precheck(cr_raw: int, ci_raw: int) -> bool:
     return is_negative(diff)
 
 
+def abs_8_56(v_raw: int) -> int:
+    """Absolute value of a signed 8.56 (uint64 two's-complement) — matches
+    `c_imag[63] ? -c_imag : c_imag` in the RTL."""
+    if v_raw & SIGN64:
+        return ((~v_raw + 1) & MASK64)
+    return v_raw
+
+
+def period3_bulb_precheck(cr_raw: int, ci_raw: int) -> bool:
+    """A3: period-3 bulb interior test, both upper and lower via |ci|.
+
+        (cr - P3_CX)^2 + (|ci| - P3_CY)^2  <  P3_R_SQ
+
+    Uses the same truncated multiply as the other prechecks so the FPGA
+    and golden agree bit-for-bit.
+    """
+    dr           = sub_8_56(cr_raw, P3_CX_FIXED)
+    dr_sq        = mul_trunc64(dr, dr)
+    abs_ci       = abs_8_56(ci_raw)
+    di           = sub_8_56(abs_ci, P3_CY_FIXED)
+    di_sq        = mul_trunc64(di, di)
+    sum_sq       = add_8_56(dr_sq, di_sq)
+    diff         = sub_8_56(sum_sq, P3_R_SQ_FIXED)
+    return is_negative(diff)
+
+
 def iter_quad_golden(cr: float, ci: float, max_iter: int) -> tuple[int, bool]:
     """Reference implementation matching rtl/iter_quad.v's Mandelbrot path.
 
@@ -134,7 +173,9 @@ def iter_quad_golden(cr: float, ci: float, max_iter: int) -> tuple[int, bool]:
     ci_raw = to_8_56(ci)
 
     # Interior precheck — return max_iter without iterating
-    if cardioid_precheck(cr_raw, ci_raw) or bulb_precheck(cr_raw, ci_raw):
+    if (cardioid_precheck(cr_raw, ci_raw)
+            or bulb_precheck(cr_raw, ci_raw)
+            or period3_bulb_precheck(cr_raw, ci_raw)):
         return (max_iter, False)
 
     zr_raw = 0
@@ -168,6 +209,17 @@ CASES = {
     "p2_bulb_-1":     (-1.0,   0.0,   100),
     "near_cusp":      (0.249,  0.0,   500),
     "p3_island":      (-1.75,  0.0,   500),
+
+    # A3: period-3 bulb prechecks (upper + lower bulb via |ci|)
+    "p3b_upper_ctr":  (-0.1225611669,  0.7448617666, 100),  # super-attracting center
+    "p3b_lower_ctr":  (-0.1225611669, -0.7448617666, 100),  # mirror
+    "p3b_inside_x":   (-0.07,          0.7448617666, 100),  # inside circle, +x
+    "p3b_inside_y":   (-0.1225611669,  0.79,         100),  # inside circle, +y
+    "p3b_inside_diag":(-0.085,         0.78,         100),  # inside circle, diagonal
+    # Just outside the inscribed circle (still M-set interior, but precheck shouldn't fire)
+    "p3b_outside_circ":(-0.05,         0.7448617666, 500),
+    # Outside the bulb entirely (escapes)
+    "p3b_far_above":  (-0.1225611669,  0.95,         500),
 
     # Escape cases at varied depths — used to characterise the
     # RTL-vs-golden iter_count gap.  Probed via boundary scans; the

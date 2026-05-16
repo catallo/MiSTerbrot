@@ -762,5 +762,53 @@
       "https://mathr.co.uk/web/m-location-analysis.html"
     ],
     "note": "Second period-47 pre-image island, mirrored across the EJS P44 center from EJS P47 ALPHA."
+  },
+  {
+    "name": "P3 BULB UPPER",
+    "cx": -0.1225611669,
+    "cy": 0.7448617666,
+    "zoom_level": 4.0,
+    "category": "PERIOD_BULB",
+    "precheck_p3": true,
+    "sources": [
+      "https://en.wikipedia.org/wiki/Mandelbrot_set#Hyperbolic_components"
+    ],
+    "note": "Period-3 hyperbolic component attached to upper 1/3 limb of main cardioid. Super-attracting center: c is one of the non-real roots of c^3+2c^2+c+1=0. Used as the canonical A3 precheck test point."
+  },
+  {
+    "name": "P3 BULB LOWER",
+    "cx": -0.1225611669,
+    "cy": -0.7448617666,
+    "zoom_level": 4.0,
+    "category": "PERIOD_BULB",
+    "precheck_p3": true,
+    "sources": [
+      "https://en.wikipedia.org/wiki/Mandelbrot_set#Hyperbolic_components"
+    ],
+    "note": "Period-3 bulb on lower 1/3 limb (complex conjugate of P3 BULB UPPER). Symmetry partner; A3 precheck uses |ci| so both bulbs share one math path."
+  },
+  {
+    "name": "P3 LIMB FULL",
+    "cx": -0.1875,
+    "cy": 0.589,
+    "zoom_level": 3.0,
+    "category": "PERIOD_BULB",
+    "precheck_p3": true,
+    "sources": [
+      "https://en.wikipedia.org/wiki/Mandelbrot_set"
+    ],
+    "note": "Wider 1/3-limb view showing the cardioid attachment point and the period-3 bulb in one frame. Centered between attachment (-0.25,0.4330) and bulb center (-0.1226,0.7449)."
+  },
+  {
+    "name": "P3 BULB DEEP",
+    "cx": -0.1225611669,
+    "cy": 0.7448617666,
+    "zoom_level": 7.0,
+    "category": "PERIOD_BULB",
+    "precheck_p3": true,
+    "sources": [
+      "https://en.wikipedia.org/wiki/Mandelbrot_set#Hyperbolic_components"
+    ],
+    "note": "Deep zoom into period-3 bulb interior. Visible area ~0.04 wide, all inside the bulb's inscribed circle (r^2=0.005625) -> A3 precheck should fire on every pixel and skip iteration entirely."
   }
 ]

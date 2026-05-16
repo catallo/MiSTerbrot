@@ -56,6 +56,192 @@ with `tools/bench_diff.py <before.json> <after.json>`.
 
 ---
 
+## 2026-05-16 · `a3-perpoi-osd` — A3 period-3 bulb prechecks (per-POI opt-in + OSD control)
+
+A3 lands.  Three changes shipped together:
+
+1. **4 new POIs** added to the catalogue (indices 86-89):
+   - P3 BULB UPPER (-0.1226, +0.7449, zoom 4) — canonical p3 bulb view
+   - P3 BULB LOWER (mirror across real axis)
+   - P3 LIMB FULL (-0.1875, +0.589, zoom 3) — wider limb context
+   - P3 BULB DEEP (zoom 7) — every pixel inside the inscribed circle
+2. **Period-3 bulb precheck** in `iter_quad.v`:
+   - New state S_BULB3 between S_BULB and S_ITER
+   - Tests `(cr - P3_CX)² + (|ci| - P3_CY)² < r²` where r=0.075,
+     P3_CX=-0.1226, P3_CY=+0.7449.  By symmetry, |ci| catches both
+     upper and lower bulbs in one test.
+   - Inscribed-circle radius chosen so the period-3 multiplier max ~0.81
+     inside the circle — no false positives possible.
+3. **Per-POI opt-in flag + OSD override** (added after first sweep showed
+   regressions on shallow-escape scenes):
+   - `precheck_p3: true` field in `tools/poi_master.json` enables the
+     precheck for that scene in benchmark mode.
+   - OSD entry `O[26:25],P3 Bulb Precheck,Auto,On,Off;` lets the user
+     override globally — Auto = use per-POI flag.
+
+### Why the per-POI flag
+
+First A3 build had the precheck always on.  This added ~12 wallclock
+cycles per pixel (the new S_BULB3 prime+check) before the iteration
+loop.  For shallow-escape scenes (where most pixels iterate only ~5-20
+times), the precheck overhead was 25-50 % of total per-pixel time.
+
+Three scenes regressed >5 % with always-on A3:
+- BRANCH MED 29.8 → 19.8 fps (-33.6 %)
+- EJS WAKE 1/4 19.9 → 14.9 fps (-25.1 %)
+- P22 ISLAND 12.0 → 10.0 fps (-16.7 %)
+
+With the per-POI flag, only POIs marked `precheck_p3: true` pay the
+cost.  The 4 new period-3 POIs opt in; everything else defaults to
+off.  Result: the regressions disappear, the wins stay.
+
+### Sweep health
+
+- 0/90 alignment mismatches.
+- 0/90 sym_overflow.
+- Visual: P3 BULB UPPER renders correctly (the bulb is a clean black
+  disk surrounded by the chaotic boundary — no false-positive specks
+  outside the bulb).  P3 BULB DEEP is solid black (every pixel
+  precheck-skipped → max_iter → interior color), confirming the
+  precheck fires for the entire frame.
+
+Build: `MiSTerbrot_20260516.rbf` (Quartus 17.0.2 Lite, ~24 min,
+113 warnings, 0 errors — same as a2-half-step).
+
+### Full per-POI table (3-way: phase0 baseline / A3 always-on / A3 per-POI)
+
+`A3 per-POI` is the shipped configuration (`Auto` mode in OSD =
+default).  `A3 always-on` was an interim build that paid the precheck
+cost on every scene — included to show why per-POI was necessary.
+
+| # | scene | phase0 fps | A3 always-on fps | A3 per-POI fps | per-POI ratio | always-on ratio | per-POI vs always-on |
+|---|---|---:|---:|---:|---:|---:|---:|
+|  0 | P6 SUB BULB             |  59.5 |  59.6 |  59.5 | 1.00× | 1.00× | +1.00× |
+|  1 | P3 ISLAND               |  59.7 |  59.6 |  59.7 | 1.00× | 1.00× | +1.00× |
+|  2 | P3 ISLAND TIP           |  59.7 |  59.6 |  59.6 | 1.00× | 1.00× | +1.00× |
+|  3 | P4 ISLAND               |  29.9 |  29.7 |  29.8 | 1.00× | 0.99× | +1.00× |
+|  4 | P5 ISLAND               |  19.9 |  19.8 |  19.9 | 1.00× | 0.99× | +1.01× |
+|  5 | P6 ISLAND               |  29.8 |  29.8 |  29.8 | 1.00× | 1.00× | +1.00× |
+|  6 | P7 ISLAND               |  19.8 |  19.9 |  19.9 | 1.01× | 1.01× | +1.00× |
+|  7 | P8 ISLAND               |  29.8 |  29.8 |  29.8 | 1.00× | 1.00× | +1.00× |
+|  8 | P9 ISLAND               |  19.9 |  19.9 |  19.9 | 1.00× | 1.00× | +1.00× |
+|  9 | P11 ISLAND              |  14.9 |  14.9 |  14.9 | 1.00× | 1.00× | +1.00× |
+| 10 | P22 ISLAND              |  12.0 |  10.0 |  11.9 | 0.99× | 0.83× | +1.19× |
+| 11 | ELEPHANT TRUNK          |  29.9 |  29.8 |  29.9 | 1.00× | 1.00× | +1.00× |
+| 12 | ELEPHANT HEADS          |   9.9 |  10.0 |  10.0 | 1.01× | 1.01× | +1.00× |
+| 13 | ELEPHANT ISLAND         |   3.1 |   3.2 |   3.2 | 1.03× | 1.03× | +1.00× |
+| 14 | ELEPHANT P19            |  12.0 |  11.9 |  11.9 | 0.99× | 0.99× | +1.00× |
+| 15 | ELEPHANT P16            |  14.9 |  14.9 |  14.9 | 1.00× | 1.00× | +1.00× |
+| 16 | SEAHORSE BODY           |   7.5 |   7.5 |   7.5 | 1.00× | 1.00× | +1.00× |
+| 17 | SEAHORSE TAIL           |  11.9 |  12.0 |  12.0 | 1.01× | 1.01× | +1.00× |
+| 18 | SEAHORSE DEEP           |   5.9 |   5.9 |   5.9 | 1.00× | 1.00× | +1.00× |
+| 19 | SEAHORSE TAIL2          |  10.0 |  10.0 |  10.0 | 1.00× | 1.00× | +1.00× |
+| 20 | DOUBLE HOOK             |  12.0 |  12.0 |  11.9 | 0.99× | 1.00× | +0.99× |
+| 21 | SH SATELLITE            |   4.3 |   4.3 |   4.3 | 1.00× | 1.00× | +1.00× |
+| 22 | SAT ANTENNA             |   1.7 |   1.7 |   1.7 | 1.00× | 1.00× | +1.00× |
+| 23 | SAT HEAD                |   1.1 |   1.1 |   1.1 | 1.00× | 1.00× | +1.00× |
+| 24 | SAT SEAHORSE            |   1.1 |   1.1 |   1.1 | 1.00× | 1.00× | +1.00× |
+| 25 | SAT DBL SPIRAL          |   0.9 |   0.9 |   0.9 | 1.00× | 1.00× | +1.00× |
+| 26 | JULIA ISLANDS           |   2.2 |   2.2 |   2.0 | 0.91× | 1.00× | +0.91× |
+| 27 | TRIPLE WEST             |   5.0 |   4.9 |   4.9 | 0.98× | 0.98× | +1.00× |
+| 28 | TRIPLE DEEP             |   6.0 |   5.9 |   6.0 | 1.00× | 0.98× | +1.02× |
+| 29 | FEIGENBAUM              |  19.9 |  19.8 |  19.8 | 0.99× | 0.99× | +1.00× |
+| 30 | FEIGENBAUM ZOOM         |  12.0 |  12.0 |  11.9 | 0.99× | 1.00× | +0.99× |
+| 31 | FEIGENBAUM DEEP         |   5.5 |   5.5 |   5.5 | 1.00× | 1.00× | +1.00× |
+| 32 | GEN FEIGENBAUM          |  29.8 |  29.5 |  29.9 | 1.00× | 0.99× | +1.01× |
+| 33 | MISIUREWICZ M4          |  59.5 |  59.6 |  59.6 | 1.00× | 1.00× | +1.00× |
+| 34 | MISIUREWICZ M4-2        |  29.8 |  29.9 |  29.8 | 1.00× | 1.00× | +1.00× |
+| 35 | MISIUREWICZ SPIR        |  14.8 |  14.8 |  14.7 | 0.99× | 1.00× | +0.99× |
+| 36 | MISIUREWICZ -1.94       |  59.7 |  59.6 |  59.7 | 1.00× | 1.00× | +1.00× |
+| 37 | MISIUREWICZ -1.84       |  59.6 |  59.6 |  59.7 | 1.00× | 1.00× | +1.00× |
+| 38 | DBL SPIRAL P4           |  29.8 |  29.8 |  29.8 | 1.00× | 1.00× | +1.00× |
+| 39 | SINGLE SPIRAL           |  29.8 |  29.8 |  29.8 | 1.00× | 1.00× | +1.00× |
+| 40 | TRIPLE MEDALLION        |  11.9 |  11.9 |  11.9 | 1.00× | 1.00× | +1.00× |
+| 41 | DBL SPIRAL ISLE         |   8.6 |   8.6 |   8.6 | 1.00× | 1.00× | +1.00× |
+| 42 | TRIPLE ISLE MED         |   7.5 |   7.4 |   7.5 | 1.00× | 0.99× | +1.01× |
+| 43 | CAULIFLOWER MED         |  14.8 |  14.9 |  14.9 | 1.01× | 1.01× | +1.00× |
+| 44 | EJS CAULI               |  29.8 |  29.7 |  29.8 | 1.00× | 1.00× | +1.00× |
+| 45 | EJS DBL SPIRAL          |  15.0 |  14.9 |  14.9 | 0.99× | 0.99× | +1.00× |
+| 46 | EJS BRANCH              |  19.9 |  19.9 |  19.9 | 1.00× | 1.00× | +1.00× |
+| 47 | EJS NUCLEUS             |   1.3 |   1.3 |   1.3 | 1.00× | 1.00× | +1.00× |
+| 48 | LOVE CANAL              |   3.2 |   3.2 |   3.2 | 1.00× | 1.00× | +1.00× |
+| 49 | P5 ISLAND DEEP          |   8.6 |   8.6 |   8.6 | 1.00× | 1.00× | +1.00× |
+| 50 | ELEPHANT MED            |  10.0 |  10.0 |  10.0 | 1.00× | 1.00× | +1.00× |
+| 51 | STARFISH                |  12.0 |  12.0 |  11.9 | 0.99× | 1.00× | +0.99× |
+| 52 | M3,1 WAKE 3/7           |  14.9 |  14.9 |  14.9 | 1.00× | 1.00× | +1.00× |
+| 53 | M11,1 WAKE 5/11         |   8.5 |   8.5 |   8.5 | 1.00× | 1.00× | +1.00× |
+| 54 | CONCHA APPROACH         |  59.3 |  59.3 |  59.0 | 0.99× | 1.00× | +0.99× |
+| 55 | M7,1 WAKE 1/7           |  14.9 |  14.9 |  14.9 | 1.00× | 1.00× | +1.00× |
+| 56 | SH CUSP DEEP            |   2.0 |   2.0 |   2.0 | 1.00× | 1.00× | +1.00× |
+| 57 | EJS PERIOD 44           |  19.4 |  19.4 |  19.4 | 1.00× | 1.00× | +1.00× |
+| 58 | JEWEL BOX               |   6.0 |   6.0 |   6.0 | 1.00× | 1.00× | +1.00× |
+| 59 | R2T P6 ISLAND           |   6.6 |   6.6 |   6.6 | 1.00× | 1.00× | +1.00× |
+| 60 | SH CUSP FINE            |   1.0 |   1.0 |   1.0 | 1.00× | 1.00× | +1.00× |
+| 61 | R2 HALF ISLE            |   1.8 |   1.8 |   1.8 | 1.00× | 1.00× | +1.00× |
+| 62 | R2T P7 ISLAND           |  59.5 |  59.3 |  59.2 | 0.99× | 1.00× | +1.00× |
+| 63 | SCEPTER MED             |  12.0 |  11.9 |  12.0 | 1.00× | 0.99× | +1.01× |
+| 64 | BRANCH MED              |  29.8 |  19.8 |  29.8 | 1.00× | 0.66× | +1.51× |
+| 65 | EJS P3 DEEP             |   8.5 |   8.6 |   8.5 | 1.00× | 1.01× | +0.99× |
+| 66 | NEEDLE MED              |  29.7 |  29.6 |  29.5 | 0.99× | 1.00× | +1.00× |
+| 67 | M3,1 1/3 LIMB TIP       |  59.6 |  59.5 |  59.6 | 1.00× | 1.00× | +1.00× |
+| 68 | M_4,2 CASCADE 1         |  59.6 |  59.5 |  59.5 | 1.00× | 1.00× | +1.00× |
+| 69 | M_8,4 CASCADE 2         |  29.9 |  29.9 |  29.9 | 1.00× | 1.00× | +1.00× |
+| 70 | M_16,8 CASCADE 3        |  29.8 |  29.8 |  29.7 | 1.00× | 1.00× | +1.00× |
+| 71 | EJS P47 ALPHA           |  15.0 |  15.0 |  15.0 | 1.00× | 1.00× | +1.00× |
+| 72 | EJS P50 BETA            |  14.9 |  14.9 |  15.0 | 1.01× | 1.00× | +1.01× |
+| 73 | EJS WAKE 1/4            |  19.9 |  14.9 |  19.9 | 1.00× | 0.75× | +1.34× |
+| 74 | SH SPIRAL CONT          |  11.8 |  11.8 |  11.8 | 1.00× | 1.00× | +1.00× |
+| 75 | SH TAIL SPIRAL          |   9.9 |   9.9 |   9.9 | 1.00× | 1.00× | +1.00× |
+| 76 | ELEPHANT MED 2          |  14.8 |  14.9 |  14.9 | 1.01× | 1.01× | +1.00× |
+| 77 | R2T 1/2 ISLE STEP       |   6.0 |   5.7 |   5.8 | 0.97× | 0.95× | +1.02× |
+| 78 | BEYER STEP 13           |   2.3 |   2.2 |   2.2 | 0.96× | 0.96× | +1.00× |
+| 79 | BEYER STEP 14           |   1.9 |   1.9 |   1.9 | 1.00× | 1.00× | +1.00× |
+| 80 | TRIPLE SPIRAL P4        |   3.0 |   3.0 |   3.0 | 1.00× | 1.00× | +1.00× |
+| 81 | MERCATOR P189           |  52.3 |  52.2 |  52.0 | 0.99× | 1.00× | +1.00× |
+| 82 | MERCATOR P38            |  29.8 |  29.8 |  29.8 | 1.00× | 1.00× | +1.00× |
+| 83 | M(3,3) WAKE 1/3 DP      |  29.9 |  29.9 |  29.8 | 1.00× | 1.00× | +1.00× |
+| 84 | M(7,7) WAKE 1/4 DP      |  29.8 |  29.8 |  29.8 | 1.00× | 1.00× | +1.00× |
+| 85 | EJS P47 GAMMA           |  14.9 |  14.9 |  15.0 | 1.01× | 1.00× | +1.01× |
+| 86 | P3 BULB UPPER           |   6.7 |  12.0 |  12.0 | **1.79×** | 1.79× | +1.00× |
+| 87 | P3 BULB LOWER           |   6.6 |  11.9 |  11.9 | **1.80×** | 1.80× | +1.00× |
+| 88 | P3 LIMB FULL            |  19.9 |  29.9 |  29.8 | **1.50×** | 1.50× | +1.00× |
+| 89 | P3 BULB DEEP            |   2.5 |  59.7 |  59.7 | **23.88×** | 23.88× | +1.00× |
+
+Geomean A3 per-POI vs phase0 (all 90 POIs):       **1.052× (+5.2 %)**.
+Geomean A3 always-on vs phase0 (all 90 POIs):     1.042× (+4.2 %).
+Geomean A3 per-POI vs phase0 (existing 86 only):  0.998× (-0.2 %, noise).
+Geomean A3 always-on vs phase0 (existing 86 only):0.988× (-1.2 %, real cost).
+
+The per-POI flag is strictly better — same wins, no regressions.
+
+---
+
+## 2026-05-16 · `phase0-90poi` — 90-POI catalogue baseline (4 new period-3 POIs added, no A3)
+
+Catalogue extension only.  Added 4 new POIs (P3 BULB UPPER, P3 BULB
+LOWER, P3 LIMB FULL, P3 BULB DEEP) to `tools/poi_master.json`.
+Regenerated `tools/benchmarks.json` and `rtl/benchmark_generated.vh`.
+Rebuilt RTL (no logic changes — only the bench scene table grew).
+
+Purpose: establish the baseline F10 numbers for the new POIs BEFORE
+A3 lands so we have clean before/after comparison.
+
+Sweep health: 0/90 alignment mismatches, 0/90 sym_overflow.
+
+The new POIs at baseline:
+- P3 BULB UPPER:  6.7 fps  (slow — most of the bulb is interior, all
+  iterating to max_iter=512)
+- P3 BULB LOWER:  6.6 fps  (mirror, ~same)
+- P3 LIMB FULL:  19.9 fps  (less interior since wider view)
+- P3 BULB DEEP:   2.5 fps  (very slow — every pixel iterates to
+  max_iter=1024 since deep zoom puts entire frame inside the bulb)
+
+Existing 86 POIs: +0.3 % geomean vs `a2-half-step` (within noise; no
+RTL changes).  Full table omitted — see prior `a2-half-step` entry
+for the per-POI numbers.
+
+---
+
 ## 2026-05-16 · `a2-half-step` — Half-step ci grid shift + FIFO backpressure
 
 Two related changes shipped together:

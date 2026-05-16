@@ -45,6 +45,13 @@ module iter_quad #(
 
     input  wire [11:0]             max_iter,
 
+    // A3 (period-3 bulb precheck) per-frame enable.  Slow-changing on
+    // clk_sys; settling glitches harmless because view_changed forces a
+    // frame restart that flushes all in-flight contexts.  When 0, the
+    // S_BULB exit goes straight to S_ITER (original behaviour) — no
+    // extra cycles paid for non-period-3 scenes.
+    input  wire                    p3_precheck_enable,
+
     // Context A
     input  wire                    start_a,
     input  wire signed [WIDTH-1:0] cr_a,
@@ -106,12 +113,24 @@ localparam signed [WIDTH-1:0] ESCAPE_THRESHOLD = {{(WIDTH-FRAC_BITS-3){1'b0}}, 1
 localparam signed [WIDTH-1:0] ONE_FIXED        = {{(WIDTH-FRAC_BITS-1){1'b0}}, 1'b1, {FRAC_BITS{1'b0}}};
 localparam signed [WIDTH-1:0] QUARTER_FIXED    = {{(WIDTH-FRAC_BITS+1){1'b0}}, 1'b1, {(FRAC_BITS-2){1'b0}}};
 localparam signed [WIDTH-1:0] BULB_THRESHOLD   = {{(WIDTH-FRAC_BITS+3){1'b0}}, 1'b1, {(FRAC_BITS-4){1'b0}}};
+
+// A3: period-3 bulb precheck constants (8.56 fixed-point).
+//   Upper bulb center: (-0.1225611669, +0.7448617666) — non-real root of c^3+2c^2+c+1=0
+//   Lower bulb center: complex conjugate; tested via |ci|.
+//   Inscribed-circle radius r = 0.075 → r^2 = 0.005625.
+//   Multiplier max ~0.81 inside the circle, comfortably interior, no false positives.
+// Constants computed once via Python: hex literals are the int(round(v * 2^56)) form.
+localparam signed [WIDTH-1:0] P3_CX_FIXED   = 64'shFFE09FD4D467A7AD;  // -0.1225611669
+localparam signed [WIDTH-1:0] P3_CY_FIXED   = 64'sh00BEAF42BF967918;  // +0.7448617666
+localparam signed [WIDTH-1:0] P3_R_SQ_FIXED = 64'sh000170A3D70A3D71;  //  0.0056250000
+
 localparam [2:0] S_IDLE     = 3'd0,
                  S_PREP_Q   = 3'd1,
                  S_CARDIOID = 3'd2,
                  S_BULB     = 3'd3,
-                 S_ITER     = 3'd4,
-                 S_DONE     = 3'd5;
+                 S_BULB3    = 3'd4,  // A3: period-3 bulb precheck
+                 S_ITER     = 3'd5,
+                 S_DONE     = 3'd6;
 
 localparam [2:0] PHASE_MAX = 3'd5;  // 6 contexts: phase counts 0..5
 
@@ -393,6 +412,12 @@ wire signed [WIDTH-1:0] s2b1_cardioid_ci_sq_w = ctx_cardioid_ci_sq[phase_d3];
 wire signed [WIDTH-1:0] s2b1_cardioid_rhs_w = s2b1_cardioid_ci_sq_w >>> 2;
 wire cardioid_check_w = $signed(zr_zi)    < $signed(s2b1_cardioid_rhs_w);
 wire bulb_check_w     = $signed(mag_sq_w) < $signed(BULB_THRESHOLD);
+// A3: period-3 bulb precheck.  When the FSM enters S_BULB3, the math
+// pipeline is fed `zr = cr - P3_CX` and `zi = |ci| - P3_CY`.  The
+// pipeline computes mag_sq = zr_sq + zi_sq = squared distance to the
+// nearest period-3 bulb center (upper or lower, by symmetry).  If
+// mag_sq < r^2 the point is inside the inscribed circle of the bulb.
+wire period3_check_w  = $signed(mag_sq_w) < $signed(P3_R_SQ_FIXED);
 
 reg signed [WIDTH-1:0] mag_sq_r;
 reg signed [WIDTH-1:0] two_zr_zi_r;
@@ -402,6 +427,7 @@ reg signed [WIDTH-1:0] zr_diff_r;
 reg                    escape_pl;
 reg                    cardioid_check_pl;
 reg                    bulb_check_pl;
+reg                    period3_check_pl;
 reg signed [WIDTH-1:0] s2_c_real;
 reg signed [WIDTH-1:0] s2_c_imag;
 reg signed [WIDTH-1:0] s2_cardioid_x;
@@ -421,6 +447,7 @@ always @(posedge clk) begin
     escape_pl         <= escape_w;
     cardioid_check_pl <= cardioid_check_w;
     bulb_check_pl     <= bulb_check_w;
+    period3_check_pl  <= period3_check_w;
     s2_c_real         <= s2b1_c_real_w;
     s2_c_imag         <= s2b1_c_imag_w;
     s2_cardioid_x     <= s2b1_cardioid_x_w;
@@ -525,7 +552,45 @@ for (k = 0; k < 6; k = k + 1) begin : ctx_sm
                         ctx_final_mag_sq[k] <= {WIDTH{1'b0}};
                         ctx_done[k]         <= 1'b1;
                         ctx_state[k]        <= S_DONE;
+                    end else if (p3_precheck_enable) begin
+                        // A3: prepare the period-3 bulb check.  Load operands
+                        // so the next pipeline pass computes
+                        //   (cr - P3_CX)^2 + (|ci| - P3_CY)^2
+                        // The |ci| handling is what lets one test catch both
+                        // upper and lower bulbs (symmetric across the real axis).
+                        ctx_zr[k]     <= ctx_c_real[k] - P3_CX_FIXED;
+                        ctx_zi[k]     <= (ctx_c_imag[k][WIDTH-1]
+                                          ? (-ctx_c_imag[k])
+                                          : ctx_c_imag[k]) - P3_CY_FIXED;
+                        ctx_primed[k] <= 1'b0;
+                        ctx_state[k]  <= S_BULB3;
                     end else begin
+                        // A3 disabled for this frame — original S_BULB
+                        // exit (zero z, jump to S_ITER).
+                        ctx_zr[k]     <= {WIDTH{1'b0}};
+                        ctx_zi[k]     <= {WIDTH{1'b0}};
+                        ctx_iter[k]   <= 12'd0;
+                        ctx_primed[k] <= 1'b0;
+                        ctx_state[k]  <= S_ITER;
+                    end
+                end
+            end
+
+            S_BULB3: if (phase_d4 == CTX_K) begin
+                if (!ctx_primed[k]) begin
+                    ctx_primed[k] <= 1'b1;
+                end else begin
+                    if (period3_check_pl) begin
+                        // Inside the inscribed circle of a period-3 bulb.
+                        // Declare interior, skip the iteration loop entirely.
+                        ctx_escaped[k]      <= 1'b0;
+                        ctx_iter_count[k]   <= max_iter;
+                        ctx_final_mag_sq[k] <= {WIDTH{1'b0}};
+                        ctx_done[k]         <= 1'b1;
+                        ctx_state[k]        <= S_DONE;
+                    end else begin
+                        // Not in a period-3 bulb either — proceed with the
+                        // full iteration loop (original S_BULB-exit behaviour).
                         ctx_zr[k]     <= {WIDTH{1'b0}};
                         ctx_zi[k]     <= {WIDTH{1'b0}};
                         ctx_iter[k]   <= 12'd0;

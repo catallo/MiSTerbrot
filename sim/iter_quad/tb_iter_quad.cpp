@@ -45,6 +45,10 @@ static void reset(Viter_quad* dut) {
     dut->rst_n   = 0;
     dut->clk     = 0;
     dut->max_iter = 0;
+    // Enable A3 period-3 precheck so the sim mirrors the FPGA path that
+    // golden.py models. (When this enable is 0 the FSM skips S_BULB3 and
+    // the period3_bulb_precheck cases would diverge from golden.)
+    dut->p3_precheck_enable = 1;
     dut->start_a = 0; dut->cr_a = 0; dut->ci_a = 0;
     dut->start_b = 0; dut->cr_b = 0; dut->ci_b = 0;
     dut->start_c = 0; dut->cr_c = 0; dut->ci_c = 0;
@@ -113,6 +117,18 @@ int main(int argc, char** argv) {
         {"p2_bulb_-1",      -1.0,   0.0,    100,  100, 0},
         {"near_cusp",       0.249,  0.0,    500,  500, 0},
         {"p3_island",       -1.75,  0.0,    500,  500, 0},
+
+        // ---- A3 period-3 bulb prechecks (upper + lower via |ci|) ----
+        {"p3b_upper_ctr",   -0.1225611669,  0.7448617666, 100, 100, 0},
+        {"p3b_lower_ctr",   -0.1225611669, -0.7448617666, 100, 100, 0},
+        {"p3b_inside_x",    -0.07,          0.7448617666, 100, 100, 0},
+        {"p3b_inside_y",    -0.1225611669,  0.79,         100, 100, 0},
+        {"p3b_inside_diag", -0.085,         0.78,         100, 100, 0},
+        // Inside the M-set bulb but OUTSIDE our inscribed precheck circle
+        // — should NOT precheck, must iterate fully to max_iter.
+        {"p3b_outside_circ",-0.05,          0.7448617666, 500, 500, 0},
+        // Outside the bulb entirely — escapes normally.
+        {"p3b_far_above",   -0.1225611669,  0.95,         500,  14, 1},
 
         // ---- Escape cases at varied depths ----
         // Used to characterise the RTL-vs-golden iter_count gap: if

@@ -73,6 +73,9 @@ def main() -> int:
             "iter_tier": iter_tier(max_iter),
             "mode_640": 1 if scene.get("mode_640", True) else 0,
             "palette": palette,
+            # A3 per-POI opt-in: 1 enables the period-3 bulb precheck for
+            # this scene (in benchmark mode, when OSD P3 mode == Auto).
+            "precheck_p3": 1 if scene.get("precheck_p3", False) else 0,
         })
 
     lines = [
@@ -96,6 +99,7 @@ def main() -> int:
             f"bench_iter_tier = 4'd{e['iter_tier']}; "
             f"bench_palette = 7'd{e['palette']}; "
             f"bench_mode_640 = 1'b{e['mode_640']}; "
+            f"bench_precheck_p3 = 1'b{e['precheck_p3']}; "
             f"end /* {e['name']} */ \\"
         )
     lines[-1] = lines[-1].rstrip(" \\")

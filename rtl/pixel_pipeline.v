@@ -31,6 +31,9 @@ module pixel_pipeline #(
     input  wire                    rst_n,
     output wire                    frame_done,
     input  wire [11:0]             max_iter,
+    // A3 per-frame enable — passthrough to all iter_quad instances.
+    // CDC handled the same way as max_iter (2-FF sync).
+    input  wire                    p3_precheck_enable,
 
     // External coordinate source (coord_generator or region_manager).
     // coord_region_id is the Mariani-Silver-v2 tag; with v1 / coord_generator
@@ -61,14 +64,19 @@ localparam IDX_W = $clog2(N_ITERATORS);
 // restart (start_frame) that clears all in-flight contexts.
 // =====================================================================
 reg [11:0] max_iter_iter_meta, max_iter_iter;
+reg        p3_precheck_enable_meta, p3_precheck_enable_iter;
 
 always @(posedge clk_iter or negedge rst_n) begin
     if (!rst_n) begin
-        max_iter_iter_meta     <= 12'd0;
-        max_iter_iter          <= 12'd0;
+        max_iter_iter_meta      <= 12'd0;
+        max_iter_iter           <= 12'd0;
+        p3_precheck_enable_meta <= 1'b0;
+        p3_precheck_enable_iter <= 1'b0;
     end else begin
-        max_iter_iter_meta     <= max_iter;
-        max_iter_iter          <= max_iter_iter_meta;
+        max_iter_iter_meta      <= max_iter;
+        max_iter_iter           <= max_iter_iter_meta;
+        p3_precheck_enable_meta <= p3_precheck_enable;
+        p3_precheck_enable_iter <= p3_precheck_enable_meta;
     end
 end
 
@@ -153,6 +161,7 @@ generate
         iter_quad #(.WIDTH(WIDTH), .FRAC_BITS(FRAC_BITS)) u_quad (
             .clk(clk_iter), .rst_n(rst_n),
             .max_iter(max_iter_iter),
+            .p3_precheck_enable(p3_precheck_enable_iter),
 
             .start_a       (iter_start_pulse_iter [6*gq+0]),
             .cr_a          (iter_cr               [6*gq+0]),

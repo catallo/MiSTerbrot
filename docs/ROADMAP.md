@@ -57,13 +57,54 @@ Mandelbrot is symmetric across `y = 0`. For POIs centred on the real axis we now
 
 Visual: clean. The "thin horizontal line" sometimes visible at `y=120` is the actual Mandelbrot antenna along the real axis, not a rendering artefact.
 
-### A3. Additional interior preches
+### A3. Additional interior prechecks — **DONE 2026-05-16**
 
-`iter_quad.v` currently short-circuits the main cardioid + period-2 bulb. Adding the **two big period-3 bulbs** on the upper/lower 1/3 limb catches more interior without iteration.
+Period-3 bulb prechecks landed.  Implementation details:
 
-- ~5–15% catalogue-wide speedup.
-- Cost: extend the existing precheck in `iter_quad.v`, share existing DSPs.
-- Effort: **1 day**.
+- New state `S_BULB3` in `iter_quad.v` tests `(cr - P3_CX)² + (|ci| - P3_CY)² < r²`
+  for the inscribed circle of the period-3 bulb.  Symmetry across the
+  real axis (|ci|) lets one test catch both upper and lower bulbs.
+- Constants: P3_CX = -0.1226, P3_CY = +0.7449 (super-attracting
+  centers, non-real roots of c³+2c²+c+1=0); r = 0.075 (multiplier max
+  ~0.81 inside, no false positives).
+- 4 new POIs added to the catalogue (P3 BULB UPPER, P3 BULB LOWER,
+  P3 LIMB FULL, P3 BULB DEEP).
+- Per-POI opt-in flag (`precheck_p3` in poi_master.json) + OSD
+  override (`O[26:25],P3 Bulb Precheck,Auto,On,Off;`).  Only POIs
+  marked opt-in pay the precheck cost; everything else stays on the
+  original path.
+
+**Why opt-in:** initial always-on build regressed 3 shallow-escape
+scenes by 17-34% (extra ~12 wallclock cycles per pixel for the
+S_BULB3 prime+check is significant overhead when most pixels iterate
+only ~5-20 times).  Per-POI flag eliminates the regression while
+preserving the wins.
+
+**Result:**
+- P3 BULB DEEP: 2.5 → 59.7 fps (**23.9×** — vsync-capped, every
+  pixel precheck-skipped)
+- P3 BULB UPPER/LOWER: ~6.6 → ~12.0 fps (**1.79-1.80×**)
+- P3 LIMB FULL: 19.9 → 29.8 fps (**1.50×**)
+- Existing 86 POIs: -0.2% geomean (within noise)
+- Catalogue (all 90): +5.2% geomean
+
+Full per-POI table in `docs/PERF_BASELINE_TRACK_A.md` (entry
+`a3-perpoi-osd`).
+
+**Original spec (kept for historical context):**
+
+> `iter_quad.v` currently short-circuits the main cardioid + period-2 bulb. Adding the **two big period-3 bulbs** on the upper/lower 1/3 limb catches more interior without iteration.
+>
+> - ~5–15% catalogue-wide speedup.
+> - Cost: extend the existing precheck in `iter_quad.v`, share existing DSPs.
+> - Effort: **1 day**.
+
+The "5-15% catalogue-wide" estimate was conservative.  Actual measured
+result: +5.2% on the 90-POI catalogue (counts the 4 new POIs that
+opt in, 86 unchanged).  Original ROADMAP estimate was based on
+shape-bound ~12% of M-set being inside period-3 bulbs; in our
+catalogue only 4/90 POIs are positioned to benefit, hence smaller
+geomean impact.
 
 ### A4. Push `clk_iter` 100 → 110 MHz
 

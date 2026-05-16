@@ -42,6 +42,11 @@ def main():
             "max_iter": max_iter_for_zoom(p["zoom_level"]),
             "mode_640": True,
             "palette": palette,
+            # A3 per-POI opt-in: enable period-3 bulb precheck only for POIs
+            # that actually live near a period-3 bulb. Defaults False so
+            # unrelated POIs don't pay the ~12-cycle-per-pixel S_BULB3
+            # overhead.
+            "precheck_p3": p.get("precheck_p3", False),
             "note": p.get("note", ""),
         })
 

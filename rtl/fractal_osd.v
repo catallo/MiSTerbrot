@@ -36,7 +36,13 @@ module fractal_osd #(
     output wire         blank_text_enable,
     output wire         always_show_fps,
     output wire         always_show_poi,
-    output wire         overlay_bg_dim
+    output wire         overlay_bg_dim,
+    // A3 (period-3 bulb precheck) mode:
+    //   2'd0 = Auto (use the per-POI bench flag in benchmark mode,
+    //          off in non-benchmark mode)
+    //   2'd1 = On  (force-enable for all scenes)
+    //   2'd2 = Off (force-disable for all scenes)
+    output wire [1:0]   p3_mode
 );
 
 // Iterations: OSD order Auto,512,128,256,1024,2048 → remap to canonical iter_sel
@@ -66,6 +72,8 @@ assign overlay_bg_dim  = status[23];      // 0=Transparent (default), 1=Dimmed
 assign palette_sel   = status[10:4];
 // Color Cycling moved to O[24] to free O[10] for the 7-bit palette selector.
 assign color_cycle_enable = ~status[24];  // 0=On, 1=Off
+// A3 P3 Bulb Precheck: status[26:25] — Auto/On/Off (2 bits, 3 used).
+assign p3_mode = status[26:25];
 
 // Iteration decode. When status=0, keyboard/manual selection is active.
 reg [11:0] max_iter_r;

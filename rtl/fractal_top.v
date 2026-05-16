@@ -59,6 +59,7 @@ reg [11:0]             bench_max_iter;
 reg [3:0]              bench_iter_tier;
 reg [6:0]              bench_palette;
 reg                    bench_mode_640;
+reg                    bench_precheck_p3;  // A3 per-POI opt-in flag (BENCH_SCENE_CASES)
 
 always @(*) begin
     case (benchmark_idx)
@@ -71,6 +72,7 @@ always @(*) begin
             bench_iter_tier = 4'd2;
             bench_palette  = 7'd0;
             bench_mode_640 = 1'b0;
+            bench_precheck_p3 = 1'b0;
         end
     endcase
 end
@@ -102,6 +104,9 @@ wire       always_show_poi;
 wire       osd_overlay_bg_dim;
 wire       key_bg_dim_on, key_bg_dim_off;
 wire       key_blank_text_on, key_blank_text_off;
+// A3 OSD mode: 2'd0 = Auto (use per-POI flag), 2'd1 = On (force-enable),
+// 2'd2 = Off (force-disable).  Decoded from status[26:25] in fractal_osd.v.
+wire [1:0] osd_p3_mode;
 
 fractal_osd #(
     .WIDTH(WIDTH),
@@ -114,13 +119,14 @@ fractal_osd #(
     .osd_iter_sel(osd_iter_sel),
     .osd_iter_changed(osd_iter_changed),
     .color_cycle_enable(osd_color_cycle_enable),
-    
+
     .osd_reset(osd_reset),
     .single_buffer(single_buffer),
     .blank_text_enable(osd_blank_text_enable),
     .always_show_fps(always_show_fps),
     .always_show_poi(always_show_poi),
-    .overlay_bg_dim(osd_overlay_bg_dim)
+    .overlay_bg_dim(osd_overlay_bg_dim),
+    .p3_mode(osd_p3_mode)
 );
 
 // ---- Verification-mode overrides (keys force on/off, default = follow OSD) ----
@@ -612,6 +618,16 @@ wire                    pipe_coord_ready;
 wire [RID_W-1:0]        pipe_result_region_id;
 assign cg_ready = pipe_coord_ready && !symq_backpressure;
 
+// A3 (period-3 bulb precheck) per-frame enable.  Three sources, OSD wins:
+//   osd_p3_mode = 2'd0 (Auto) → use the per-POI bench flag in benchmark
+//                                mode; default off otherwise (no per-POI
+//                                data outside benchmark scenes yet)
+//   osd_p3_mode = 2'd1 (On)   → force-enable for all scenes
+//   osd_p3_mode = 2'd2 (Off)  → force-disable for all scenes
+wire p3_precheck_enable = (osd_p3_mode == 2'd1) ? 1'b1 :
+                          (osd_p3_mode == 2'd2) ? 1'b0 :
+                          (benchmark_active ? bench_precheck_p3 : 1'b0);
+
 pixel_pipeline #(
     .N_ITERATORS(N_ITERATORS),
     .WIDTH(WIDTH),
@@ -623,6 +639,7 @@ pixel_pipeline #(
     .rst_n(rst_n),
     .frame_done(frame_done),
     .max_iter(max_iter),
+    .p3_precheck_enable(p3_precheck_enable),
     .coord_valid(pipe_coord_valid),
     .coord_ready(pipe_coord_ready),
     .coord_px(pipe_coord_px),
