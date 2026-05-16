@@ -37,6 +37,89 @@ with `tools/bench_diff.py <before.json> <after.json>`.
 
 ---
 
+## 2026-05-16 · `a2-half-step` — Half-step ci grid shift + FIFO backpressure
+
+Two related changes shipped together:
+
+### 1. The bug fix — half-step ci grid shift
+
+A long-standing rendering artifact: any view where the pixel grid lands a
+row exactly on `ci=0` shows a hard horizontal line at that row.  The
+M-set's intersection with the real axis is `M ∩ ℝ = [-2, 0.25]` — a 1D
+line of zero imaginary width.  Single-sample renderers hitting it produce
+dramatically different iter counts than `ci = ±step` neighbours.
+Pre-existed; A2 made it more visible on real-axis POIs because it always
+lands at the screen centre there.
+
+Per [Cheritat](https://www.math.univ-toulouse.fr/~cheritat/wiki-draw/index.php/Mandelbrot_set)
+who names the artifact (no fix listed): shift `ci_start` by `step/2` so no
+pixel row ever lands on `ci=0`.  One constant changed in
+`coord_generator.v`.  Image samples shift by half a pixel in the imaginary
+direction — sub-pixel, visually imperceptible.
+
+Side benefits for A2:
+- 120 rows iterated (0..119), all mirrored to (239..120) — exact 2.00×
+  speedup instead of the previous 1.98× (was 121 rows / 119 mirrors with
+  a special-case axis row that was the one most affected by the artifact).
+- Mirror condition simplifies from `[1..119]` to `[0..119]`.
+- Mirror address simplifies from `240-y` to `239-y`.
+
+### 2. FIFO backpressure (uncovered by the new overflow flag)
+
+The first sweep with the half-step build reported `sym_overflow=1` on
+every scene.  The pipeline's collect FSM can sustain `result_valid=1`
+indefinitely on fast-precheck scenes (1 result/cycle) and the FIFO drain
+is blocked while `pipe_result_valid=1`.  Any finite FIFO eventually
+overflows on sustained-fast workloads.  The previous A2 build had this
+latent — we just hadn't added the overflow detector yet.
+
+Fix: `cg_ready = pipe_coord_ready && !symq_backpressure` where
+`symq_backpressure` fires when `symq_count >= (DEPTH - N_ITERATORS)`.
+At DEPTH=32, N_ITERATORS=24 → threshold 8.  Leaves headroom for every
+in-flight iterator to enqueue its mirror after dispatch stalls.  When sym
+is off, FIFO stays empty so backpressure never fires.
+
+This costs a small amount of throughput on sustained-fast real-axis POIs
+(dispatch stalls until FIFO drains), but removes the silent-drop failure
+mode entirely.
+
+### Backpressure footgun (fixed)
+
+First attempt only gated `cg_ready` (coord_generator's *ready* input).
+That held coord_generator at the current pixel but the pipeline doesn't
+see `cg_ready` — its dispatch FSM keeps asserting its own `coord_ready`
+whenever the next round-robin slot is free, redispatching the *held*
+pixel into every free slot.  With 24 iterators that's up to 24
+redundant computations of one pixel, each enqueueing its own mirror →
+FIFO overflows regardless of threshold.
+
+Symptom on hardware: real-axis POIs in benchmark mode rendered almost
+empty back-buffer (a few pixels around the M-set boundary, rest stale)
+→ VGA showed mostly-black image, HDMI scaler froze on the last good
+frame.  Non-real-axis POIs were unaffected.
+
+Fix: gate *both* sides of the handshake.
+```
+wire pipe_coord_valid = cg_valid && !symq_backpressure;  // gate valid
+assign cg_ready       = pipe_coord_ready && !symq_backpressure;  // and ready
+```
+
+### Final results
+
+Full 86-POI sweep with the proper backpressure build:
+- `decoded_scene == idx` for all 86 (clean alignment)
+- `sym_overflow == 0` for all 86 (FIFO never overflows)
+- Geomean vs `a2-sym`: **+1.1%** (small extra gain from exact 2.00× vs 1.98×)
+- Geomean vs `ms-off` baseline (cumulative A2): **+12.6%**
+- Visual verification: y=120 line eliminated in P3 ISLAND, FEIGENBAUM,
+  EJS CAULI, MISIUREWICZ -1.94 (was the worst case at 0-1/640 non-black
+  on the axis row, now matches neighbours).
+
+Build: `MiSTerbrot_20260516.rbf` (Quartus 17.0.2 Lite, ~22 min, 112
+warnings, 0 errors).
+
+---
+
 ## 2026-05-16 · `a2-sym` — A2 real-axis symmetry exploitation
 
 Real-axis symmetry: when `center_y == 0` we iterate only rows 0..120 and

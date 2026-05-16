@@ -50,10 +50,12 @@ module coord_generator #(
 // Per-mode resolution
 wire [10:0] H_PIXELS = mode_640 ? 11'd640 : 11'd320;
 localparam [9:0]  V_PIXELS = 10'd240;
-// Last row to emit when symmetry is active.  Row 120 is the center
-// (ci = center_y exactly when center_y = 0); rows 0..120 cover the
-// top half + axis; the caller mirrors rows 1..119 to 239..121.
-localparam [9:0]  V_PIXELS_SYM_LAST = 10'd120;
+// Last row to emit when symmetry is active.  With the half-step ci
+// grid shift below, the symmetry axis lies *between* rows 119 and
+// 120 instead of on row 120 itself, so we iterate exactly 120 rows
+// (0..119) and the caller mirrors them to rows 239..120.  Result:
+// clean 2.00× speedup, no center-axis row to special-case.
+localparam [9:0]  V_PIXELS_SYM_LAST = 10'd119;
 
 // step_x: in 640 mode, halve step so 640 pixels cover same complex-plane
 // horizontal extent as 320 pixels did. Vertical step stays at `step`.
@@ -76,7 +78,17 @@ reg signed [WIDTH-1:0] cr_row_start;
 wire signed [WIDTH-1:0] half_h_offset = (step <<< 7) + (step <<< 5);  // 160 * step
 wire signed [WIDTH-1:0] half_v_offset = (step <<< 7) - (step <<< 3);  // 120 * step
 wire signed [WIDTH-1:0] cr_start = center_x - half_h_offset;
-wire signed [WIDTH-1:0] ci_start = center_y - half_v_offset;
+// Half-step grid shift in ci: ci_start is offset by step/2 so no row
+// ever lands on ci=0 exactly.  Without this, any view crossing the
+// real axis renders a hard horizontal line at that row — the M-set's
+// real-axis intersection M∩ℝ = [-2, 0.25] is a 1D line of zero
+// imaginary width, and a single-sample renderer hitting it produces
+// dramatically different iter counts than ci=±step neighbours.
+// See Cheritat (math.univ-toulouse.fr) for the canonical description
+// of this artifact.  Cost: 0 (just a different constant); side
+// effect: image samples shifted by half a pixel in the imaginary
+// direction (sub-pixel — visually imperceptible).
+wire signed [WIDTH-1:0] ci_start = center_y - half_v_offset + (step >>> 1);
 
 // States
 localparam [1:0] S_IDLE  = 2'd0,

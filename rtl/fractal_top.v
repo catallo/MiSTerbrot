@@ -380,6 +380,9 @@ assign frame_done_rise = frame_done & ~frame_done_prev;
 // Mirror-write FIFO empty flag (driven in the A2 symmetry block below).
 // Forward-declared here so the bank-swap state machine can wait on it.
 wire symq_empty;
+// Backpressure on coord_generator dispatch when FIFO is near-full.
+// Also forward-declared; assigned in the FIFO section.
+wire symq_backpressure;
 
 // Bank swap state machine
 //
@@ -535,9 +538,13 @@ wire        pipe_result_escaped;
 
 // ---- Real-axis symmetry detection (A2) ----
 // Mandelbrot is symmetric across ci = 0.  When the view is centred on
-// the real axis (center_y == 0), we can compute only rows 0..120 and
-// mirror-write rows 121..239 — ~1.98× speedup on applicable POIs (real
-// axis Feigenbaum / antenna / half the seahorse cascade).
+// the real axis (center_y == 0), we can compute only rows 0..119 and
+// mirror-write rows 120..239 — exact 2.00× speedup on applicable POIs.
+//
+// With the half-step ci grid shift in coord_generator (rows have
+// ci = (Y - 119.5)*step + center_y), the symmetry axis lies *between*
+// rows 119 and 120.  Mirror pairs are (0↔239), (1↔238), …, (119↔120).
+// No special-case axis row.
 //
 // Latched at start_render so it can't change mid-frame (auto_zoom drift
 // could otherwise change center_y between scan and finish).
@@ -575,7 +582,26 @@ coord_generator #(
 
 // ---- Pipeline coord port — direct pass-through from coord_generator ----
 localparam RID_W = 1;
-wire                    pipe_coord_valid       = cg_valid;
+// Backpressure on the dispatch handshake when the mirror FIFO is
+// approaching full.  Pipeline can sustain result_valid=1 indefinitely
+// on fast scenes (precheck-heavy), and during pipe_result_valid=1 the
+// FIFO drain is blocked (mirror_drain = !pipe_result_valid &&
+// !symq_empty).  Without backpressure the FIFO eventually overflows
+// on any sustained-fast workload.
+//
+// Both sides of the valid/ready handshake must be gated together —
+// gating only cg_ready holds coord_generator at the current pixel,
+// but the pipeline (which doesn't see cg_ready) keeps finding free
+// slots in its round-robin walk and redispatches the *held* pixel
+// into each of them.  With N_ITERATORS=24, that's up to 24 redundant
+// dispatches of the same pixel, each enqueueing its own mirror →
+// FIFO overflow regardless of the threshold.  Discovered 2026-05-16
+// after the first sweep with the sym_overflow flag set on all 86
+// scenes.
+//
+// `symq_backpressure` is forward-declared near the top of the module
+// and assigned in the FIFO section below.
+wire                    pipe_coord_valid       = cg_valid && !symq_backpressure;
 wire [10:0]             pipe_coord_px          = cg_px;
 wire [9:0]              pipe_coord_py          = cg_py;
 wire signed [WIDTH-1:0] pipe_coord_cr          = cg_cr;
@@ -584,7 +610,7 @@ wire [RID_W-1:0]        pipe_coord_region_id   = {RID_W{1'b0}};
 wire                    pipe_coord_frame_done  = cg_frame_done;
 wire                    pipe_coord_ready;
 wire [RID_W-1:0]        pipe_result_region_id;
-assign cg_ready = pipe_coord_ready;
+assign cg_ready = pipe_coord_ready && !symq_backpressure;
 
 pixel_pipeline #(
     .N_ITERATORS(N_ITERATORS),
@@ -655,8 +681,8 @@ always @(posedge clk or negedge rst_n) begin
 end
 
 // ---- Mirror-write FIFO (real-axis symmetry, A2) ----
-// When sym_active_frame, every pipeline result for row y in [1..119]
-// also needs a mirror write to row (240-y).  The framebuffer has a
+// When sym_active_frame, every pipeline result for row y in [0..119]
+// also needs a mirror write to row (239-y).  The framebuffer has a
 // single write port per bank, so we serialise: original on the cycle
 // pipe_result_valid asserts, mirror drains when no original is
 // pending.
@@ -682,8 +708,20 @@ assign symq_empty = (symq_wr_ptr == symq_rd_ptr);  // wire fwd-declared above
 wire symq_full   = (symq_wr_ptr[SYMQ_AW-1:0] == symq_rd_ptr[SYMQ_AW-1:0]) &&
                    (symq_wr_ptr[SYMQ_AW]     != symq_rd_ptr[SYMQ_AW]);
 
+// Number of entries currently in the FIFO (0..SYMQ_DEPTH).
+// Two's-complement subtract on the (SYMQ_AW+1)-bit pointers gives the
+// correct count even across the wrap (the wrap bit makes the difference
+// negative, which interprets correctly as DEPTH+ when masked).
+wire [SYMQ_AW:0] symq_count = symq_wr_ptr - symq_rd_ptr;
+
+// Backpressure threshold: stop dispatching new work when the FIFO has
+// no room left for every in-flight iterator to enqueue its mirror after
+// dispatch stops.  At DEPTH=32, N_ITERATORS=24 → threshold 8.  When
+// sym is off, FIFO stays empty so backpressure never fires.
+assign symq_backpressure = sym_active_frame &&
+                           (symq_count >= (SYMQ_DEPTH - N_ITERATORS));
+
 wire need_mirror_now = sym_active_frame &&
-                       (pipe_result_y >= 10'd1) &&
                        (pipe_result_y <= 10'd119);
 wire mirror_drain    = !pipe_result_valid && !symq_empty;
 
@@ -723,7 +761,7 @@ always @(posedge clk or negedge rst_n) begin
     end else begin
         if (pipe_result_valid && need_mirror_now && !symq_full) begin
             symq_x   [symq_wr_ptr[SYMQ_AW-1:0]] <= pipe_result_x;
-            symq_y   [symq_wr_ptr[SYMQ_AW-1:0]] <= 10'd240 - pipe_result_y;
+            symq_y   [symq_wr_ptr[SYMQ_AW-1:0]] <= 10'd239 - pipe_result_y;
             symq_iter[symq_wr_ptr[SYMQ_AW-1:0]] <= pipe_result_iter;
             symq_esc [symq_wr_ptr[SYMQ_AW-1:0]] <= pipe_result_escaped;
             symq_wr_ptr <= symq_wr_ptr + 1'b1;
