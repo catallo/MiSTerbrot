@@ -459,10 +459,14 @@ always @(posedge clk or negedge rst_n) begin
             fps_tick_counter  <= 25'd0;
             fps_value         <= fps_sample_value;
             fps_halfsec_count <= frame_done_rise ? 7'd1 : 7'd0;
-            // Hysteresis: enter at <2 fps, exit at >=3 fps.
-            if (fps_sample_value < 7'd2)
+            // Hysteresis: enter at <2 fps WHILE actively rendering, exit
+            // at >=3 fps OR whenever the renderer is parked (RS_IDLE).
+            // Without the RS_IDLE release, fps_value sits at 0 forever
+            // once auto-zoom reaches its target and stops re-rendering,
+            // wrongly leaving the display on the active-render bank.
+            if (render_state != RS_IDLE && fps_sample_value < 7'd2)
                 auto_single_buf <= 1'b1;
-            else if (fps_sample_value >= 7'd3)
+            else if (fps_sample_value >= 7'd3 || render_state == RS_IDLE)
                 auto_single_buf <= 1'b0;
         end else begin
             fps_tick_counter <= fps_tick_counter + 25'd1;
