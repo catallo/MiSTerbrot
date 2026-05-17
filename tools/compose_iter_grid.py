@@ -111,10 +111,16 @@ def main() -> int:
             y = title_h + r * cell_h
             png = per_setting.get(setting)
             if png and png.exists():
-                im = Image.open(png).convert("RGB")
-                if im.size != (PANEL_W, PANEL_H):
-                    im = im.resize((PANEL_W, PANEL_H))
-                canvas.paste(im, (x, y))
+                try:
+                    im = Image.open(png).convert("RGB")
+                    if im.size != (PANEL_W, PANEL_H):
+                        im = im.resize((PANEL_W, PANEL_H))
+                    canvas.paste(im, (x, y))
+                except Exception as e:
+                    draw.rectangle([x, y, x + PANEL_W, y + PANEL_H],
+                                   fill=(80, 20, 20))
+                    draw.text((x + 20, y + PANEL_H // 2),
+                              f"BAD: {png.name}\n{e}", fill=(255, 200, 200))
             else:
                 draw.rectangle([x, y, x + PANEL_W, y + PANEL_H],
                                fill=(40, 40, 40))

@@ -198,8 +198,9 @@ def main() -> int:
         # Reference = the highest available setting (Auto for z≥24 → 4095,
         # otherwise 2048 since 2048 ≥ Auto for all z < 24)
         ref_label = "Auto" if current_auto >= 4095 else "2048"
-        ref_screenshot = Path(indexed[ref_label][idx].get("screenshot", ""))
-        if not ref_screenshot.exists():
+        ref_path_str = indexed[ref_label][idx].get("screenshot", "")
+        ref_screenshot = Path(ref_path_str) if ref_path_str else None
+        if not ref_screenshot or not ref_screenshot.is_file():
             continue
 
         per_setting = {}
@@ -207,8 +208,9 @@ def main() -> int:
             if label not in runs:
                 continue
             entry = indexed[label][idx]
-            shot = Path(entry.get("screenshot", ""))
-            if not shot.exists():
+            shot_str = entry.get("screenshot", "")
+            shot = Path(shot_str) if shot_str else None
+            if not shot or not shot.is_file():
                 continue
             d = diff_screenshots(shot, ref_screenshot)
             per_setting[label] = {
