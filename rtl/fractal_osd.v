@@ -43,10 +43,12 @@ module fractal_osd #(
     //   2'd1 = On  (force-enable for all scenes)
     //   2'd2 = Off (force-disable for all scenes)
     output wire [1:0]   p3_mode,
-    // 6-bit color quantization (status[27]): when 1, HDMI output is
-    // masked to the same 6-bit-per-channel range as the MiSTer Analog
-    // I/O board's R-2R DAC — so HDMI matches CRT exactly.
-    output wire         sixbit_color_mode
+    // Color depth (status[28:27]):
+    //   2'd0 = 6-bit  (default — matches MiSTer Analog I/O R-2R DAC)
+    //   2'd1 = 8-bit  (full, no quantization)
+    //   2'd2 = 5-bit
+    //   2'd3 = 4-bit
+    output wire [1:0]   color_depth_mode
 );
 
 // Iterations: OSD order Auto,512,128,256,1024,2048 → remap to canonical iter_sel
@@ -78,7 +80,7 @@ assign palette_sel   = status[10:4];
 assign color_cycle_enable = ~status[24];  // 0=On, 1=Off
 // A3 P3 Bulb Precheck: status[26:25] — Auto/On/Off (2 bits, 3 used).
 assign p3_mode = status[26:25];
-assign sixbit_color_mode = status[27];
+assign color_depth_mode = status[28:27];
 
 // Iteration decode. When status=0, keyboard/manual selection is active.
 reg [11:0] max_iter_r;
