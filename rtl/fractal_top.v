@@ -947,6 +947,8 @@ text_overlay #(
     .color_cycle_active(effective_color_cycle_enable),
     .color_cycle_mode(2'd0),  // no more 3-mode display
     .target_idx(az_target_idx),
+    .benchmark_active(benchmark_active),
+    .benchmark_idx(benchmark_idx),
     .in_r(disp_r),
     .in_g(disp_g),
     .in_b(disp_b),

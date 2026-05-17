@@ -39,6 +39,13 @@ module text_overlay #(
     input  wire                    color_cycle_active,
     input  wire [1:0]               color_cycle_mode,
     input  wire [`POI_IDX_BITS-1:0] target_idx,
+    // Benchmark mode: when active, the scene name lookup uses
+    // benchmark_idx in place of target_idx (catalogue ordering matches
+    // — poi_master.json index == auto_zoom target_idx == bench scene
+    // index since both are emitted in the same enumeration order by
+    // tools/poi_encode.py and tools/bench_encode.py).
+    input  wire                    benchmark_active,
+    input  wire [`POI_IDX_BITS-1:0] benchmark_idx,
     input  wire [7:0]              in_r,
     input  wire [7:0]              in_g,
     input  wire [7:0]              in_b,
@@ -807,8 +814,10 @@ function [383:0] target_line_data;
     begin
         case (line)
             3'd0: target_line_data = (overlay_visible || always_show_poi) ?
-                  (auto_zoom_active ?
-                  target_poi_palette(target_idx, palette_sel) :
+                  ((auto_zoom_active || benchmark_active) ?
+                  target_poi_palette(benchmark_active ? benchmark_idx
+                                                      : target_idx,
+                                     palette_sel) :
                   {palette_name(palette_sel), "                       "}) :
                   TARGET_BLANK_LINE;
             3'd1: target_line_data = overlay_visible ?
