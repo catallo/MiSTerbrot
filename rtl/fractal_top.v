@@ -891,7 +891,17 @@ wire [7:0] disp_r, disp_g, disp_b;
 wire [7:0] overlay_r, overlay_g, overlay_b;
 // Color Cycling: unified mode from keyboard (OSD also sets same values)
 // 0=Auto (on during auto-zoom), 1=On, 2=Off
-wire       effective_color_cycle_enable = osd_color_cycle_enable & color_cycle_enable;
+// Color cycling is force-disabled in benchmark mode for deterministic
+// frame output — every sweep capture of the same scene must produce
+// pixel-identical results so the analyze_max_iter.py per-POI grids
+// can be visually compared and the structural diff stays clean.
+// (Cycling phase otherwise rotates the escape-pixel palette indices
+// every frame, making same-scene captures from different sweeps look
+// totally different even though the underlying iter classification is
+// identical.)  Normal manual/auto-zoom use is unaffected.
+wire       effective_color_cycle_enable = osd_color_cycle_enable
+                                        & color_cycle_enable
+                                        & ~benchmark_active;
 
 color_mapper u_color_mapper (
     .clk(clk),
