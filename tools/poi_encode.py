@@ -2,8 +2,8 @@
 """Encode POI master list into 8.56 fixed-point Verilog `case` blocks.
 
 Reads tools/poi_master.json. Produces:
-  - tools/poi_generated.vh : two `case` blocks (rom_cx/cy, target_max_zoom_x10)
-                              and one for target_name_full (text_overlay)
+  - tools/poi_generated.vh : case blocks for rom_cx/cy, target_max_zoom_x10,
+                              target_zoom_int, target_max_iter, and target_name_full
   - prints a roundtrip-verified summary table
 
 8.56 format: 64-bit signed, 56 fractional bits. value = signed_int / 2**56.
@@ -79,12 +79,21 @@ def main():
         if err > 1e-14:
             print(f"  WARN idx {i}: roundtrip error {err:.2e}")
         zoom_x10 = int(round(zoom * 10))
+        # Per-POI max_iter override; falls back to zoom-tier ladder
+        # (same thresholds as fractal_top.v auto_max_iter).
+        if "max_iter" in p:
+            mi = int(p["max_iter"])
+        elif zoom < 6:  mi = 512
+        elif zoom < 12: mi = 1024
+        elif zoom < 18: mi = 2048
+        else:           mi = 4095
         encoded.append({
             "idx": i,
             "name": name,
             "cx_u": cx_u,
             "cy_u": cy_u,
             "zoom_x10": zoom_x10,
+            "max_iter": mi,
             "overlay": name_to_overlay(name),
         })
         print(f"{i:>3} {name:<22} {cx:>14.10f} {cy:>14.10f} {zoom:5.2f}  {hex64(cx_u)}  {hex64(cy_u)}")
@@ -115,6 +124,12 @@ def main():
     for e in encoded:
         zint = max(0, min(31, int(round(e['zoom_x10'] / 10.0))))
         lines.append(f"    {idx_bits}'d{e['idx']:<3}: target_zoom_int = 5'd{zint}; /* {e['name']} */ \\")
+    lines[-1] = lines[-1].rstrip(" \\")
+    lines.append("")
+    lines.append("// ---- target_max_iter (auto_zoom.v → fractal_top.v) — per-POI iter ----")
+    lines.append("`define POI_ITER_CASES \\")
+    for e in encoded:
+        lines.append(f"    {idx_bits}'d{e['idx']:<3}: target_max_iter = 12'd{e['max_iter']}; /* {e['name']} */ \\")
     lines[-1] = lines[-1].rstrip(" \\")
     lines.append("")
     lines.append("// ---- target_name_full (text_overlay.v) — 20-char overlay label ----")

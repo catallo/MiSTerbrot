@@ -38,7 +38,8 @@ module auto_zoom #(
     output reg                     active,
     output reg                     view_changed,
     output reg  [6:0]              palette_idx,
-    output wire [`POI_IDX_BITS-1:0] target_idx_out
+    output wire [`POI_IDX_BITS-1:0] target_idx_out,
+    output reg  [11:0]              target_max_iter
 );
 
 localparam signed [WIDTH-1:0] DEFAULT_STEP = 64'sh0003333333333333;
@@ -99,6 +100,13 @@ always @(*) begin
     case (target_idx)
         `POI_ZOOM_INT_CASES
         default: target_zoom_int = 5'd8;
+    endcase
+end
+
+always @(*) begin
+    case (target_idx)
+        `POI_ITER_CASES
+        default: target_max_iter = 12'd1024;
     endcase
 end
 

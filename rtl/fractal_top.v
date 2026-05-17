@@ -177,6 +177,7 @@ wire [6:0]              az_palette_idx;
 wire [17:0]             az_fb_rd_addr;
 wire                    az_fb_sampling;
 wire [6:0]              az_target_idx;
+wire [11:0]             az_max_iter;
 reg  [6:0]              az_target_idx_prev;
 reg                     az_enable;
 reg                     az_enable_prev;
@@ -298,7 +299,8 @@ auto_zoom #(
     .active(auto_zoom_active),
     .view_changed(az_view_changed),
     .palette_idx(az_palette_idx),
-    .target_idx_out(az_target_idx)
+    .target_idx_out(az_target_idx),
+    .target_max_iter(az_max_iter)
 );
 
 // ---- Mux: auto_zoom overrides manual when active ----
@@ -347,6 +349,11 @@ wire [11:0] auto_max_iter = (step >= step_z12) ? 12'd512  :  // floor: never bel
                             (step >= step_z24) ? 12'd2048 :
                                                  12'd4095;
 
+// When auto-zoom is locked on a target POI and the OSD is set to Auto,
+// prefer the per-POI max_iter from rtl/poi_generated.vh (sourced from
+// tools/poi_master.json max_iter override) over the step-based ladder.
+// Falls back to the ladder for manual zoom or OSD=Auto without a POI.
+wire [11:0] auto_iter_choice = auto_zoom_active ? az_max_iter : auto_max_iter;
 always @(*) begin
     case (input_iter_sel)
         3'd0:    input_max_iter = 12'd128;
@@ -354,7 +361,7 @@ always @(*) begin
         3'd2:    input_max_iter = 12'd512;
         3'd3:    input_max_iter = 12'd1024;
         3'd4:    input_max_iter = 12'd2048;
-        default: input_max_iter = auto_max_iter;  // 3'd5 = Auto
+        default: input_max_iter = auto_iter_choice;  // 3'd5 = Auto
     endcase
 end
 

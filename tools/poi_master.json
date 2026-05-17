@@ -5,7 +5,8 @@
     "cy": 0.0,
     "zoom_level": 6.0,
     "category": "PERIOD_BULB",
-    "note": "Period-6 satellite bulb on real axis"
+    "note": "Period-6 satellite bulb on real axis",
+    "max_iter": 2048
   },
   {
     "name": "P3 ISLAND",
@@ -13,7 +14,8 @@
     "cy": 0.0,
     "zoom_level": 5.0,
     "category": "MINIBROT",
-    "note": "Largest island, period-3 minibrot nucleus"
+    "note": "Largest island, period-3 minibrot nucleus",
+    "max_iter": 1024
   },
   {
     "name": "P3 ISLAND TIP",
@@ -29,7 +31,8 @@
     "cy": 1.032247,
     "zoom_level": 6.0,
     "category": "MINIBROT",
-    "note": "Largest period-4 island in 1/3 limb"
+    "note": "Largest period-4 island in 1/3 limb",
+    "max_iter": 256
   },
   {
     "name": "P5 ISLAND",
@@ -37,7 +40,8 @@
     "cy": 0.643507,
     "zoom_level": 7.0,
     "category": "MINIBROT",
-    "note": "Largest period-5 island"
+    "note": "Largest period-5 island",
+    "max_iter": 256
   },
   {
     "name": "P6 ISLAND",
@@ -45,7 +49,8 @@
     "cy": 0.373727,
     "zoom_level": 7.0,
     "category": "MINIBROT",
-    "note": "Largest period-6 island"
+    "note": "Largest period-6 island",
+    "max_iter": 128
   },
   {
     "name": "P7 ISLAND",
@@ -53,7 +58,8 @@
     "cy": 0.227315,
     "zoom_level": 8.0,
     "category": "MINIBROT",
-    "note": "Period-7 island"
+    "note": "Period-7 island",
+    "max_iter": 512
   },
   {
     "name": "P8 ISLAND",
@@ -69,7 +75,8 @@
     "cy": 0.098841,
     "zoom_level": 9.0,
     "category": "MINIBROT",
-    "note": "Period-9 island"
+    "note": "Period-9 island",
+    "max_iter": 256
   },
   {
     "name": "P11 ISLAND",
@@ -77,7 +84,8 @@
     "cy": 0.050823,
     "zoom_level": 10.0,
     "category": "MINIBROT",
-    "note": "Period-11 island near cardioid cusp"
+    "note": "Period-11 island near cardioid cusp",
+    "max_iter": 512
   },
   {
     "name": "P22 ISLAND",
@@ -85,7 +93,8 @@
     "cy": 0.005401,
     "zoom_level": 12.0,
     "category": "MINIBROT",
-    "note": "Period-22 island near elephant valley"
+    "note": "Period-22 island near elephant valley",
+    "max_iter": 1024
   },
   {
     "name": "ELEPHANT TRUNK",
@@ -101,7 +110,8 @@
     "cy": -0.015555,
     "zoom_level": 9.0,
     "category": "ELEPHANT",
-    "note": "Detailed elephant heads in cusp R2.C(0)"
+    "note": "Detailed elephant heads in cusp R2.C(0)",
+    "max_iter": 2048
   },
   {
     "name": "ELEPHANT ISLAND",
@@ -117,7 +127,8 @@
     "cy": 0.008629,
     "zoom_level": 11.0,
     "category": "ELEPHANT",
-    "note": "Period-19 island in elephant valley"
+    "note": "Period-19 island in elephant valley",
+    "max_iter": 512
   },
   {
     "name": "ELEPHANT P16",
@@ -125,7 +136,8 @@
     "cy": 0.01497,
     "zoom_level": 11.0,
     "category": "ELEPHANT",
-    "note": "Period-16 island near elephant valley"
+    "note": "Period-16 island near elephant valley",
+    "max_iter": 512
   },
   {
     "name": "SEAHORSE BODY",
@@ -133,7 +145,8 @@
     "cy": 0.126433,
     "zoom_level": 7.95,
     "category": "SEAHORSE",
-    "note": "Beyer step 3, seahorse with 25 spokes"
+    "note": "Beyer step 3, seahorse with 25 spokes",
+    "max_iter": 2048
   },
   {
     "name": "SEAHORSE TAIL",
@@ -149,7 +162,8 @@
     "cy": 0.1174,
     "zoom_level": 8.44,
     "category": "SEAHORSE",
-    "note": "Mu-Ency seahorse valley fig 2"
+    "note": "Mu-Ency seahorse valley fig 2",
+    "max_iter": 2048
   },
   {
     "name": "SEAHORSE TAIL2",
@@ -157,7 +171,8 @@
     "cy": 0.13188204,
     "zoom_level": 12.4,
     "category": "SEAHORSE",
-    "note": "Beyer step 5, tail part deeper"
+    "note": "Beyer step 5, tail part deeper",
+    "max_iter": 1024
   },
   {
     "name": "DOUBLE HOOK",
@@ -165,7 +180,8 @@
     "cy": 0.13182733,
     "zoom_level": 14.93,
     "category": "SEAHORSE",
-    "note": "Beyer step 6, double hook"
+    "note": "Beyer step 6, double hook",
+    "max_iter": 1024
   },
   {
     "name": "SH SATELLITE",
@@ -173,7 +189,8 @@
     "cy": 0.131825963,
     "zoom_level": 18.06,
     "category": "MINIBROT",
-    "note": "Beyer step 7, satellite minibrot"
+    "note": "Beyer step 7, satellite minibrot",
+    "max_iter": 2048
   },
   {
     "name": "SAT ANTENNA",
@@ -213,7 +230,8 @@
     "cy": 0.1318259043,
     "zoom_level": 29.85,
     "category": "JULIA_ISLAND",
-    "note": "Beyer step 12, embedded Julia islands"
+    "note": "Beyer step 12, embedded Julia islands",
+    "max_iter": 2048
   },
   {
     "name": "TRIPLE WEST",
@@ -221,7 +239,8 @@
     "cy": 0.65218,
     "zoom_level": 9.0,
     "category": "TRIPLE_SPIRAL",
-    "note": "Triple spiral valley west side detail"
+    "note": "Triple spiral valley west side detail",
+    "max_iter": 2048
   },
   {
     "name": "TRIPLE DEEP",
@@ -229,7 +248,8 @@
     "cy": 0.653411,
     "zoom_level": 12.0,
     "category": "TRIPLE_SPIRAL",
-    "note": "Triple spiral around R2F(1/3(19/20B1)B*)"
+    "note": "Triple spiral around R2F(1/3(19/20B1)B*)",
+    "max_iter": 1024
   },
   {
     "name": "FEIGENBAUM",
@@ -261,7 +281,8 @@
     "cy": 1.0397,
     "zoom_level": 6.0,
     "category": "FEIGENBAUM",
-    "note": "Generalized Feigenbaum in 1/3 limb"
+    "note": "Generalized Feigenbaum in 1/3 limb",
+    "max_iter": 256
   },
   {
     "name": "MISIUREWICZ M4",
@@ -269,7 +290,8 @@
     "cy": 0.95628651,
     "zoom_level": 6.0,
     "category": "MISIUREWICZ",
-    "note": "Principal Misiurewicz of 1/3 limb (M4,1)"
+    "note": "Principal Misiurewicz of 1/3 limb (M4,1)",
+    "max_iter": 256
   },
   {
     "name": "MISIUREWICZ M4-2",
@@ -293,7 +315,8 @@
     "cy": 0.0,
     "zoom_level": 7.0,
     "category": "MISIUREWICZ",
-    "note": "Period-4 nucleus along main antenna"
+    "note": "Period-4 nucleus along main antenna",
+    "max_iter": 512
   },
   {
     "name": "MISIUREWICZ -1.84",
@@ -301,7 +324,8 @@
     "cy": 0.0,
     "zoom_level": 6.0,
     "category": "MISIUREWICZ",
-    "note": "M2,2 west of period-3 island"
+    "note": "M2,2 west of period-3 island",
+    "max_iter": 128
   },
   {
     "name": "DBL SPIRAL P4",
@@ -309,7 +333,8 @@
     "cy": 1.03632203,
     "zoom_level": 6.0,
     "category": "MEDALLION",
-    "note": "Double-spiral medallion near P4 island"
+    "note": "Double-spiral medallion near P4 island",
+    "max_iter": 256
   },
   {
     "name": "SINGLE SPIRAL",
@@ -317,7 +342,8 @@
     "cy": 1.0308295,
     "zoom_level": 6.0,
     "category": "MEDALLION",
-    "note": "Single-spiral medallion in 1/3 limb"
+    "note": "Single-spiral medallion in 1/3 limb",
+    "max_iter": 256
   },
   {
     "name": "TRIPLE MEDALLION",
@@ -325,7 +351,8 @@
     "cy": 1.03692215,
     "zoom_level": 7.0,
     "category": "MEDALLION",
-    "note": "Triple-spiral medallion in 1/3 limb"
+    "note": "Triple-spiral medallion in 1/3 limb",
+    "max_iter": 512
   },
   {
     "name": "DBL SPIRAL ISLE",
@@ -333,7 +360,8 @@
     "cy": -0.38220889,
     "zoom_level": 23.0,
     "category": "MEDALLION",
-    "note": "Double-spiral medallion in P3 island"
+    "note": "Double-spiral medallion in P3 island",
+    "max_iter": 1024
   },
   {
     "name": "TRIPLE ISLE MED",
@@ -341,7 +369,8 @@
     "cy": -0.37930648,
     "zoom_level": 22.5,
     "category": "MEDALLION",
-    "note": "Triple-spiral medallion at P3 island cusp"
+    "note": "Triple-spiral medallion at P3 island cusp",
+    "max_iter": 1024
   },
   {
     "name": "CAULIFLOWER MED",
@@ -349,7 +378,8 @@
     "cy": -0.37960804,
     "zoom_level": 21.6,
     "category": "MEDALLION",
-    "note": "Cauliflower medallion near P3 island"
+    "note": "Cauliflower medallion near P3 island",
+    "max_iter": 512
   },
   {
     "name": "EJS CAULI",
@@ -357,7 +387,8 @@
     "cy": 0.0,
     "zoom_level": 17.34,
     "category": "JULIA_ISLAND",
-    "note": "Embedded Julia set, cauliflower-type"
+    "note": "Embedded Julia set, cauliflower-type",
+    "max_iter": 256
   },
   {
     "name": "EJS DBL SPIRAL",
@@ -365,7 +396,8 @@
     "cy": 0.002428273,
     "zoom_level": 18.74,
     "category": "JULIA_ISLAND",
-    "note": "Embedded Julia set, double-spiral type"
+    "note": "Embedded Julia set, double-spiral type",
+    "max_iter": 512
   },
   {
     "name": "EJS BRANCH",
@@ -373,7 +405,8 @@
     "cy": 0.0176750996,
     "zoom_level": 23.32,
     "category": "JULIA_ISLAND",
-    "note": "Embedded Julia set, branch (filament)"
+    "note": "Embedded Julia set, branch (filament)",
+    "max_iter": 256
   },
   {
     "name": "EJS NUCLEUS",
@@ -397,7 +430,8 @@
     "cy": 0.642513737,
     "zoom_level": 8.0,
     "category": "MINIBROT",
-    "note": "Period-5 island detailed center"
+    "note": "Period-5 island detailed center",
+    "max_iter": 512
   },
   {
     "name": "ELEPHANT MED",
@@ -405,7 +439,8 @@
     "cy": 0.001612614,
     "zoom_level": 14.0,
     "category": "ELEPHANT",
-    "note": "Deep elephant valley with medallions"
+    "note": "Deep elephant valley with medallions",
+    "max_iter": 1024
   },
   {
     "name": "STARFISH",
@@ -413,7 +448,8 @@
     "cy": 0.659792175,
     "zoom_level": 16.0,
     "category": "FILAMENT",
-    "note": "Sunburst/starfish radial pattern (original v0.10 POI)"
+    "note": "Sunburst/starfish radial pattern (original v0.10 POI)",
+    "max_iter": 512
   },
   {
     "name": "M3,1 WAKE 3/7",
@@ -421,7 +457,8 @@
     "cy": 0.458060975296946,
     "zoom_level": 15.0,
     "category": "MISIUREWICZ",
-    "note": "Branch tip, principal Misiurewicz of wake 3/7"
+    "note": "Branch tip, principal Misiurewicz of wake 3/7",
+    "max_iter": 256
   },
   {
     "name": "M11,1 WAKE 5/11",
@@ -429,7 +466,8 @@
     "cy": 0.286456567676711,
     "zoom_level": 15.29,
     "category": "MISIUREWICZ",
-    "note": "Branch tip, principal Misiurewicz of wake 5/11"
+    "note": "Branch tip, principal Misiurewicz of wake 5/11",
+    "max_iter": 512
   },
   {
     "name": "CONCHA APPROACH",
@@ -437,7 +475,8 @@
     "cy": 0.0,
     "zoom_level": 15.64,
     "category": "JULIA_ISLAND",
-    "note": "Large 2-fold EJS in R2F(1/2B1)S.C(0), Mu-Ency Fig 4"
+    "note": "Large 2-fold EJS in R2F(1/2B1)S.C(0), Mu-Ency Fig 4",
+    "max_iter": 256
   },
   {
     "name": "M7,1 WAKE 1/7",
@@ -445,7 +484,8 @@
     "cy": 0.133511204871878,
     "zoom_level": 16.0,
     "category": "MISIUREWICZ",
-    "note": "Branch tip, principal Misiurewicz of wake 1/7"
+    "note": "Branch tip, principal Misiurewicz of wake 1/7",
+    "max_iter": 256
   },
   {
     "name": "SH CUSP DEEP",
@@ -461,7 +501,8 @@
     "cy": 0.00392602,
     "zoom_level": 17.29,
     "category": "JULIA_ISLAND",
-    "note": "Period-44 embedded Julia set near P3 antenna"
+    "note": "Period-44 embedded Julia set near P3 antenna",
+    "max_iter": 512
   },
   {
     "name": "JEWEL BOX",
@@ -469,7 +510,8 @@
     "cy": 0.11300888,
     "zoom_level": 17.65,
     "category": "JULIA_ISLAND",
-    "note": "Rollo Silver Jewel Box, classic seahorse waypoint"
+    "note": "Rollo Silver Jewel Box, classic seahorse waypoint",
+    "max_iter": 1024
   },
   {
     "name": "R2T P6 ISLAND",
@@ -477,7 +519,8 @@
     "cy": 0.0,
     "zoom_level": 18.23,
     "category": "MINIBROT",
-    "note": "Period-6 island in real-axis R2t cascade to c=-2"
+    "note": "Period-6 island in real-axis R2t cascade to c=-2",
+    "max_iter": 512
   },
   {
     "name": "SH CUSP FINE",
@@ -501,7 +544,8 @@
     "cy": 0.0,
     "zoom_level": 22.24,
     "category": "MINIBROT",
-    "note": "Period-7 island in real-axis R2t cascade to c=-2"
+    "note": "Period-7 island in real-axis R2t cascade to c=-2",
+    "max_iter": 128
   },
   {
     "name": "SCEPTER MED",
@@ -509,7 +553,8 @@
     "cy": -0.38338111,
     "zoom_level": 22.78,
     "category": "MEDALLION",
-    "note": "Scepter medallion at .1/2.C(1/2) cusp of P3 island"
+    "note": "Scepter medallion at .1/2.C(1/2) cusp of P3 island",
+    "max_iter": 1024
   },
   {
     "name": "BRANCH MED",
@@ -517,7 +562,8 @@
     "cy": -0.38266514,
     "zoom_level": 23.35,
     "category": "MEDALLION",
-    "note": "Branch medallion type C EJS in P3 island branch"
+    "note": "Branch medallion type C EJS in P3 island branch",
+    "max_iter": 256
   },
   {
     "name": "EJS P3 DEEP",
@@ -525,7 +571,8 @@
     "cy": 3e-10,
     "zoom_level": 23.68,
     "category": "JULIA_ISLAND",
-    "note": "2-fold EJS deep inside P3 island, Cantor-dust"
+    "note": "2-fold EJS deep inside P3 island, Cantor-dust",
+    "max_iter": 1024
   },
   {
     "name": "NEEDLE MED",
@@ -533,7 +580,8 @@
     "cy": -0.3850133,
     "zoom_level": 23.79,
     "category": "MEDALLION",
-    "note": "Needle medallion near island spike tip"
+    "note": "Needle medallion near island spike tip",
+    "max_iter": 128
   },
   {
     "name": "M3,1 1/3 LIMB TIP",
@@ -545,7 +593,8 @@
       "https://en.wikipedia.org/wiki/Misiurewicz_point",
       "https://mrob.com/pub/muency/misiurewiczpoint.html"
     ],
-    "note": "M(3,1) endpoint at the tip of the OTHER main branch of the 1/3 limb. Preperiod 3 period 1."
+    "note": "M(3,1) endpoint at the tip of the OTHER main branch of the 1/3 limb. Preperiod 3 period 1.",
+    "max_iter": 128
   },
   {
     "name": "M_4,2 CASCADE 1",
@@ -557,7 +606,8 @@
       "https://en.wikibooks.org/wiki/Fractals/Iterations_in_the_complex_plane/misiurewicz",
       "https://en.wikipedia.org/wiki/Misiurewicz_point"
     ],
-    "note": "M(4,2) first primary separator on the period-doubling cascade toward Feigenbaum. Boundary between chaotic bands of period 2 and 4."
+    "note": "M(4,2) first primary separator on the period-doubling cascade toward Feigenbaum. Boundary between chaotic bands of period 2 and 4.",
+    "max_iter": 128
   },
   {
     "name": "M_8,4 CASCADE 2",
@@ -569,7 +619,8 @@
       "https://en.wikibooks.org/wiki/Fractals/Iterations_in_the_complex_plane/misiurewicz",
       "https://mrob.com/pub/muency/feigenbaumpoint.html"
     ],
-    "note": "M(8,4) second primary separator on the Feigenbaum cascade. Next band-boundary below M_4,2 on the real axis."
+    "note": "M(8,4) second primary separator on the Feigenbaum cascade. Next band-boundary below M_4,2 on the real axis.",
+    "max_iter": 256
   },
   {
     "name": "M_16,8 CASCADE 3",
@@ -581,7 +632,8 @@
       "https://en.wikibooks.org/wiki/Fractals/Iterations_in_the_complex_plane/misiurewicz",
       "https://mrob.com/pub/muency/feigenbaumpoint.html"
     ],
-    "note": "M(16,8) third primary separator. Approaches Feigenbaum point at -1.40115518909. Sits just rightward of FEIGENBAUM DEEP."
+    "note": "M(16,8) third primary separator. Approaches Feigenbaum point at -1.40115518909. Sits just rightward of FEIGENBAUM DEEP.",
+    "max_iter": 512
   },
   {
     "name": "EJS P47 ALPHA",
@@ -593,7 +645,8 @@
       "https://mrob.com/pub/muency/embeddedjuliaset.html",
       "https://en.wikipedia.org/wiki/Mandelbrot_set"
     ],
-    "note": "First-order pre-image island of period 47 in the embedded Julia ring surrounding the period-44 EJS center."
+    "note": "First-order pre-image island of period 47 in the embedded Julia ring surrounding the period-44 EJS center.",
+    "max_iter": 512
   },
   {
     "name": "EJS P50 BETA",
@@ -605,7 +658,8 @@
       "https://mrob.com/pub/muency/embeddedjuliaset.html",
       "https://mathr.co.uk/web/m-location-analysis.html"
     ],
-    "note": "Period-50 child island in the Julia ring around EJS PERIOD 44. Different ray-position from EJS P47 ALPHA."
+    "note": "Period-50 child island in the Julia ring around EJS PERIOD 44. Different ray-position from EJS P47 ALPHA.",
+    "max_iter": 256
   },
   {
     "name": "EJS WAKE 1/4",
@@ -617,7 +671,8 @@
       "https://mathr.co.uk/web/m-location-analysis.html",
       "https://mrob.com/pub/muency/embeddedjuliaset.html"
     ],
-    "note": "Embedded Julia set centered on the largest period-4 bulb in the longest filament near the 1/3 limb tip."
+    "note": "Embedded Julia set centered on the largest period-4 bulb in the longest filament near the 1/3 limb tip.",
+    "max_iter": 1024
   },
   {
     "name": "SH SPIRAL CONT",
@@ -641,7 +696,8 @@
       "https://mrob.com/pub/muency/seahorsevalley.html",
       "https://mrob.com/pub/muency/embeddedjuliaset.html"
     ],
-    "note": "Tail-spiral intermediate; same chain as EJS NUCLEUS but distinct waypoint at shallower zoom."
+    "note": "Tail-spiral intermediate; same chain as EJS NUCLEUS but distinct waypoint at shallower zoom.",
+    "max_iter": 1024
   },
   {
     "name": "ELEPHANT MED 2",
@@ -653,7 +709,8 @@
       "https://mrob.com/pub/muency/embeddedjuliaset.html",
       "https://mrob.com/pub/muency/cauliflowermedallion.html"
     ],
-    "note": "Mu-Ency named 'elephant medallion'. Adjacent to existing CAULIFLOWER MED but distinct embedded-Julia center."
+    "note": "Mu-Ency named 'elephant medallion'. Adjacent to existing CAULIFLOWER MED but distinct embedded-Julia center.",
+    "max_iter": 1024
   },
   {
     "name": "R2T 1/2 ISLE STEP",
@@ -677,7 +734,8 @@
       "https://commons.wikimedia.org/wiki/File:Mandel_zoom_13_satellite_seehorse_tail_with_julia_island.jpg",
       "https://en.wikipedia.org/wiki/Mandelbrot_set"
     ],
-    "note": "Wolfgang Beyer step 13: 5.14e9x. Satellite seahorse tail with embedded Julia island. Deeper than JULIA ISLANDS."
+    "note": "Wolfgang Beyer step 13: 5.14e9x. Satellite seahorse tail with embedded Julia island. Deeper than JULIA ISLANDS.",
+    "max_iter": 2048
   },
   {
     "name": "BEYER STEP 14",
@@ -701,7 +759,8 @@
       "https://www.researchgate.net/figure/Examples-of-multiple-spiral-medallions-13-in-the-Mandelbrot-set-showing-the-first_fig2_258389622",
       "https://en.wikipedia.org/wiki/Mandelbrot_set"
     ],
-    "note": "Romera et al triple-spiral medallion. Zoom-sequence of existing TRIPLE MEDALLION at deeper magnification."
+    "note": "Romera et al triple-spiral medallion. Zoom-sequence of existing TRIPLE MEDALLION at deeper magnification.",
+    "max_iter": 2048
   },
   {
     "name": "MERCATOR P189",
@@ -713,7 +772,8 @@
       "https://mathr.co.uk/web/m-location-analysis.html",
       "https://mrob.com/pub/muency/embeddedjuliaset.html"
     ],
-    "note": "Period-189 minibrot in the EJS CAULI region (mathr reference point). Deeper than EJS CAULI."
+    "note": "Period-189 minibrot in the EJS CAULI region (mathr reference point). Deeper than EJS CAULI.",
+    "max_iter": 1024
   },
   {
     "name": "MERCATOR P38",
@@ -725,7 +785,8 @@
       "https://mathr.co.uk/web/m-location-analysis.html",
       "https://mrob.com/pub/muency/embeddedjuliaset.html"
     ],
-    "note": "Period-38 minibrot just beyond the EJS CAULI nucleus. Intermediate between EJS CAULI and MERCATOR P189."
+    "note": "Period-38 minibrot just beyond the EJS CAULI nucleus. Intermediate between EJS CAULI and MERCATOR P189.",
+    "max_iter": 512
   },
   {
     "name": "M(3,3) WAKE 1/3 DP",
@@ -737,7 +798,8 @@
       "https://en.wikibooks.org/wiki/Fractals/Iterations_in_the_complex_plane/p_misiurewicz",
       "https://en.wikipedia.org/wiki/Misiurewicz_point"
     ],
-    "note": "Principal Misiurewicz branch point of wake 1/3 (3-spoke junction at the bulb). Zoom-sequence of existing MISIUREWICZ M4."
+    "note": "Principal Misiurewicz branch point of wake 1/3 (3-spoke junction at the bulb). Zoom-sequence of existing MISIUREWICZ M4.",
+    "max_iter": 128
   },
   {
     "name": "M(7,7) WAKE 1/4 DP",
@@ -749,7 +811,8 @@
       "https://en.wikibooks.org/wiki/Fractals/Iterations_in_the_complex_plane/p_misiurewicz",
       "https://en.wikibooks.org/wiki/Fractals/Iterations_in_the_complex_plane/misiurewicz"
     ],
-    "note": "Principal Misiurewicz point of wake 1/4 (4-spoke branch hub). Zoom-sequence of existing MISIUREWICZ M4-2."
+    "note": "Principal Misiurewicz point of wake 1/4 (4-spoke branch hub). Zoom-sequence of existing MISIUREWICZ M4-2.",
+    "max_iter": 256
   },
   {
     "name": "EJS P47 GAMMA",
@@ -761,7 +824,8 @@
       "https://mrob.com/pub/muency/embeddedjuliaset.html",
       "https://mathr.co.uk/web/m-location-analysis.html"
     ],
-    "note": "Second period-47 pre-image island, mirrored across the EJS P44 center from EJS P47 ALPHA."
+    "note": "Second period-47 pre-image island, mirrored across the EJS P44 center from EJS P47 ALPHA.",
+    "max_iter": 256
   },
   {
     "name": "P3 BULB UPPER",
@@ -809,6 +873,7 @@
     "sources": [
       "https://en.wikipedia.org/wiki/Mandelbrot_set#Hyperbolic_components"
     ],
-    "note": "Deep zoom into period-3 bulb interior. Visible area ~0.04 wide, all inside the bulb's inscribed circle (r^2=0.005625) -> A3 precheck should fire on every pixel and skip iteration entirely."
+    "note": "Deep zoom into period-3 bulb interior. Visible area ~0.04 wide, all inside the bulb's inscribed circle (r^2=0.005625) -> A3 precheck should fire on every pixel and skip iteration entirely.",
+    "max_iter": 128
   }
 ]

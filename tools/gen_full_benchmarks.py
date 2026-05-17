@@ -34,12 +34,15 @@ def main():
     scenes = []
     for idx, p in enumerate(pois):
         palette = (idx * 7) % N_PALETTES  # Spread palettes; coprime with 90
+        # Per-POI max_iter override takes precedence over the zoom-tier
+        # ladder.  Source: tools/analyze_max_iter.py recommendations.
+        mi = p.get("max_iter", max_iter_for_zoom(p["zoom_level"]))
         scenes.append({
             "name": p["name"],
             "cx": p["cx"],
             "cy": p["cy"],
             "zoom_level": p["zoom_level"],
-            "max_iter": max_iter_for_zoom(p["zoom_level"]),
+            "max_iter": mi,
             "mode_640": True,
             "palette": palette,
             # A3 per-POI opt-in: enable period-3 bulb precheck only for POIs
