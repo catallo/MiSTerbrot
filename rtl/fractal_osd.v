@@ -48,7 +48,14 @@ module fractal_osd #(
     //   2'd1 = 8-bit  (full, no quantization)
     //   2'd2 = 5-bit
     //   2'd3 = 4-bit
-    output wire [1:0]   color_depth_mode
+    output wire [1:0]   color_depth_mode,
+    // Attract Mode submenu (status[35:29]):
+    //   [29] zoom_in_disable  (default 0 = zoom-in enabled)
+    //   [30] zoom_out_disable (default 0 = zoom-out enabled)
+    //   [35:31] wait_sel — 5-bit selector → 16-bit vblank target below
+    output wire         attract_zoom_in_enable,
+    output wire         attract_zoom_out_enable,
+    output wire [15:0]  attract_wait_vblanks
 );
 
 // Iterations: OSD order Auto,512,128,256,1024,2048 → remap to canonical iter_sel
@@ -81,6 +88,44 @@ assign color_cycle_enable = ~status[24];  // 0=On, 1=Off
 // A3 P3 Bulb Precheck: status[26:25] — Auto/On/Off (2 bits, 3 used).
 assign p3_mode = status[26:25];
 assign color_depth_mode = status[28:27];
+
+// Attract Mode decoding
+assign attract_zoom_in_enable  = ~status[29];
+assign attract_zoom_out_enable = ~status[30];
+
+// Wait selector lookup → display vblank count (60 Hz).
+// Default (sel=0) is 10s = 600 vblanks to preserve current behavior.
+// 1 color cycle = 1024 display vblanks (cycle_phase 12-bit, +4/vblank,
+// wraps at 4096 → 1024 vblanks per full palette rotation).
+reg [15:0] attract_wait_vblanks_r;
+always @(*) begin
+    case (status[35:31])
+        5'd0:  attract_wait_vblanks_r = 16'd600;    // 10s (default)
+        5'd1:  attract_wait_vblanks_r = 16'd60;     // 1s
+        5'd2:  attract_wait_vblanks_r = 16'd120;    // 2s
+        5'd3:  attract_wait_vblanks_r = 16'd180;    // 3s
+        5'd4:  attract_wait_vblanks_r = 16'd240;    // 4s
+        5'd5:  attract_wait_vblanks_r = 16'd300;    // 5s
+        5'd6:  attract_wait_vblanks_r = 16'd360;    // 6s
+        5'd7:  attract_wait_vblanks_r = 16'd420;    // 7s
+        5'd8:  attract_wait_vblanks_r = 16'd480;    // 8s
+        5'd9:  attract_wait_vblanks_r = 16'd540;    // 9s
+        5'd10: attract_wait_vblanks_r = 16'd900;    // 15s
+        5'd11: attract_wait_vblanks_r = 16'd1024;   // 1 cycle
+        5'd12: attract_wait_vblanks_r = 16'd1200;   // 20s
+        5'd13: attract_wait_vblanks_r = 16'd1800;   // 30s
+        5'd14: attract_wait_vblanks_r = 16'd2048;   // 2 cycles
+        5'd15: attract_wait_vblanks_r = 16'd3072;   // 3 cycles
+        5'd16: attract_wait_vblanks_r = 16'd3600;   // 1m
+        5'd17: attract_wait_vblanks_r = 16'd4096;   // 4 cycles
+        5'd18: attract_wait_vblanks_r = 16'd5120;   // 5 cycles
+        5'd19: attract_wait_vblanks_r = 16'd7200;   // 2m
+        5'd20: attract_wait_vblanks_r = 16'd10240;  // 10 cycles
+        5'd21: attract_wait_vblanks_r = 16'd18000;  // 5m
+        default: attract_wait_vblanks_r = 16'd600;
+    endcase
+end
+assign attract_wait_vblanks = attract_wait_vblanks_r;
 
 // Iteration decode. When status=0, keyboard/manual selection is active.
 reg [11:0] max_iter_r;

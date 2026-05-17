@@ -15,8 +15,7 @@
 
 module auto_zoom #(
     parameter WIDTH     = 64,
-    parameter FRAC_BITS = 56,
-    parameter [9:0] MAX_DWELL_FRAMES = 10'd600  // 10s at 60fps
+    parameter FRAC_BITS = 56
 )(
     input  wire                    clk,
     input  wire                    rst_n,
@@ -26,6 +25,10 @@ module auto_zoom #(
     input  wire                    frame_done,
     input  wire                    vblank,
     input  wire [32:0]             entropy_seed,
+    // Attract Mode (from fractal_osd):
+    input  wire                    attract_zoom_in_enable,
+    input  wire                    attract_zoom_out_enable,
+    input  wire [15:0]             attract_wait_vblanks,
 
     // BRAM framebuffer sampling (held inactive in deterministic zoom mode)
     input  wire [12:0]             fb_rd_data,
@@ -64,7 +67,12 @@ localparam [3:0] S_IDLE      = 4'd0,
 reg [3:0]  state;
 reg [IDX_BITS-1:0] target_idx;
 reg [15:0] zoom_steps;
-reg [9:0]  dwell_count;
+reg [15:0] dwell_count;
+// vblank rising-edge detector — drives wall-clock dwell so a "10 second"
+// wait stays 10 seconds regardless of render fps (was frame_done-based,
+// which stretched dwell to many minutes on sub-1fps deep zoom POIs).
+reg        vblank_prev;
+wire       vblank_rise = vblank & ~vblank_prev;
 reg [15:0] free_counter;
 reg [15:0] target_lfsr;
 reg [15:0] palette_lfsr;
@@ -227,7 +235,7 @@ assign fb_rd_addr = 18'd0;
 assign fb_sampling = 1'b0;
 assign target_idx_out = target_idx;
 
-wire dwell_done = (dwell_count >= (MAX_DWELL_FRAMES - 10'd1));
+wire dwell_done = (dwell_count >= (attract_wait_vblanks - 16'd1));
 
 // ---- Width helpers (used in many state-machine transitions) ----
 localparam [IDX_BITS-1:0] IDX_ZERO = {IDX_BITS{1'b0}};
@@ -243,7 +251,8 @@ always @(posedge clk or negedge rst_n) begin
         step <= DEFAULT_STEP; target_idx <= IDX_ZERO;
         palette_idx <= PAL_ZERO; enable_prev <= 1'b0; next_loaded <= 1'b0;
         zoom_steps <= 16'd0;
-        dwell_count <= 10'd0;
+        dwell_count <= 16'd0;
+        vblank_prev <= 1'b0;
         free_counter <= 16'h0001;
         target_lfsr <= 16'hA5C3;
         palette_lfsr <= 16'h5E31;
@@ -261,6 +270,7 @@ always @(posedge clk or negedge rst_n) begin
         if (unused_ok) begin end
         free_counter <= free_counter + 16'd1;
         enable_prev <= enable; view_changed <= 1'b0;
+        vblank_prev <= vblank;
         if (seed_pending) begin
             target_lfsr <= 16'hA5C3 ^ target_seed_mix;
             palette_lfsr <= 16'h5E31 ^ palette_seed_mix;
@@ -311,9 +321,13 @@ always @(posedge clk or negedge rst_n) begin
             end else begin
                 center_x <= rom_cx;
                 center_y <= rom_cy;
-                step <= DEFAULT_STEP;
+                // Attract Mode: skip the gradual zoom-in animation when
+                // disabled — jump straight to the POI's canonical zoom.
+                // S_ZOOM_IN then sees zoom_level_x10 >= target_max_zoom_x10
+                // immediately and falls into the dwell branch.
+                step <= attract_zoom_in_enable ? DEFAULT_STEP : snap_step;
                 zoom_steps <= 16'd0;
-                dwell_count <= 10'd0;
+                dwell_count <= 16'd0;
                 active <= 1'b1;
                 view_changed <= 1'b1;
                 next_loaded <= 1'b0;
@@ -324,8 +338,9 @@ always @(posedge clk or negedge rst_n) begin
         S_IDLE: begin
             active <= 1'b0;
             if (enable_rise) begin
-                center_x<=rom_cx; center_y<=rom_cy; step<=DEFAULT_STEP;
-                zoom_steps<=16'd0; dwell_count<=10'd0;
+                center_x<=rom_cx; center_y<=rom_cy;
+                step<= attract_zoom_in_enable ? DEFAULT_STEP : snap_step;
+                zoom_steps<=16'd0; dwell_count<=16'd0;
                 active<=1'b1; view_changed<=1'b1; zoom_out_final_pending<=1'b0; state<=S_ZOOM_IN;
             end else if (snap_next && enable) begin
                 center_x <= rom_cx;
@@ -337,25 +352,28 @@ always @(posedge clk or negedge rst_n) begin
             end
         end
         S_ZOOM_IN: begin
-            if (!enable) begin active<=1'b0; state<=S_IDLE; dwell_count<=10'd0; zoom_out_final_pending<=1'b0; end
+            if (!enable) begin active<=1'b0; state<=S_IDLE; dwell_count<=16'd0; zoom_out_final_pending<=1'b0; end
             else if (snap_next) begin
                 // First snap: stay on current target_idx, just snap step depth
                 step <= snap_step;
                 view_changed <= 1'b1;
                 state <= S_HOLD;
             end
-            else if (skip_next) begin dwell_count<=10'd0; next_loaded<=1'b0; state<=S_NEXT; end
-            else if (frame_done) begin
+            else if (skip_next) begin dwell_count<=16'd0; next_loaded<=1'b0; state<=S_NEXT; end
+            else begin
+                // Dwell counts vblanks (wall-clock); zoom-in steps still
+                // gated on frame_done so each step shows a finished frame.
                 if ((step <= MIN_STEP) || (zoom_level_x10 >= target_max_zoom_x10)) begin
                     if (dwell_done) begin
-                        dwell_count <= 10'd0;
+                        dwell_count <= 16'd0;
                         zoom_out_final_pending <= 1'b0;
-                        state <= S_ZOOM_OUT;
-                    end else begin
-                        dwell_count <= dwell_count + 10'd1;
+                        // Skip the zoom-out animation when disabled
+                        state <= attract_zoom_out_enable ? S_ZOOM_OUT : S_NEXT;
+                    end else if (vblank_rise) begin
+                        dwell_count <= dwell_count + 16'd1;
                     end
-                end else begin
-                    dwell_count <= 10'd0;
+                end else if (frame_done) begin
+                    dwell_count <= 16'd0;
                     step <= step - step_delta;
                     zoom_steps <= zoom_steps + 16'd1;
                     view_changed <= 1'b1;
@@ -363,18 +381,18 @@ always @(posedge clk or negedge rst_n) begin
             end
         end
         S_ZOOM_OUT: begin
-            if (!enable) begin active<=1'b0; state<=S_IDLE; dwell_count<=10'd0; zoom_out_final_pending<=1'b0; end
+            if (!enable) begin active<=1'b0; state<=S_IDLE; dwell_count<=16'd0; zoom_out_final_pending<=1'b0; end
             else if (snap_next) begin
                 step <= snap_step;
                 view_changed <= 1'b1;
                 state <= S_HOLD;
             end
-            else if (skip_next) begin dwell_count<=10'd0; next_loaded<=1'b0; zoom_out_final_pending<=1'b0; state<=S_NEXT; end
+            else if (skip_next) begin dwell_count<=16'd0; next_loaded<=1'b0; zoom_out_final_pending<=1'b0; state<=S_NEXT; end
             else if (frame_done) begin
                 if (zoom_out_final_pending) begin
                     zoom_out_final_pending <= 1'b0;
                     next_loaded <= 1'b0;
-                    dwell_count <= 10'd0;
+                    dwell_count <= 16'd0;
                     state <= S_NEXT;
                 end else if (zoom_steps == 16'd0) begin
                     step <= DEFAULT_STEP;
@@ -388,7 +406,7 @@ always @(posedge clk or negedge rst_n) begin
             end
         end
         S_NEXT: begin
-            if (!enable) begin active<=1'b0; state<=S_IDLE; dwell_count<=10'd0; end
+            if (!enable) begin active<=1'b0; state<=S_IDLE; dwell_count<=16'd0; end
             else if (!next_loaded) begin
                 target_idx <= target_playlist[target_playlist_pos];
                 palette_idx <= palette_playlist[palette_playlist_pos];
@@ -396,8 +414,9 @@ always @(posedge clk or negedge rst_n) begin
                 palette_playlist_pos <= (palette_playlist_pos == PALETTE_LAST_IDX) ? PAL_ZERO : (palette_playlist_pos + PAL_ONE);
                 next_loaded <= 1'b1;
             end else begin
-                center_x<=rom_cx; center_y<=rom_cy; step<=DEFAULT_STEP;
-                zoom_steps<=16'd0; dwell_count<=10'd0;
+                center_x<=rom_cx; center_y<=rom_cy;
+                step <= attract_zoom_in_enable ? DEFAULT_STEP : snap_step;
+                zoom_steps<=16'd0; dwell_count<=16'd0;
                 view_changed<=1'b1; state<=S_ZOOM_IN;
             end
         end
@@ -413,7 +432,7 @@ always @(posedge clk or negedge rst_n) begin
                 next_loaded <= 1'b0;
                 state <= S_SNAP_LOAD;
             end else if (skip_next) begin
-                dwell_count<=10'd0; next_loaded<=1'b0;
+                dwell_count<=16'd0; next_loaded<=1'b0;
                 zoom_out_final_pending<=1'b0;
                 state<=S_NEXT;
             end

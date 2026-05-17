@@ -108,6 +108,9 @@ wire       key_blank_text_on, key_blank_text_off;
 // 2'd2 = Off (force-disable).  Decoded from status[26:25] in fractal_osd.v.
 wire [1:0] osd_p3_mode;
 wire [1:0] color_depth_mode;
+wire       attract_zoom_in_enable;
+wire       attract_zoom_out_enable;
+wire [15:0] attract_wait_vblanks;
 
 fractal_osd #(
     .WIDTH(WIDTH),
@@ -128,7 +131,10 @@ fractal_osd #(
     .always_show_poi(always_show_poi),
     .overlay_bg_dim(osd_overlay_bg_dim),
     .p3_mode(osd_p3_mode),
-    .color_depth_mode(color_depth_mode)
+    .color_depth_mode(color_depth_mode),
+    .attract_zoom_in_enable(attract_zoom_in_enable),
+    .attract_zoom_out_enable(attract_zoom_out_enable),
+    .attract_wait_vblanks(attract_wait_vblanks)
 );
 
 // ---- Verification-mode overrides (keys force on/off, default = follow OSD) ----
@@ -292,6 +298,9 @@ auto_zoom #(
     .frame_done(vblank_rise),
     .vblank(vblank),
     .entropy_seed(entropy_seed),
+    .attract_zoom_in_enable(attract_zoom_in_enable),
+    .attract_zoom_out_enable(attract_zoom_out_enable),
+    .attract_wait_vblanks(attract_wait_vblanks),
     .fb_rd_data(rd_data),
     .fb_rd_addr(az_fb_rd_addr),
     .fb_sampling(az_fb_sampling),
