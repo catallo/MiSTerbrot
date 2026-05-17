@@ -129,12 +129,7 @@ def main() -> int:
             ps = rep.get("per_setting", {}).get(setting, {})
             diff = ps.get("diff", 0) * 100
             fps = ps.get("fps", 0)
-            is_rec = (
-                (verdict == "PERF_WIN"   and str(rec) == setting) or
-                (verdict == "NO_CHANGE"  and str(rec) == setting) or
-                (verdict == "QUALITY_FIX" and str(rec) == setting) or
-                (setting == "Auto" and rec == cur)
-            )
+            is_rec = (str(rec) == setting) or (setting == "Auto" and rec == cur)
             tag = " ← REC" if is_rec else ""
             label = f"iter={setting:<5}  diff={diff:5.2f}%  fps={fps:5.1f}{tag}"
             label_y = y + PANEL_H + 8

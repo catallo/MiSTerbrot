@@ -95,54 +95,99 @@ def diff_screenshots(path_low: Path, path_ref: Path) -> float:
     return float(extra_interior.mean())
 
 
+# FPS tolerance: settings within this many fps of the maximum are
+# considered "free" — same FPS plateau, no reason to drop iter to reach.
+FPS_PLATEAU_TOL = 1.0
+# Diff improvement floor: a higher-iter setting only "wins" if it cuts
+# diff by more than this (absolute) over the previous best.  Anything
+# tighter is measurement noise.
+DIFF_IMPROVEMENT_TOL = 0.0001  # 0.01% absolute
+# Visible-quality threshold: a setting whose diff is below this is
+# considered "visually identical" to the reference.
+ACCEPTABLE_DIFF = 0.005  # 0.5% absolute
+
+
 def classify(per_setting: dict, current_auto: int,
              reference_label: str) -> tuple[str, int, str]:
-    """Return (verdict, recommended_max_iter, rationale)."""
-    ref = per_setting[reference_label]
-    ref_diff_zero = True  # by definition
+    """Return (verdict, recommended_max_iter, rationale).
 
-    # Find smallest setting whose diff ≤ tolerance
+    Rule (user request): pick the HIGHEST iter setting at the max-fps
+    plateau where each step up strictly improves diff.  If FPS is the
+    same, prefer more iter — no reason to drop quality.  If the higher
+    setting doesn't improve diff, no reason to go up.
+
+    If the plateau winner still has visibly bad quality (> ACCEPTABLE_DIFF),
+    escape the plateau and pick the cheapest iter that achieves
+    visually-identical quality (QUALITY_FIX with explicit FPS impact).
+    """
     iter_values = {"128": 128, "256": 256, "512": 512,
                    "1024": 1024, "2048": 2048,
                    "Auto": current_auto}
-    optimal_label = reference_label
-    for label in SETTING_ORDER:
-        if label not in per_setting:
-            continue
-        if per_setting[label]["diff"] <= DIFF_FRAC_TOL:
-            optimal_label = label
-            break
+
+    fps_max = max(s["fps"] for s in per_setting.values())
+    numeric = [l for l in SETTING_ORDER if l != "Auto" and l in per_setting]
+    plateau = [l for l in numeric
+               if per_setting[l]["fps"] >= fps_max - FPS_PLATEAU_TOL]
+    if not plateau:
+        plateau = numeric
+
+    # Walk from lowest iter up; promote to higher iter only on strict
+    # quality improvement (> DIFF_IMPROVEMENT_TOL).
+    plateau_asc = sorted(plateau, key=lambda l: iter_values[l])
+    optimal_label = plateau_asc[0]
+    for lbl in plateau_asc[1:]:
+        if (per_setting[lbl]["diff"] <
+                per_setting[optimal_label]["diff"] - DIFF_IMPROVEMENT_TOL):
+            optimal_label = lbl
+
+    # If the plateau winner is still visibly bad, escape plateau for
+    # quality — pick the lowest iter that hits ACCEPTABLE_DIFF.
+    hw_limited = False
+    if per_setting[optimal_label]["diff"] > ACCEPTABLE_DIFF:
+        rescued = None
+        for l in numeric:  # numeric is iter-ascending order
+            if per_setting[l]["diff"] <= ACCEPTABLE_DIFF:
+                rescued = l
+                break
+        if rescued is not None:
+            optimal_label = rescued
+        else:
+            hw_limited = True  # no setting reaches acceptable
 
     optimal = iter_values[optimal_label]
-    # Resolve "Auto" -> integer for output
-    if optimal_label == "Auto":
-        optimal = current_auto
+    chosen_fps = per_setting[optimal_label]["fps"]
+    chosen_diff = per_setting[optimal_label]["diff"]
+    cur_fps = per_setting.get("Auto", {}).get("fps", chosen_fps)
+    cur_diff = per_setting.get("Auto", {}).get("diff", 0)
 
-    # Decide verdict
     if optimal == current_auto:
         verdict = "NO_CHANGE"
-        rationale = f"Current Auto={current_auto} is already optimal."
+        rationale = (f"Auto={current_auto} is the right setting "
+                     f"({chosen_fps:.1f} fps, diff {chosen_diff*100:.2f}%).")
     elif optimal < current_auto:
         verdict = "PERF_WIN"
-        ref_f10 = per_setting[reference_label]["f10"]
-        new_f10 = per_setting[optimal_label]["f10"]
-        improve = (new_f10 / ref_f10 - 1) * 100 if ref_f10 else 0
-        rationale = (f"Current Auto={current_auto} is overkill; "
-                     f"max_iter={optimal} produces visually identical "
-                     f"image at F10 {ref_f10}→{new_f10} ({improve:+.1f}%).")
+        delta = (chosen_fps / cur_fps - 1) * 100 if cur_fps else 0
+        rationale = (f"Auto={current_auto} ({cur_fps:.1f} fps) is overkill; "
+                     f"max_iter={optimal} hits {chosen_fps:.1f} fps "
+                     f"({delta:+.1f}%) with diff {chosen_diff*100:.2f}%.")
     else:  # optimal > current_auto
-        verdict = "QUALITY_FIX"
-        cur_diff = per_setting.get("Auto", {}).get("diff", 0)
-        rationale = (f"Current Auto={current_auto} is insufficient — "
-                     f"diff {cur_diff*100:.2f}% vs reference (max_iter={iter_values[reference_label]}). "
-                     f"Need max_iter={optimal}.")
+        if cur_diff > ACCEPTABLE_DIFF:
+            verdict = "QUALITY_FIX"
+            rationale = (f"Auto={current_auto} has visible quality loss "
+                         f"(diff {cur_diff*100:.2f}%); max_iter={optimal} "
+                         f"cuts diff to {chosen_diff*100:.2f}% at "
+                         f"{chosen_fps:.1f} fps (vs current {cur_fps:.1f}).")
+        else:
+            verdict = "QUALITY_BUMP"
+            rationale = (f"Auto={current_auto} is fine ({cur_fps:.1f} fps, "
+                         f"diff {cur_diff*100:.2f}%); max_iter={optimal} "
+                         f"stays at fps plateau with diff "
+                         f"{chosen_diff*100:.2f}% — free quality bump.")
 
-    # Hardware limit: reference is 4095 (Auto for deep zoom) AND ref
-    # itself differs from a higher hypothetical reference — we can't
-    # measure that, but flag for review.
-    # (No detection here; just note in rationale if reference is 4095.)
+    if hw_limited:
+        rationale += " (hardware-limited: no setting reaches visually-identical quality)"
     if reference_label == "Auto" and current_auto == 4095:
-        rationale += " (Reference is 4095 = hardware ceiling.)"
+        rationale += " (reference is 4095 = hardware ceiling)"
 
     return verdict, optimal, rationale
 
@@ -192,7 +237,10 @@ def main() -> int:
         name = indexed["Auto"][idx]["name"]
         poi = by_name.get(name, {})
         zoom = poi.get("zoom_level", 0)
-        current_auto = auto_max_iter_for_zoom(zoom)
+        # Truth from the Auto sweep telemetry (the RTL uses a per-POI
+        # iter table, not just a zoom-based ladder).
+        current_auto = indexed["Auto"][idx].get(
+            "max_iter", auto_max_iter_for_zoom(zoom))
 
         # Build per-setting diff vs reference
         # Reference = the highest available setting (Auto for z≥24 → 4095,
