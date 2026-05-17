@@ -388,14 +388,6 @@ reg [6:0]  fps_halfsec_count;
 reg [6:0]  fps_value;
 wire [6:0] fps_sample_count = fps_halfsec_count + {6'd0, frame_done_rise};
 wire [6:0] fps_sample_value = {fps_sample_count[5:0], 1'b0};
-// Auto single-buffer: kick in when fps drops below 1 (sub-second renders
-// make the double-buffer's last-completed frame feel frozen for many
-// seconds); release once fps recovers above 1.  fps_value is quantized
-// to multiples of 2 (halfsec_count * 2), so in practice this is
-// fps_value==0 engage / fps_value>=2 release.  Combined (OR) with the
-// OSD single-buffer toggle below.
-reg auto_single_buf;
-wire effective_single_buf = single_buffer | auto_single_buf;
 
 // VBLANK rising edge detector
 reg vblank_prev;
@@ -454,7 +446,6 @@ always @(posedge clk or negedge rst_n) begin
         fps_tick_counter  <= 25'd0;
         fps_halfsec_count <= 7'd0;
         fps_value         <= 7'd0;
-        auto_single_buf   <= 1'b0;
     end else begin
         if (frame_done_rise)
             fps_halfsec_count <= fps_halfsec_count + 7'd1;
@@ -463,15 +454,6 @@ always @(posedge clk or negedge rst_n) begin
             fps_tick_counter  <= 25'd0;
             fps_value         <= fps_sample_value;
             fps_halfsec_count <= frame_done_rise ? 7'd1 : 7'd0;
-            // Engage at <1 fps WHILE actively rendering, release at
-            // >1 fps OR whenever the renderer is parked (RS_IDLE).
-            // Without the RS_IDLE release, fps_value sits at 0 forever
-            // once auto-zoom reaches its target and stops re-rendering,
-            // wrongly leaving the display on the active-render bank.
-            if (render_state != RS_IDLE && fps_sample_value < 7'd1)
-                auto_single_buf <= 1'b1;
-            else if (fps_sample_value > 7'd1 || render_state == RS_IDLE)
-                auto_single_buf <= 1'b0;
         end else begin
             fps_tick_counter <= fps_tick_counter + 25'd1;
         end
@@ -875,7 +857,7 @@ framebuffer #(
     .rd_addr(rd_addr),
     .rd_data(rd_data),
     .bank_sel(bank_sel),
-    .display_bank_sel(effective_single_buf ? ~bank_sel : bank_sel)
+    .display_bank_sel(single_buffer ? ~bank_sel : bank_sel)
 );
 
 // ---- Video Timing ----
