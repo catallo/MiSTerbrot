@@ -386,6 +386,12 @@ reg [6:0]  fps_halfsec_count;
 reg [6:0]  fps_value;
 wire [6:0] fps_sample_count = fps_halfsec_count + {6'd0, frame_done_rise};
 wire [6:0] fps_sample_value = {fps_sample_count[5:0], 1'b0};
+// Auto single-buffer: kick in when fps drops below 2 (sub-second renders
+// make the double-buffer's last-completed frame feel frozen for many
+// seconds); release with hysteresis once fps recovers above 3.  Combined
+// (OR) with the OSD single-buffer toggle below.
+reg auto_single_buf;
+wire effective_single_buf = single_buffer | auto_single_buf;
 
 // VBLANK rising edge detector
 reg vblank_prev;
@@ -444,6 +450,7 @@ always @(posedge clk or negedge rst_n) begin
         fps_tick_counter  <= 25'd0;
         fps_halfsec_count <= 7'd0;
         fps_value         <= 7'd0;
+        auto_single_buf   <= 1'b0;
     end else begin
         if (frame_done_rise)
             fps_halfsec_count <= fps_halfsec_count + 7'd1;
@@ -452,6 +459,11 @@ always @(posedge clk or negedge rst_n) begin
             fps_tick_counter  <= 25'd0;
             fps_value         <= fps_sample_value;
             fps_halfsec_count <= frame_done_rise ? 7'd1 : 7'd0;
+            // Hysteresis: enter at <2 fps, exit at >=3 fps.
+            if (fps_sample_value < 7'd2)
+                auto_single_buf <= 1'b1;
+            else if (fps_sample_value >= 7'd3)
+                auto_single_buf <= 1'b0;
         end else begin
             fps_tick_counter <= fps_tick_counter + 25'd1;
         end
@@ -855,7 +867,7 @@ framebuffer #(
     .rd_addr(rd_addr),
     .rd_data(rd_data),
     .bank_sel(bank_sel),
-    .display_bank_sel(single_buffer ? ~bank_sel : bank_sel)
+    .display_bank_sel(effective_single_buf ? ~bank_sel : bank_sel)
 );
 
 // ---- Video Timing ----
