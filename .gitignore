@@ -30,7 +30,10 @@ timing_report.tcl
 # Test/deploy artifacts
 MiSTerbrot_*.rbf
 screenshots/archive/
-screenshots/bench_iter_profile_*/
+# Iter-profile raw per-setting sweeps (intermediate data, ~50 MB per
+# run, regenerable).  Keep the composed per-POI grids (per_poi/)
+# trackable for visual review on GitHub.
+screenshots/bench_iter_profile_*/iter_*/
 # tools/ — ignore-by-default but allowlist the POI pipeline (regenerates rtl/poi_generated.vh)
 tools/*
 !tools/misterclaw-send
