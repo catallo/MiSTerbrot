@@ -107,6 +107,7 @@ wire       key_blank_text_on, key_blank_text_off;
 // A3 OSD mode: 2'd0 = Auto (use per-POI flag), 2'd1 = On (force-enable),
 // 2'd2 = Off (force-disable).  Decoded from status[26:25] in fractal_osd.v.
 wire [1:0] osd_p3_mode;
+wire       sixbit_color_mode;
 
 fractal_osd #(
     .WIDTH(WIDTH),
@@ -126,7 +127,8 @@ fractal_osd #(
     .always_show_fps(always_show_fps),
     .always_show_poi(always_show_poi),
     .overlay_bg_dim(osd_overlay_bg_dim),
-    .p3_mode(osd_p3_mode)
+    .p3_mode(osd_p3_mode),
+    .sixbit_color_mode(sixbit_color_mode)
 );
 
 // ---- Verification-mode overrides (keys force on/off, default = follow OSD) ----
@@ -1025,8 +1027,14 @@ wire        benchmark_telemetry_region = benchmark_active && vid_active_d &&
 wire [4:0]  benchmark_telemetry_bit_idx = vid_pixel_x_d[6:2];
 wire        benchmark_telemetry_bit = benchmark_telemetry[5'd31 - benchmark_telemetry_bit_idx];
 
-assign vga_r = benchmark_telemetry_region ? (benchmark_telemetry_bit ? 8'hFF : 8'h00) : overlay_r;
-assign vga_g = benchmark_telemetry_region ? (benchmark_telemetry_bit ? 8'hFF : 8'h00) : overlay_g;
-assign vga_b = benchmark_telemetry_region ? (benchmark_telemetry_bit ? 8'h00 : 8'hFF) : overlay_b;
+// 6-bit-per-channel quantization to match the MiSTer Analog I/O board's
+// R-2R DAC.  Bench telemetry strip stays full 8-bit so the screenshot
+// decoder isn't confused by reduced contrast.
+wire [7:0] q_r = sixbit_color_mode ? {overlay_r[7:2], 2'b00} : overlay_r;
+wire [7:0] q_g = sixbit_color_mode ? {overlay_g[7:2], 2'b00} : overlay_g;
+wire [7:0] q_b = sixbit_color_mode ? {overlay_b[7:2], 2'b00} : overlay_b;
+assign vga_r = benchmark_telemetry_region ? (benchmark_telemetry_bit ? 8'hFF : 8'h00) : q_r;
+assign vga_g = benchmark_telemetry_region ? (benchmark_telemetry_bit ? 8'hFF : 8'h00) : q_g;
+assign vga_b = benchmark_telemetry_region ? (benchmark_telemetry_bit ? 8'h00 : 8'hFF) : q_b;
 
 endmodule
