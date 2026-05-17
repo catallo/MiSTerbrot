@@ -141,7 +141,9 @@ def classify(per_setting: dict, current_auto: int,
             optimal_label = lbl
 
     # If the plateau winner is still visibly bad, escape plateau for
-    # quality — pick the lowest iter that hits ACCEPTABLE_DIFF.
+    # quality — pick the lowest iter that hits ACCEPTABLE_DIFF.  If
+    # nothing (including Auto) reaches acceptable, mark hw_limited and
+    # take the iter with the lowest diff (best the hardware can do).
     hw_limited = False
     if per_setting[optimal_label]["diff"] > ACCEPTABLE_DIFF:
         rescued = None
@@ -152,7 +154,11 @@ def classify(per_setting: dict, current_auto: int,
         if rescued is not None:
             optimal_label = rescued
         else:
-            hw_limited = True  # no setting reaches acceptable
+            hw_limited = True
+            # Include Auto so we don't ignore current=4095 cases where
+            # Auto IS the reference and has diff=0 by definition.
+            optimal_label = min(per_setting,
+                                key=lambda l: per_setting[l]["diff"])
 
     optimal = iter_values[optimal_label]
     chosen_fps = per_setting[optimal_label]["fps"]
