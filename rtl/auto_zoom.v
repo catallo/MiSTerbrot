@@ -367,6 +367,11 @@ always @(posedge clk or negedge rst_n) begin
                     if (dwell_done) begin
                         dwell_count <= 16'd0;
                         zoom_out_final_pending <= 1'b0;
+                        // Reset next_loaded so S_NEXT actually advances to
+                        // the next POI/palette (S_ZOOM_OUT does this too,
+                        // but when we skip directly to S_NEXT we'd loop on
+                        // the same POI without it).
+                        next_loaded <= 1'b0;
                         // Skip the zoom-out animation when disabled
                         state <= attract_zoom_out_enable ? S_ZOOM_OUT : S_NEXT;
                     end else if (vblank_rise) begin
