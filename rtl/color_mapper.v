@@ -62,22 +62,42 @@ wire forward_now = (cycle_direction == 2'd0) ? 1'b1 :
                    (cycle_direction == 2'd1) ? 1'b0 :
                    (cycle_direction == 2'd2) ? ~ping_dir : 1'b1;
 
-reg [11:0] cycle_phase;
+// High-band phase counter (also used for Off and Counter band modes).
+reg  [11:0] cycle_phase;
 wire [12:0] phase_fwd = {1'b0, cycle_phase} + {1'b0, cycle_inc};
 wire [12:0] phase_rev = {1'b0, cycle_phase} - {1'b0, cycle_inc};
-wire phase_wrap = forward_now ? phase_fwd[12] : phase_rev[12];
+wire        phase_overflow  = forward_now & phase_fwd[12];
+wire        phase_underflow = ~forward_now & phase_rev[12];
 
-// Iter-band split: transform cycle_phase per-pixel based on iter band.
-// "Low band" = iter_count[7]==0 (iter < 128).  High band always uses
-// unmodified cycle_phase; low band varies by mode.
+// Low-band increment magnitude — runs in its own counter for Low Slow / Low Fast
+// so that low-band pixels traverse the FULL 256-entry palette range at the
+// chosen rate (rather than wrapping at 128 mid-cycle, which produced the
+// "flickering" the user reported).  Counter mode reuses the high-band phase
+// via inversion (~cycle_phase) so no extra counter is needed there.
+reg [11:0] cycle_inc_lo;
+always @(*) begin
+    case (cycle_band_mode)
+        2'd1: cycle_inc_lo = (cycle_inc == 12'd1) ? 12'd1 : (cycle_inc >> 1);  // Low Slow (clamped to min 1)
+        2'd2: cycle_inc_lo = {cycle_inc[10:0], 1'b0};                          // Low Fast (×2; bit-shift, may saturate)
+        default: cycle_inc_lo = cycle_inc;
+    endcase
+end
+reg  [11:0] cycle_phase_lo;
+wire [12:0] phase_lo_fwd = {1'b0, cycle_phase_lo} + {1'b0, cycle_inc_lo};
+wire [12:0] phase_lo_rev = {1'b0, cycle_phase_lo} - {1'b0, cycle_inc_lo};
+wire        phase_lo_overflow  = forward_now & phase_lo_fwd[12];
+wire        phase_lo_underflow = ~forward_now & phase_lo_rev[12];
+
+// Iter-band split: pick a phase value per pixel based on its iter band.
+// "Low band" = iter_count[7]==0 (iter < 128).
 wire is_low_band = ~iter_count[7];
 reg [11:0] phase_for_pixel;
 always @(*) begin
     case (cycle_band_mode)
-        2'd0: phase_for_pixel = cycle_phase;                                    // Off
-        2'd1: phase_for_pixel = is_low_band ? (cycle_phase >> 1) : cycle_phase; // Low Slow
-        2'd2: phase_for_pixel = is_low_band ? (cycle_phase << 1) : cycle_phase; // Low Fast
-        2'd3: phase_for_pixel = is_low_band ? (12'h000 - cycle_phase) : cycle_phase; // Counter (low reverse)
+        2'd0: phase_for_pixel = cycle_phase;                                          // Off — unified
+        2'd1: phase_for_pixel = is_low_band ? cycle_phase_lo : cycle_phase;           // Low Slow — separate slower counter
+        2'd2: phase_for_pixel = is_low_band ? cycle_phase_lo : cycle_phase;           // Low Fast — separate faster counter
+        2'd3: phase_for_pixel = is_low_band ? ~cycle_phase   : cycle_phase;           // Counter — low band inverted
         default: phase_for_pixel = cycle_phase;
     endcase
 end
@@ -2249,6 +2269,7 @@ end
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         cycle_phase      <= 12'd0;
+        cycle_phase_lo   <= 12'd0;
         ping_dir         <= 1'b0;
         pixel_valid_out  <= 1'b0;
         color_r          <= 8'd0;
@@ -2257,15 +2278,55 @@ always @(posedge clk or negedge rst_n) begin
     end else begin
         if (cycle_enable) begin
             if (vblank_rise) begin
-                // Phase update — direction-aware, with ping-pong toggling on wrap.
-                cycle_phase <= forward_now ? phase_fwd[11:0]
-                                           : phase_rev[11:0];
-                if (cycle_direction == 2'd2 && phase_wrap)
-                    ping_dir <= ~ping_dir;
+                // High-band phase update.  Ping-Pong CLAMPS at the boundary
+                // and reverses direction instead of wrapping around — wrapping
+                // would land at the opposite end and immediately wrap again,
+                // causing the phase to oscillate near the boundary and look
+                // frozen ("ping-pong stops cycling" bug).
+                if (cycle_direction == 2'd2) begin
+                    if (phase_overflow) begin
+                        cycle_phase <= 12'd4095;
+                        ping_dir    <= 1'b1;
+                    end else if (phase_underflow) begin
+                        cycle_phase <= 12'd0;
+                        ping_dir    <= 1'b0;
+                    end else begin
+                        cycle_phase <= forward_now ? phase_fwd[11:0]
+                                                   : phase_rev[11:0];
+                    end
+                end else begin
+                    // Forward / Reverse — wrap naturally.
+                    cycle_phase <= forward_now ? phase_fwd[11:0]
+                                               : phase_rev[11:0];
+                end
+
+                // Low-band phase update — same shape, independent counter.
+                // When band_mode is Off / Counter, keep cycle_phase_lo
+                // tracking cycle_phase so a later mode change starts
+                // smoothly.
+                if (cycle_band_mode == 2'd1 || cycle_band_mode == 2'd2) begin
+                    if (cycle_direction == 2'd2) begin
+                        if (phase_lo_overflow) begin
+                            cycle_phase_lo <= 12'd4095;
+                        end else if (phase_lo_underflow) begin
+                            cycle_phase_lo <= 12'd0;
+                        end else begin
+                            cycle_phase_lo <= forward_now ? phase_lo_fwd[11:0]
+                                                          : phase_lo_rev[11:0];
+                        end
+                    end else begin
+                        cycle_phase_lo <= forward_now ? phase_lo_fwd[11:0]
+                                                      : phase_lo_rev[11:0];
+                    end
+                end else begin
+                    // Off / Counter — keep low-band counter in sync with high.
+                    cycle_phase_lo <= cycle_phase;
+                end
             end
         end else begin
-            cycle_phase <= 12'd0;
-            ping_dir    <= 1'b0;
+            cycle_phase    <= 12'd0;
+            cycle_phase_lo <= 12'd0;
+            ping_dir       <= 1'b0;
         end
 
         pixel_valid_out <= pixel_valid_in;
