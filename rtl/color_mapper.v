@@ -43,15 +43,17 @@ module color_mapper (
 reg [11:0] cycle_inc;
 always @(*) begin
     case (cycle_speed_sel)
-        4'd0: cycle_inc = 12'd4;    // Normal (default)
-        4'd1: cycle_inc = 12'd1;    // Glacial
-        4'd2: cycle_inc = 12'd2;    // Slow
-        4'd3: cycle_inc = 12'd6;    // Quick
-        4'd4: cycle_inc = 12'd8;    // Fast
-        4'd5: cycle_inc = 12'd16;   // Very Fast
-        4'd6: cycle_inc = 12'd32;   // Strobe
-        4'd7: cycle_inc = 12'd64;   // Hyper
-        4'd8: cycle_inc = 12'd128;  // Insane
+        4'd0:  cycle_inc = 12'd4;    // Normal (default)
+        4'd1:  cycle_inc = 12'd1;    // Glacial
+        4'd2:  cycle_inc = 12'd2;    // Slow
+        4'd3:  cycle_inc = 12'd5;    // +5
+        4'd4:  cycle_inc = 12'd6;    // Quick
+        4'd5:  cycle_inc = 12'd7;    // +7
+        4'd6:  cycle_inc = 12'd8;    // Fast
+        4'd7:  cycle_inc = 12'd16;   // Very Fast
+        4'd8:  cycle_inc = 12'd32;   // Strobe
+        4'd9:  cycle_inc = 12'd64;   // Hyper
+        4'd10: cycle_inc = 12'd128;  // Insane
         default: cycle_inc = 12'd4;
     endcase
 end

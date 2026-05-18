@@ -160,7 +160,7 @@ localparam CONF_STR = {
 	"O[26:25],P3 Bulb Precheck,Auto,On,Off;",
 	"P2,Color Cycling;",
 	"P2O[24],Color Cycling,On,Off;",
-	"P2O[40:37],Speed,Normal,Glacial,Slow,Quick,Fast,Very Fast,Strobe,Hyper,Insane;",
+	"P2O[40:37],Speed,Normal,Glacial,Slow,+5,Quick,+7,Fast,Very Fast,Strobe,Hyper,Insane;",
 	"P2O[42:41],Direction,Forward,Reverse,Ping-Pong;",
 	"P2O[43],Blending,Smooth,Hard-step;",
 	"P2O[45:44],Iter Band Mix,Off,Low Slow,Low Fast,Counter;",
