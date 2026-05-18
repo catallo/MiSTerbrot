@@ -532,7 +532,18 @@ for (k = 0; k < 6; k = k + 1) begin : ctx_sm
                 if (!ctx_primed[k]) begin
                     ctx_primed[k] <= 1'b1;
                 end else begin
-                    ctx_cardioid_ci_sq[k] <= zi_sq_eff;
+                    // Clamp negative zi_sq → 0 before storing (same
+                    // truncated-multiplier quirk that motivated the escape
+                    // clamp above).  Without this, deep cy=0 POIs get a
+                    // tiny-negative ci_sq stored, which makes cardioid_rhs
+                    // (= ci_sq >>> 2) negative, which makes the cardioid
+                    // precheck fire LESS often than it should — pixels
+                    // that are actually interior end up iterating to
+                    // max_iter (correct result, wasted cycles).  Same
+                    // sign-bit test, no extra ALMs vs the unclamped form.
+                    ctx_cardioid_ci_sq[k] <= zi_sq_eff[WIDTH-1]
+                                             ? {WIDTH{1'b0}}
+                                             : zi_sq_eff;
                     ctx_zr[k]             <= mag_sq_eff;
                     ctx_zi[k]             <= mag_sq_eff + ctx_cardioid_x[k];
                     ctx_primed[k]         <= 1'b0;
