@@ -84,7 +84,9 @@ The deepest POI in the playlist (Julia Islands at `X2^29.85` ≈ `10⁹×`) sits
      "zoom_level": 10.77,
      "category": "SEAHORSE",
      "sources": ["https://commons.wikimedia.org/wiki/...", "https://mrob.com/pub/muency/..."],
-     "note": "Beyer step 4, seahorse tail spirals"
+     "note": "Beyer step 4, seahorse tail spirals",
+     "max_iter": 1024,       // (optional) A7 per-POI override; if absent, the zoom-tier ladder (512/1024/2048/4095) is used
+     "precheck_p3": false    // (optional) A3 period-3 bulb precheck opt-in; only relevant for POIs near (-0.123, ±0.745)
    }
    ```
 2. `python3 tools/poi_render.py` — render thumbnails to `screenshots/poi/idx_NNN_*.png`

@@ -19,13 +19,11 @@ MiSTerbrot is a MiSTer FPGA core for real-time Mandelbrot set rendering on the D
   - **Secondary**: LG C1 OLED via HDMI
 - **15 kHz CRT support is a hard requirement** even though we cannot test it locally. Many MiSTer users drive RGB SCART / arcade monitors at the SD line rate, and the core's native 240p timing (15.625 kHz line rate, ~59.7 Hz refresh) is what makes that work. Any change to `rtl/video_timing.v` or the analog video path must preserve this — break 15 kHz output and we lose a chunk of the user base. Validate on the multisync VGA CRT here at minimum; defer to community feedback for true 15 kHz fixed-frequency displays.
 - Build implications: do **not** enable `MISTER_DISABLE_YC` even though we don't deliberately use Y/C output — the analog addon board path shares framework code with the YC encoder, and removing it has not been validated against the CRT. Audio is unused, so `MISTER_DISABLE_ALSA` is safe.
-- Current fitted build resource usage from `output_files/MiSTerbrot.fit.summary` (post-A2 + A3):
-  - `35,676 / 41,910` ALMs (`85%`) — significantly up since A2 mirror FIFO + A3 prechecks landed
-  - `35,459` registers
-  - `3,310,917 / 5,662,720` block memory bits (`58%`)
-  - `429 / 553` RAM blocks (`78%`)
-  - `112 / 112` DSP blocks (`100%`)
-  - `3 / 6` PLLs (`50%`)
+- Current fitted build resource usage (post-A2 + A3 + A7 + cy=0 fix + Attract Mode + Color Depth):
+  - ALMs holding around the `85%` band — see `output_files/MiSTerbrot.fit.summary` after each compile
+  - DSP blocks stay pinned at `112 / 112` (`100%`)
+  - RAM blocks around `78%`
+  - PLLs `3 / 6` (`50%`)
 
 ## Current Architecture
 
@@ -78,6 +76,7 @@ Major blocks:
   - The two period-3 bulbs (centred at `(-0.1226, ±0.7449)` — non-real roots of `c³+2c²+c+1=0`) are caught with `|ci|` symmetry in one test: `(cr - P3_CX)² + (|ci| - P3_CY)² < r²` where `r=0.075` (inscribed-circle radius, multiplier max ~0.81 inside, no false positives possible).
   - Supports up to `4095` iterations with a `12-bit` iteration count (Auto mode uses up to 4095 at deep zooms; manual selection caps at 2048)
   - ~14 DSP blocks per quad × 4 quads = 112 total (100% of the device)
+  - **Negative-square clamp** (cy=0 deep-zoom fix, 2026-05-18): the pipelined 64×64 multiplier skips the `a_lo*b_lo` partial product for area/timing.  For very small operands (`|z| ≈ 0`), the truncated `z²` result can come out tiny-negative.  The 96-bit sum reassembly sign-extends that negative through the upper 8 bits (`zr_sq_ovf` / `zi_sq_ovf`) — which the escape detection ORed into `escape_w` as overflow, spuriously triggering escape at iter 1..2.  That dumped `iter_count=1..2 + escaped=1` into the framebuffer, which mapped to palette[1..2] → uniform pink band on cy=0 deep-zoom POIs (MERCATOR P189, MERCATOR P38, EJS CAULI, R2T P6/P7, SH CUSP FINE).  Fix: clamp `zr_sq` / `zi_sq` to zero when their sign bits are set, before deriving `mag_sq_w` / overflow flags.  Squares are mathematically non-negative; any negative is multiplier noise.  Reproduced + verified in `sim/iter_quad/tb_debug.cpp` (cycle-accurate single-pixel trace).
 - `rtl/framebuffer.v`
   - Double-buffered BRAM framebuffer
   - Per-pixel width is `13 bits`: `{escaped, iter_count[11:0]}`
@@ -123,22 +122,25 @@ Mandelbrot only. Every iterator runs `z = z² + c` with the per-pixel `c` from t
 - `snap_next` input (`M` key / `X` button) jumps the view directly to a POI's canonical center + zoom (verification mode); state machine enters `S_HOLD` and stays there until snap_next pulses again (advances + re-snaps) or auto-zoom is disabled with Z.
 - Manual palette overrides clear automatically on POI transition (`sync_clear_palette_override` from `fractal_top.v`).
 
-### Auto-iter (zoom-adaptive max_iter)
+### Auto-iter (per-POI override + zoom-adaptive fallback)
 
-The default `Iterations` setting is `Auto`. The core picks `max_iter` from the current `step` via threshold compares against `DEFAULT_STEP >>> N`:
+The default `Iterations` setting is `Auto`. The core picks `max_iter` from one of two sources:
+
+1. **Auto-zoom locked on a target POI**: use the per-POI `max_iter` from the catalogue (`tools/poi_master.json` → `POI_ITER_CASES` in `rtl/poi_generated.vh`).  This is the **A7** path — values were tuned per-POI by the profiler (`tools/profile_max_iter.py` / `analyze_max_iter.py` / `compose_iter_grid.py`) so each POI uses the lowest iter that still produces a visually-identical image, freeing perf headroom on POIs that don't need their tier ceiling.
+2. **Manual zoom or auto-zoom not on a target**: fall back to the zoom-adaptive ladder:
 
 | Zoom range | `max_iter` |
 |---|---|
-| `z < 12`   | `512` (floor — never below) |
-| `z < 18`   | `1024` |
-| `z < 24`   | `2048` |
-| `z ≥ 24`   | `4095` |
+| `z < 6`    | `512` |
+| `z < 12`   | `1024` |
+| `z < 18`   | `2048` |
+| `z ≥ 18`   | `4095` |
 
-This fixes a class of deep-zoom POIs that previously rendered solid black under a fixed 512-iter cap (every POI past `z ≈ 17`). The tiers match `tools/poi_render.max_iter_for_zoom()` so Python references and FPGA output agree.
+The pre-A7 ladder originally used `12 / 18 / 24` thresholds (matching `tools/gen_full_benchmarks.max_iter_for_zoom`); the catalogue values seeded from telemetry showed the RTL was actually using `6 / 12 / 18`.  The ladder kept in `rtl/fractal_top.v` matches the RTL — see `tools/gen_full_benchmarks.py` and `tools/poi_encode.py` for the per-POI fallback values.
 
-Implementation is one cascaded comparator chain in `rtl/fractal_top.v` (no leading-zero count needed — the step values are compile-time constants). The case statement selects between the fixed manual values (`3'd0`..`3'd4`) and `auto_max_iter` (`3'd5`). Manual selection still works via OSD or the I-key cycle. The overlay shows `IT: Auto(NNNN)` in auto mode so the live-adapted value is visible; in manual mode it shows `IT: NNNN`.
+Implementation: in `rtl/fractal_top.v`, `auto_iter_choice = auto_zoom_active ? az_max_iter : auto_max_iter`.  `az_max_iter` is an output of `rtl/auto_zoom.v` driven by `POI_ITER_CASES`.  The OSD-driven mux still selects between fixed manual values (`128/256/512/1024/2048`) and the Auto choice.  Manual selection still works via OSD or the I-key cycle. The overlay shows `IT: Auto(NNNN)` in auto mode so the live-adapted value is visible; in manual mode it shows `IT: NNNN`.
 
-Boundary crossings during a smooth zoom-in cause a frame restart (via `settings_changed`), so the user sees a brief re-render at `z = 6, 12, 18, 24`.
+Boundary crossings during a smooth zoom-in cause a frame restart (via `settings_changed`), so the user sees a brief re-render when the iter value changes (either zoom-tier crossings during manual pan or a POI switch during auto-zoom).
 
 ## File Structure
 
@@ -181,6 +183,8 @@ Build artifacts and release notes:
 
 ## OSD layout (`MiSTerbrot.sv`)
 
+Main page:
+
 | Bits      | Setting                       |
 |-----------|-------------------------------|
 | `O[10:4]` | Palette (Auto + 90 named)     |
@@ -194,7 +198,20 @@ Build artifacts and release notes:
 | `O[22]`   | Resolution (320×240 / 640×240)|
 | `O[23]`   | Overlay BG (Transparent/Dimmed) |
 | `O[26:25]`| P3 Bulb Precheck (Auto/On/Off) — Auto uses per-POI flag in bench mode |
+| `O[28:27]`| Colors (262K Analog / 16.7M Full / 32K / 4K) — 6/8/5/4 bit output quantization mask |
 | `O[122:121]` | Aspect ratio               |
+
+Attract Mode submenu (page 1):
+
+| Bits      | Setting                       |
+|-----------|-------------------------------|
+| `O[29]`   | Zoom In (On/Off) — Off snaps directly to the POI's canonical zoom |
+| `O[30]`   | Zoom Out (On/Off) — Off skips the zoom-out animation, jumps straight to next POI |
+| `O[35:31]`| Wait on POI (10s default; 22 options spanning 1s..5m + 1/2/3/4/5/10 color cycles) |
+
+The Colors selector applies an output-stage mask `{rgb[7:N], N'b0}` to match the MiSTer Analog I/O R-2R DAC (6-bit) when on HDMI — so the HDMI output exhibits the same colour banding the CRT does.  Bench telemetry strip stays full 8-bit so the screenshot decoder isn't affected.
+
+Wait on POI counts display vblanks (60 Hz wall-clock) inside `rtl/auto_zoom.v`, not render frame_done.  Previously a 10s "dwell" on a sub-1fps deep zoom POI stretched to many minutes; now it's accurate.  "1 color cycle" ≈ 17 seconds (1024 vblanks — `cycle_phase` in `color_mapper.v` is 12-bit, +4/vblank, wraps at 4096).
 
 ### Keyboard verification-mode overrides
 
@@ -421,6 +438,10 @@ Requires Python 3 with `numpy` and `Pillow`. The pipeline is the source of truth
 - Dual-clock pipeline: clk_sys 50 MHz / clk_iter 100 MHz with CDC at the iter_quad boundary
 - 6-context iter_quad × 4 quads = 24 logical iterators time-sharing the multiplier pipeline (vs the original 5-context × 4 = 20)
 - Frame-start parameter snapshot in coord_generator: `step` and `mode_640` latched per-frame to prevent mid-frame geometric warping during auto-zoom drift
+- **A7 per-POI iter** (catalogue-driven `max_iter` override, applies in normal auto-zoom playback AND in bench mode; falls back to the zoom-tier ladder for manual zoom).  Recommendations generated by the profiler pipeline (`tools/profile_max_iter.py` runs 6 iter sweeps × 90 POIs, `tools/analyze_max_iter.py` classifies as PERF_WIN / NO_CHANGE / QUALITY_BUMP / QUALITY_FIX using structural diff vs the highest-iter reference, `tools/compose_iter_grid.py` builds per-POI 2×3 review grids).
+- **Attract Mode submenu** (`O[29..35]`): Zoom In on/off, Zoom Out on/off, Wait on POI (22 options, default 10s).  Dwell is wall-clock (vblank-counted), not render-frame-counted.
+- **Color depth output selector** (`O[28:27]`): masks low bits of the final RGB output to match analog DAC bit depth (6/8/5/4-bit).  Default 6-bit matches the MiSTer Analog I/O R-2R DAC.
+- **cy=0 deep-zoom artifact fixed** (iter_quad negative-square clamp, 2026-05-18).  See the iter_quad section above.
 
 ### Throughput / timing
 

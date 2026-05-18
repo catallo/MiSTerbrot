@@ -139,16 +139,20 @@ For A6 to deliver any visible fps gain, it would need to (a) actually be the bot
 
 A6 stays here as an artifact of the original hypothesis.  Don't pursue unless we find a concrete scene with measured pipeline-saturation evidence.
 
-### A7. Per-POI `max_iter` tuning
+### A7. Per-POI `max_iter` tuning — **DONE 2026-05-17 + 2026-05-18 follow-up**
 
-Currently `max_iter` is set by the zoom-tier auto-iter ladder (512 / 1024 / 2048 / 4095 by zoom depth). This is a one-size-fits-all heuristic; some POIs run far above what they need (e.g., the SAT series sits at 0.8–1.7 fps because every pixel iterates the full 1024 even though most escape quickly).
+Per-POI `max_iter` is now a first-class catalogue field (`max_iter` in `tools/poi_master.json`) that feeds both:
+1. **Bench mode**: `tools/gen_full_benchmarks.py` honours the override → `tools/bench_encode.py` → `rtl/benchmark_generated.vh` → `bench_max_iter` in `fractal_top.v`.
+2. **Normal auto-zoom playback**: `tools/poi_encode.py` emits a `POI_ITER_CASES` macro into `rtl/poi_generated.vh`; `rtl/auto_zoom.v` exposes a `target_max_iter` output driven by the case block; `rtl/fractal_top.v` muxes it as `auto_iter_choice = auto_zoom_active ? az_max_iter : auto_max_iter` so OSD=Auto on a locked target POI uses the per-POI value instead of the zoom-tier ladder.
 
-- Profile each POI's actual iter histogram (instrument `pixel_pipeline.v` to count escape distribution, or run a Python pre-pass on the catalogue with the existing golden model).
-- For each POI, find the smallest `max_iter` where >99.5% of escapes happen, plus a safety margin.
-- Bake into `tools/poi_master.json` as a per-POI override; the existing benchmark generator (`tools/gen_full_benchmarks.py`) already plumbs `max_iter` per scene.
-- Expected gain: scene-dependent. SAT POIs could gain 1.5–2× (currently tier-capped at 1024 when 256 might suffice). Catalogue geomean impact modest (~5–10%) but specific POIs become noticeably smoother.
-- Cost: profiling pass + catalogue edits + a re-bench. No RTL changes.
-- Effort: **1 day** if profiling tooling is straightforward; **2 days** if we need to add iter-distribution telemetry to the FPGA.
+Profiler pipeline (FPGA-driven, not software pre-pass):
+- `tools/profile_max_iter.py` — orchestrator. For each of 6 iter settings (Auto/128/256/512/1024/2048) it reloads the core, cycles the OSD to the target iter via I-key presses, runs the full 90-POI benchmark sweep via `bench_run.py`, and saves screenshots + telemetry per setting. ~110 min total.
+- `tools/analyze_max_iter.py` — classifies each POI as PERF_WIN / NO_CHANGE / QUALITY_BUMP / QUALITY_FIX using a structural-diff metric (fraction of pixels that report interior at the low-iter setting but escaped at the reference) — the user's "highest iter at the max-fps plateau" rule. Falls back to lowest-diff if no setting hits visually-identical quality.
+- `tools/compose_iter_grid.py` — builds per-POI 2×3 review grids for visual signoff, REC tag on the recommended setting.
+
+**Result on sweep #2** (after applying the analyzer's rule, before the cy=0 fix): 65 per-POI overrides applied, 25 NO_CHANGE.
+
+**Sweep #3 in progress** (2026-05-18) — re-run on the build with the cy=0 deep-zoom artifact fix.  Deep cy=0 POIs (MERCATOR P189, MERCATOR P38, EJS CAULI, R2T P6/P7, SH CUSP FINE) had spurious escape behavior masking real iter requirements; the new sweep should refine the recommendations for those.
 
 ### A8. Period detection in `iter_quad.v`
 
@@ -338,13 +342,18 @@ Project releases follow a three-release plan with MiSTer-convention CalVer tags 
 
 ### Release 2 — polished 640×240 (current cycle)
 
-A2 + A3 + the coord_generator frame-snapshot fix are shipped on `main`.  Remaining for Release 2:
+A2 + A3 + the coord_generator frame-snapshot fix are shipped on `main`.  Remaining + done items this cycle:
 
-1. **Other polish items the user has noticed** — TBD list (catalogue cleanup, OSD wording, palette work, etc.).
-2. **A7** (per-POI `max_iter` tuning) — last item.  Profile each slow POI in software (use `tools/poi_render.py` + `sim/iter_quad/golden.py` for bit-exact verification), find the smallest viable `max_iter` per POI, bake into `tools/poi_master.json` as a per-POI override.  Should be **~1 day** with software profiling first (vs the failed hardware-only attempt that gave up after a few rebuild cycles).
-3. **Final full bench sweep** to capture the v2 baseline.
-4. **Update README, ROADMAP, PERF_BASELINE_TRACK_A** at release time.
-5. **Tag the release.**
+- ✓ **A7** (per-POI `max_iter` override + auto-zoom playback path)
+- ✓ **Color Depth selector** (`O[28:27]`, 6/8/5/4-bit output mask, default 6-bit matches the MiSTer Analog I/O R-2R DAC so HDMI = CRT)
+- ✓ **Attract Mode submenu** (Zoom In/Out toggles + Wait on POI with 22 options including N-color-cycle durations; wall-clock dwell)
+- ✓ **cy=0 deep-zoom artifact fixed** in iter_quad (negative-square clamp; root cause was truncated multiplier producing tiny-negative `z²` results whose sign extension into the upper bits triggered spurious overflow → spurious escape at iter=1..2 → uniform pink band on deep cy=0 POIs)
+- ⏳ **A7 sweep #3** running on the build with the cy=0 fix — recommendations for the 5-7 affected deep-zoom POIs may shift.
+- ⏳ **Cardioid precheck clamp** (apply the same negative-clamp protection to `ctx_cardioid_ci_sq` storage; small perf fix for deep cy=0 POIs whose cardioid precheck was firing less than it should).
+- ⏳ **Other polish items the user has noticed** — TBD list.
+- ⏳ **Final full bench sweep** to capture the v2 baseline.
+- ⏳ **Update README, ROADMAP, PERF_BASELINE_TRACK_A** at release time.
+- ⏳ **Tag the release.**
 
 ### Release 3 — Verilator harness, MS revival, then SDRAM/480i
 

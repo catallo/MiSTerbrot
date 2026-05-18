@@ -4,15 +4,45 @@ Verilator harness setup is in progress. First module covered:
 
 - **`sim/iter_quad/`** — Verilator + C++ testbench + Python golden
   model for `rtl/iter_quad.v`. See `sim/iter_quad/README.md` for usage.
-  Currently 22 directed cases: **13 PASS, 9 GAP, 0 FAIL**.  The GAPs
-  are a documented iter_count off-by-one between the FSM's iter
-  increment ordering and golden's 1-indexed convention — uniform −1
-  shift on every escape ≥ depth 13.  Cosmetic (uniform palette
-  shift, invisible) and confirmed deterministic; not a bug.  See
-  `sim/iter_quad/README.md` for the per-case table and analysis.
+  Currently **39 directed cases: 13 PASS, 9 GAP, 0 FAIL** + 17 INFO
+  exploration cases (no expected value, just printed).  The GAPs are
+  a documented iter_count off-by-one between the FSM's iter increment
+  ordering and golden's 1-indexed convention — uniform −1 shift on
+  every escape ≥ depth 13.  Cosmetic (uniform palette shift,
+  invisible) and confirmed deterministic; not a bug.
 - A3 (period-3 bulb precheck) added to both golden.py and the
   testbench; 5 new "inside the inscribed circle" cases all hit the
   precheck (RTL == golden, no GAP).
+- **cy=0 deep-zoom exploration cases** (2026-05-18): 17 INFO-tagged
+  cases probing MERCATOR P189 / P38 / EJS CAULI coords at varying ci
+  magnitudes.  Drove the discovery + fix of the negative-square
+  truncation bug in iter_quad's escape detection (see
+  `tb_debug.cpp` for the cycle-accurate single-pixel trace).
+- **`sim/iter_quad/sim_frame.py`** — full-frame joint sim
+  (coord_generator + iter_quad + A2 mirror + framebuffer) in pure
+  Python.  Renders a complete frame using the same 8.56 fixed-point
+  + truncated multiply as the RTL, outputs a PNG via the XTC palette
+  (with 6-bit mask).  Used to A/B test "does the bug live in the
+  modelled logic or in HW-specific timing".
+- **`sim/iter_quad/probe_cy0.py` and `probe_2d.py`** — bit-exact
+  golden vs `mpmath`@200-bit reference probes for the cy=0 deep-zoom
+  POIs.  Confirmed iter_quad math (golden) is correct to 200-bit
+  precision — narrowing the bug to RTL HW behaviour and triggering
+  the cycle-accurate `tb_debug.cpp` investigation.
+- **`sim/iter_quad/tb_debug.cpp`** — focused cycle-accurate single-pixel
+  trace.  Prints `ctx_state[0]`, `ctx_iter`, `ctx_iter_count`,
+  `phase_d4`, `escape_pl`, `mag_sq_w/_r`, `zr_sq`, `zi_sq`, `zr_sq_ovf`,
+  `zi_sq_ovf`, and raw `zi_sq_raw` hex each cycle until done.  This
+  is the harness that caught the negative-square sign-extension bug
+  by showing `zi_sq=-0.0000` with `zi_ovf=0xff` triggering escape at
+  cycle 65 → iter=2 + escaped=1.  Build standalone:
+  ```
+  cd sim/iter_quad
+  verilator --cc --exe --build -Wno-fatal --top-module iter_quad \
+      --Mdir obj_dir_debug ../../rtl/iter_quad.v ../../rtl/mul_trunc64.v \
+      tb_debug.cpp
+  ./obj_dir_debug/Viter_quad
+  ```
 
 The previous `sim/` directory (Verilator harnesses for `iter_pair.v` and
 `mandelbrot_iterator.v`) was removed when those modules were retired during
