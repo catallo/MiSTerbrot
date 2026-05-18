@@ -145,6 +145,34 @@ int main(int argc, char** argv) {
         {"seahorse_edge",   -0.745, 0.113,  500,  128, 1},
         {"esc_d386",        -0.745, 0.110,  500,  386, 1},
         {"esc_d461",        -0.746, 0.115,  500,  461, 1},
+
+        // ---- cy=0 deep-zoom artifact reproduction (MERCATOR P189) ----
+        // Probe iter_quad with the exact cr/ci values that cause the
+        // FPGA's "pink band" artifact.  Probe (golden + mpmath) returned
+        // iter ≈ 190-220 for all of these.  If iter_quad returns iter=0..3
+        // here, the bug is reproduced in sim.
+        {"m189_ci_tiny",    -1.7487645202, +1e-10,  1024, -1, 0},
+        {"m189_ci_smaller", -1.7487645202, +1e-12,  1024, -1, 0},
+        {"m189_ci_smaller2",-1.7487645202, +1e-14,  1024, -1, 0},
+        {"m189_ci_zero",    -1.7487645202,  0.0,    1024, -1, 0},
+        {"m189_ci_mid",     -1.7487645202, +2e-8,   1024, -1, 0},
+        {"m189_ci_far",     -1.7487645202, +4e-8,   1024, -1, 0},
+        {"m189_neg_ci",     -1.7487645202, -1e-10,  1024, -1, 0},
+        // Try cr SLIGHTLY off — see if a different cr changes outcome
+        {"m189_cr_off1",    -1.7487640000, +1e-10,  1024, -1, 0},
+        {"m189_cr_off2",    -1.7487650000, +1e-10,  1024, -1, 0},
+        // Walk ci from tiny to bigger to find transition where bug stops
+        {"m189_ci_1e-9",    -1.7487645202, +1e-9,   1024, -1, 0},
+        {"m189_ci_5e-9",    -1.7487645202, +5e-9,   1024, -1, 0},
+        {"m189_ci_1e-8",    -1.7487645202, +1e-8,   1024, -1, 0},
+        {"m189_ci_1.5e-8",  -1.7487645202, +1.5e-8, 1024, -1, 0},
+        // Sanity: cr=-0.5 (clearly outside M-set, escapes fast normally)
+        // with tiny ci — should also bug if it's a generic small-ci issue
+        {"cr_-0.5_ci_tiny", -0.5,           +1e-10, 1024, -1, 0},
+        {"cr_-2.1_ci_tiny", -2.1,           +1e-10, 1024, -1, 0},
+        // EJS CAULI (z=17, where artifact starts appearing)
+        {"cauli_ci_tiny",   -1.7487645,    +1e-8,   2048, -1, 0},
+        {"cauli_ci_zero",   -1.7487645,     0.0,    2048, -1, 0},
     };
 
     int n_cases = sizeof(cases) / sizeof(cases[0]);
