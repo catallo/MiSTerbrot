@@ -43,15 +43,10 @@ module fractal_osd #(
     //   2'd1 = On  (force-enable for all scenes)
     //   2'd2 = Off (force-disable for all scenes)
     output wire [1:0]   p3_mode,
-    // Color depth (status[38:36]):
-    //   3'd0 = 6-bit  (default — matches MiSTer Analog I/O R-2R DAC)
-    //   3'd1 = 8-bit  (full, no quantization)
-    //   3'd2 = 5-bit
-    //   3'd3 = 4-bit
-    //   3'd4 = 3-bit
-    //   3'd5 = 2-bit
-    //   3'd6 = 1-bit
-    output wire [2:0]   color_depth_mode,
+    // Color depth (status[36]):
+    //   1'b0 = 6-bit (default, recommended — matches MiSTer Analog I/O R-2R DAC)
+    //   1'b1 = 8-bit full (no quantization)
+    output wire         color_depth_mode,
     // Attract Mode submenu (status[35:29]):
     //   [29] zoom_in_disable  (default 0 = zoom-in enabled)
     //   [30] zoom_out_disable (default 0 = zoom-out enabled)
@@ -90,7 +85,7 @@ assign palette_sel   = status[10:4];
 assign color_cycle_enable = ~status[24];  // 0=On, 1=Off
 // A3 P3 Bulb Precheck: status[26:25] — Auto/On/Off (2 bits, 3 used).
 assign p3_mode = status[26:25];
-assign color_depth_mode = status[38:36];
+assign color_depth_mode = status[36];
 
 // Attract Mode decoding
 assign attract_zoom_in_enable  = ~status[29];
