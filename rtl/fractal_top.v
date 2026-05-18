@@ -108,7 +108,7 @@ wire       key_blank_text_on, key_blank_text_off;
 // 2'd2 = Off (force-disable).  Decoded from status[26:25] in fractal_osd.v.
 wire [1:0] osd_p3_mode;
 wire       color_depth_mode;
-wire [2:0] cycle_speed_sel;
+wire [3:0] cycle_speed_sel;
 wire [1:0] cycle_direction;
 wire       cycle_blend_hard;
 wire [1:0] cycle_band_mode;

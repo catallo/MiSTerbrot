@@ -28,7 +28,7 @@ module color_mapper (
     //   blend_hard   0=Smooth (fractional blend), 1=Hard step (no blend)
     //   band_mode    [1:0] 0=Off (unified phase), 1=Low Slow (low-iter half speed),
     //                       2=Low Fast (low-iter 2x speed), 3=Counter (low-iter reverse)
-    input  wire [2:0]  cycle_speed_sel,
+    input  wire [3:0]  cycle_speed_sel,
     input  wire [1:0]  cycle_direction,
     input  wire        cycle_blend_hard,
     input  wire [1:0]  cycle_band_mode,
@@ -43,14 +43,15 @@ module color_mapper (
 reg [11:0] cycle_inc;
 always @(*) begin
     case (cycle_speed_sel)
-        3'd0: cycle_inc = 12'd4;    // Normal (default)
-        3'd1: cycle_inc = 12'd1;    // Glacial
-        3'd2: cycle_inc = 12'd2;    // Slow
-        3'd3: cycle_inc = 12'd8;    // Fast
-        3'd4: cycle_inc = 12'd16;   // Very Fast
-        3'd5: cycle_inc = 12'd32;   // Strobe
-        3'd6: cycle_inc = 12'd64;   // Hyper
-        3'd7: cycle_inc = 12'd128;  // Insane
+        4'd0: cycle_inc = 12'd4;    // Normal (default)
+        4'd1: cycle_inc = 12'd1;    // Glacial
+        4'd2: cycle_inc = 12'd2;    // Slow
+        4'd3: cycle_inc = 12'd6;    // Quick
+        4'd4: cycle_inc = 12'd8;    // Fast
+        4'd5: cycle_inc = 12'd16;   // Very Fast
+        4'd6: cycle_inc = 12'd32;   // Strobe
+        4'd7: cycle_inc = 12'd64;   // Hyper
+        4'd8: cycle_inc = 12'd128;  // Insane
         default: cycle_inc = 12'd4;
     endcase
 end

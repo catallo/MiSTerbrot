@@ -47,11 +47,11 @@ module fractal_osd #(
     //   1'b0 = 6-bit (default, recommended — matches MiSTer Analog I/O R-2R DAC)
     //   1'b1 = 8-bit full (no quantization)
     output wire         color_depth_mode,
-    // Color Cycling submenu (status[44:37]):
-    output wire [2:0]   cycle_speed_sel,    // [39:37] 0=Normal(default),1=Glacial,2=Slow,3=Fast,4=VeryFast,5=Strobe,6=Hyper,7=Insane
-    output wire [1:0]   cycle_direction,    // [41:40] 0=Forward(default),1=Reverse,2=Ping-Pong
-    output wire         cycle_blend_hard,   // [42]    0=Smooth(default),1=Hard-step
-    output wire [1:0]   cycle_band_mode,    // [44:43] 0=Off(default),1=Low Slow,2=Low Fast,3=Counter
+    // Color Cycling submenu (status[45:37]):
+    output wire [3:0]   cycle_speed_sel,    // [40:37] 0=Normal(default),1=Glacial,2=Slow,3=Quick,4=Fast,5=VeryFast,6=Strobe,7=Hyper,8=Insane
+    output wire [1:0]   cycle_direction,    // [42:41] 0=Forward(default),1=Reverse,2=Ping-Pong
+    output wire         cycle_blend_hard,   // [43]    0=Smooth(default),1=Hard-step
+    output wire [1:0]   cycle_band_mode,    // [45:44] 0=Off(default),1=Low Slow,2=Low Fast,3=Counter
     // Attract Mode submenu (status[35:29]):
     //   [29] zoom_in_disable  (default 0 = zoom-in enabled)
     //   [30] zoom_out_disable (default 0 = zoom-out enabled)
@@ -93,10 +93,10 @@ assign p3_mode = status[26:25];
 assign color_depth_mode = status[36];
 
 // Color Cycling submenu decoding
-assign cycle_speed_sel  = status[39:37];
-assign cycle_direction  = status[41:40];
-assign cycle_blend_hard = status[42];
-assign cycle_band_mode  = status[44:43];
+assign cycle_speed_sel  = status[40:37];
+assign cycle_direction  = status[42:41];
+assign cycle_blend_hard = status[43];
+assign cycle_band_mode  = status[45:44];
 
 // Attract Mode decoding
 assign attract_zoom_in_enable  = ~status[29];
