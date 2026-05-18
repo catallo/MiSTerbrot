@@ -399,13 +399,17 @@ always @(posedge clk or negedge rst_n) begin
                     next_loaded <= 1'b0;
                     dwell_count <= 16'd0;
                     state <= S_NEXT;
-                end else if (zoom_steps == 16'd0) begin
+                end else if (step >= DEFAULT_STEP) begin
+                    // Exit condition is now step-based (not zoom_steps),
+                    // so zoom-out animates correctly even when entered
+                    // from a snap (zoom-in disabled → zoom_steps stayed 0).
                     step <= DEFAULT_STEP;
                     view_changed <= 1'b1;
                     zoom_out_final_pending <= 1'b1;
                 end else begin
                     step <= step + step_delta;
-                    zoom_steps <= zoom_steps - 16'd1;
+                    if (zoom_steps != 16'd0)
+                        zoom_steps <= zoom_steps - 16'd1;
                     view_changed <= 1'b1;
                 end
             end
