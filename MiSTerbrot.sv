@@ -157,7 +157,7 @@ localparam CONF_STR = {
 	// hang and the diagnosed fix breaks HDMI. MS dropped from the shipping
 	// core. See docs/MR16_HANG_REPORT_V2.md and MR16_HANG_CHATGPT_PRO_V2.md.
 	"O[18],Buffer,Double,Single;",
-	"O[28:27],Colors,262K (Analog),16.7M (Full),32K,4K;",
+	"O[38:36],Limit Colours to,6 Bits (262K) - Recommended,8 Bits (16.7M) Full,5 Bits (32K),4 Bits (4K),3 Bits (512),2 Bits (64),1 Bit (8);",
 	"O[26:25],P3 Bulb Precheck,Auto,On,Off;",
 	"P1,Attract Mode;",
 	"P1O[29],Zoom In,On,Off;",

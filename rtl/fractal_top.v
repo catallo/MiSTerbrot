@@ -107,7 +107,7 @@ wire       key_blank_text_on, key_blank_text_off;
 // A3 OSD mode: 2'd0 = Auto (use per-POI flag), 2'd1 = On (force-enable),
 // 2'd2 = Off (force-disable).  Decoded from status[26:25] in fractal_osd.v.
 wire [1:0] osd_p3_mode;
-wire [1:0] color_depth_mode;
+wire [2:0] color_depth_mode;
 wire       attract_zoom_in_enable;
 wire       attract_zoom_out_enable;
 wire [15:0] attract_wait_vblanks;
@@ -1024,25 +1024,45 @@ wire        benchmark_telemetry_bit = benchmark_telemetry[5'd31 - benchmark_tele
 reg [7:0] q_r, q_g, q_b;
 always @(*) begin
     case (color_depth_mode)
-        2'd0: begin  // 6-bit (default)
+        3'd0: begin  // 6-bit (default, recommended — analog DAC match)
             q_r = {overlay_r[7:2], 2'b00};
             q_g = {overlay_g[7:2], 2'b00};
             q_b = {overlay_b[7:2], 2'b00};
         end
-        2'd1: begin  // 8-bit full
+        3'd1: begin  // 8-bit full
             q_r = overlay_r;
             q_g = overlay_g;
             q_b = overlay_b;
         end
-        2'd2: begin  // 5-bit
+        3'd2: begin  // 5-bit
             q_r = {overlay_r[7:3], 3'b000};
             q_g = {overlay_g[7:3], 3'b000};
             q_b = {overlay_b[7:3], 3'b000};
         end
-        2'd3: begin  // 4-bit
+        3'd3: begin  // 4-bit
             q_r = {overlay_r[7:4], 4'b0000};
             q_g = {overlay_g[7:4], 4'b0000};
             q_b = {overlay_b[7:4], 4'b0000};
+        end
+        3'd4: begin  // 3-bit
+            q_r = {overlay_r[7:5], 5'b00000};
+            q_g = {overlay_g[7:5], 5'b00000};
+            q_b = {overlay_b[7:5], 5'b00000};
+        end
+        3'd5: begin  // 2-bit
+            q_r = {overlay_r[7:6], 6'b000000};
+            q_g = {overlay_g[7:6], 6'b000000};
+            q_b = {overlay_b[7:6], 6'b000000};
+        end
+        3'd6: begin  // 1-bit
+            q_r = {overlay_r[7],   7'b0000000};
+            q_g = {overlay_g[7],   7'b0000000};
+            q_b = {overlay_b[7],   7'b0000000};
+        end
+        default: begin
+            q_r = overlay_r;
+            q_g = overlay_g;
+            q_b = overlay_b;
         end
     endcase
 end
