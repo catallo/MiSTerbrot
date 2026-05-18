@@ -291,7 +291,7 @@
     7'd2  : target_max_iter = 12'd1024; /* P3 ISLAND TIP */ \
     7'd3  : target_max_iter = 12'd256; /* P4 ISLAND */ \
     7'd4  : target_max_iter = 12'd256; /* P5 ISLAND */ \
-    7'd5  : target_max_iter = 12'd128; /* P6 ISLAND */ \
+    7'd5  : target_max_iter = 12'd256; /* P6 ISLAND */ \
     7'd6  : target_max_iter = 12'd512; /* P7 ISLAND */ \
     7'd7  : target_max_iter = 12'd1024; /* P8 ISLAND */ \
     7'd8  : target_max_iter = 12'd256; /* P9 ISLAND */ \
@@ -307,7 +307,7 @@
     7'd18 : target_max_iter = 12'd2048; /* SEAHORSE DEEP */ \
     7'd19 : target_max_iter = 12'd1024; /* SEAHORSE TAIL2 */ \
     7'd20 : target_max_iter = 12'd1024; /* DOUBLE HOOK */ \
-    7'd21 : target_max_iter = 12'd2048; /* SH SATELLITE */ \
+    7'd21 : target_max_iter = 12'd1024; /* SH SATELLITE */ \
     7'd22 : target_max_iter = 12'd4095; /* SAT ANTENNA */ \
     7'd23 : target_max_iter = 12'd4095; /* SAT HEAD */ \
     7'd24 : target_max_iter = 12'd4095; /* SAT SEAHORSE */ \
@@ -348,7 +348,7 @@
     7'd59 : target_max_iter = 12'd512; /* R2T P6 ISLAND */ \
     7'd60 : target_max_iter = 12'd4095; /* SH CUSP FINE */ \
     7'd61 : target_max_iter = 12'd4095; /* R2 HALF ISLE */ \
-    7'd62 : target_max_iter = 12'd128; /* R2T P7 ISLAND */ \
+    7'd62 : target_max_iter = 12'd256; /* R2T P7 ISLAND */ \
     7'd63 : target_max_iter = 12'd1024; /* SCEPTER MED */ \
     7'd64 : target_max_iter = 12'd256; /* BRANCH MED */ \
     7'd65 : target_max_iter = 12'd1024; /* EJS P3 DEEP */ \
@@ -367,8 +367,8 @@
     7'd78 : target_max_iter = 12'd2048; /* BEYER STEP 13 */ \
     7'd79 : target_max_iter = 12'd4095; /* BEYER STEP 14 */ \
     7'd80 : target_max_iter = 12'd2048; /* TRIPLE SPIRAL P4 */ \
-    7'd81 : target_max_iter = 12'd1024; /* MERCATOR P189 */ \
-    7'd82 : target_max_iter = 12'd512; /* MERCATOR P38 */ \
+    7'd81 : target_max_iter = 12'd2048; /* MERCATOR P189 */ \
+    7'd82 : target_max_iter = 12'd2048; /* MERCATOR P38 */ \
     7'd83 : target_max_iter = 12'd128; /* M(3,3) WAKE 1/3 DP */ \
     7'd84 : target_max_iter = 12'd256; /* M(7,7) WAKE 1/4 DP */ \
     7'd85 : target_max_iter = 12'd256; /* EJS P47 GAMMA */ \

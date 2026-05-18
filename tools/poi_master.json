@@ -50,7 +50,7 @@
     "zoom_level": 7.0,
     "category": "MINIBROT",
     "note": "Largest period-6 island",
-    "max_iter": 128
+    "max_iter": 256
   },
   {
     "name": "P7 ISLAND",
@@ -190,7 +190,7 @@
     "zoom_level": 18.06,
     "category": "MINIBROT",
     "note": "Beyer step 7, satellite minibrot",
-    "max_iter": 2048
+    "max_iter": 1024
   },
   {
     "name": "SAT ANTENNA",
@@ -545,7 +545,7 @@
     "zoom_level": 22.24,
     "category": "MINIBROT",
     "note": "Period-7 island in real-axis R2t cascade to c=-2",
-    "max_iter": 128
+    "max_iter": 256
   },
   {
     "name": "SCEPTER MED",
@@ -773,7 +773,7 @@
       "https://mrob.com/pub/muency/embeddedjuliaset.html"
     ],
     "note": "Period-189 minibrot in the EJS CAULI region (mathr reference point). Deeper than EJS CAULI.",
-    "max_iter": 1024
+    "max_iter": 2048
   },
   {
     "name": "MERCATOR P38",
@@ -786,7 +786,7 @@
       "https://mrob.com/pub/muency/embeddedjuliaset.html"
     ],
     "note": "Period-38 minibrot just beyond the EJS CAULI nucleus. Intermediate between EJS CAULI and MERCATOR P189.",
-    "max_iter": 512
+    "max_iter": 2048
   },
   {
     "name": "M(3,3) WAKE 1/3 DP",
