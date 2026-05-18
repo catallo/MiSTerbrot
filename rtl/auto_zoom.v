@@ -363,7 +363,14 @@ always @(posedge clk or negedge rst_n) begin
             else begin
                 // Dwell counts vblanks (wall-clock); zoom-in steps still
                 // gated on frame_done so each step shows a finished frame.
-                if ((step <= MIN_STEP) || (zoom_level_x10 >= target_max_zoom_x10)) begin
+                // When zoom-in is disabled, ALWAYS dwell — never zoom-step
+                // further (S_LOAD/S_NEXT seeded us at snap_step, but that
+                // can land slightly shallower than target_max_zoom_x10
+                // due to the *10 vs *integer-zoom mismatch, which would
+                // otherwise trigger spurious zoom-in animation).
+                if (!attract_zoom_in_enable
+                    || (step <= MIN_STEP)
+                    || (zoom_level_x10 >= target_max_zoom_x10)) begin
                     if (dwell_done) begin
                         dwell_count <= 16'd0;
                         zoom_out_final_pending <= 1'b0;
