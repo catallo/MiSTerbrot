@@ -108,6 +108,10 @@ wire       key_blank_text_on, key_blank_text_off;
 // 2'd2 = Off (force-disable).  Decoded from status[26:25] in fractal_osd.v.
 wire [1:0] osd_p3_mode;
 wire       color_depth_mode;
+wire [2:0] cycle_speed_sel;
+wire [1:0] cycle_direction;
+wire       cycle_blend_hard;
+wire [1:0] cycle_band_mode;
 wire       attract_zoom_in_enable;
 wire       attract_zoom_out_enable;
 wire [15:0] attract_wait_vblanks;
@@ -132,6 +136,10 @@ fractal_osd #(
     .overlay_bg_dim(osd_overlay_bg_dim),
     .p3_mode(osd_p3_mode),
     .color_depth_mode(color_depth_mode),
+    .cycle_speed_sel(cycle_speed_sel),
+    .cycle_direction(cycle_direction),
+    .cycle_blend_hard(cycle_blend_hard),
+    .cycle_band_mode(cycle_band_mode),
     .attract_zoom_in_enable(attract_zoom_in_enable),
     .attract_zoom_out_enable(attract_zoom_out_enable),
     .attract_wait_vblanks(attract_wait_vblanks)
@@ -933,6 +941,10 @@ color_mapper u_color_mapper (
     .escaped(fb_escaped),
     .palette_sel(palette_sel),
     .cycle_enable(effective_color_cycle_enable),
+    .cycle_speed_sel(cycle_speed_sel),
+    .cycle_direction(cycle_direction),
+    .cycle_blend_hard(cycle_blend_hard),
+    .cycle_band_mode(cycle_band_mode),
     .pixel_valid_out(),
     .color_r(disp_r),
     .color_g(disp_g),

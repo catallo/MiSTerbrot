@@ -21,15 +21,69 @@ module color_mapper (
     input  wire [6:0]  palette_sel,
     input  wire        cycle_enable,
 
+    // Color Cycling submenu (OSD P2):
+    //   speed_sel    [2:0] 0=Normal(+4),1=Glacial(+1),2=Slow(+2),3=Fast(+8),
+    //                       4=VeryFast(+16),5=Strobe(+32),6=Hyper(+64),7=Insane(+128)
+    //   direction    [1:0] 0=Forward, 1=Reverse, 2=Ping-Pong (3 unused → Forward)
+    //   blend_hard   0=Smooth (fractional blend), 1=Hard step (no blend)
+    //   band_mode    [1:0] 0=Off (unified phase), 1=Low Slow (low-iter half speed),
+    //                       2=Low Fast (low-iter 2x speed), 3=Counter (low-iter reverse)
+    input  wire [2:0]  cycle_speed_sel,
+    input  wire [1:0]  cycle_direction,
+    input  wire        cycle_blend_hard,
+    input  wire [1:0]  cycle_band_mode,
+
     output reg         pixel_valid_out,
     output reg  [7:0]  color_r,
     output reg  [7:0]  color_g,
     output reg  [7:0]  color_b
 );
 
+// Cycle speed → increment per vblank.  Normal = +4 (default, current behavior).
+reg [11:0] cycle_inc;
+always @(*) begin
+    case (cycle_speed_sel)
+        3'd0: cycle_inc = 12'd4;    // Normal (default)
+        3'd1: cycle_inc = 12'd1;    // Glacial
+        3'd2: cycle_inc = 12'd2;    // Slow
+        3'd3: cycle_inc = 12'd8;    // Fast
+        3'd4: cycle_inc = 12'd16;   // Very Fast
+        3'd5: cycle_inc = 12'd32;   // Strobe
+        3'd6: cycle_inc = 12'd64;   // Hyper
+        3'd7: cycle_inc = 12'd128;  // Insane
+        default: cycle_inc = 12'd4;
+    endcase
+end
+
+// Ping-pong direction state — flips on every cycle_phase wrap when in
+// Ping-Pong mode.  Forward/Reverse modes ignore this.
+reg ping_dir;  // 0 = going forward, 1 = going reverse
+wire forward_now = (cycle_direction == 2'd0) ? 1'b1 :
+                   (cycle_direction == 2'd1) ? 1'b0 :
+                   (cycle_direction == 2'd2) ? ~ping_dir : 1'b1;
+
 reg [11:0] cycle_phase;
-wire [7:0] cycle_idx_offset = cycle_enable ? cycle_phase[11:4] : 8'd0;
-wire [3:0] cycle_frac       = cycle_enable ? cycle_phase[3:0]  : 4'd0;
+wire [12:0] phase_fwd = {1'b0, cycle_phase} + {1'b0, cycle_inc};
+wire [12:0] phase_rev = {1'b0, cycle_phase} - {1'b0, cycle_inc};
+wire phase_wrap = forward_now ? phase_fwd[12] : phase_rev[12];
+
+// Iter-band split: transform cycle_phase per-pixel based on iter band.
+// "Low band" = iter_count[7]==0 (iter < 128).  High band always uses
+// unmodified cycle_phase; low band varies by mode.
+wire is_low_band = ~iter_count[7];
+reg [11:0] phase_for_pixel;
+always @(*) begin
+    case (cycle_band_mode)
+        2'd0: phase_for_pixel = cycle_phase;                                    // Off
+        2'd1: phase_for_pixel = is_low_band ? (cycle_phase >> 1) : cycle_phase; // Low Slow
+        2'd2: phase_for_pixel = is_low_band ? (cycle_phase << 1) : cycle_phase; // Low Fast
+        2'd3: phase_for_pixel = is_low_band ? (12'h000 - cycle_phase) : cycle_phase; // Counter (low reverse)
+        default: phase_for_pixel = cycle_phase;
+    endcase
+end
+
+wire [7:0] cycle_idx_offset = cycle_enable ? phase_for_pixel[11:4]                       : 8'd0;
+wire [3:0] cycle_frac       = (cycle_enable & ~cycle_blend_hard) ? phase_for_pixel[3:0] : 4'd0;
 
 wire [7:0] base_cidx = iter_count[7:0] + cycle_idx_offset;
 wire [7:0] next_cidx = base_cidx + 8'd1;
@@ -2195,16 +2249,23 @@ end
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         cycle_phase      <= 12'd0;
+        ping_dir         <= 1'b0;
         pixel_valid_out  <= 1'b0;
         color_r          <= 8'd0;
         color_g          <= 8'd0;
         color_b          <= 8'd0;
     end else begin
         if (cycle_enable) begin
-            if (vblank_rise)
-                cycle_phase <= cycle_phase + 12'd4;
+            if (vblank_rise) begin
+                // Phase update — direction-aware, with ping-pong toggling on wrap.
+                cycle_phase <= forward_now ? phase_fwd[11:0]
+                                           : phase_rev[11:0];
+                if (cycle_direction == 2'd2 && phase_wrap)
+                    ping_dir <= ~ping_dir;
+            end
         end else begin
             cycle_phase <= 12'd0;
+            ping_dir    <= 1'b0;
         end
 
         pixel_valid_out <= pixel_valid_in;
