@@ -394,13 +394,30 @@ end
 // Now keyed on phase_d3 (since we inserted Stage 2a1, phase_d3 is the
 // new "the partials are for context k"-aligned signal).
 // ============================================================
-wire signed [WIDTH-1:0] mag_sq_w    = zr_sq + zi_sq;
-wire signed [WIDTH-1:0] two_zr_zi_w = {zr_zi[WIDTH-2:0], 1'b0};
-wire signed [WIDTH-1:0] zr_diff_w   = zr_sq - zi_sq;
+// Squared values should always be non-negative.  The truncated multiplier
+// (skips a_lo*b_lo in the 64x64 product) can produce a tiny negative
+// result for very small squares — when this happens the 96-bit sum
+// reassembly sign-extends through the upper bits, making both
+// zr_sq[WIDTH-1] (sign) AND zr_sq_ovf (upper 8 bits) appear set.  That
+// false-positive triggers spurious escape detection at iter=1..2, which
+// painted cy=0 deep-zoom POIs (e.g. MERCATOR P189) uniformly pink in
+// palette[1..2].  Fix: clamp negative squared results to zero before
+// using them in mag_sq / overflow detection.  See
+// sim/iter_quad/tb_debug.cpp for the reproduction.
+wire signed [WIDTH-1:0] zr_sq_c = zr_sq[WIDTH-1] ? {WIDTH{1'b0}} : zr_sq;
+wire signed [WIDTH-1:0] zi_sq_c = zi_sq[WIDTH-1] ? {WIDTH{1'b0}} : zi_sq;
+wire [7:0]              zr_sq_ovf_c = zr_sq[WIDTH-1] ? 8'b0 : zr_sq_ovf;
+wire [7:0]              zi_sq_ovf_c = zi_sq[WIDTH-1] ? 8'b0 : zi_sq_ovf;
 
-wire zr_sq_overflow_w = |zr_sq_ovf | zr_sq[WIDTH-1];
-wire zi_sq_overflow_w = |zi_sq_ovf | zi_sq[WIDTH-1];
-wire sum_overflow_w   = ~zr_sq[WIDTH-1] & ~zi_sq[WIDTH-1] & mag_sq_w[WIDTH-1];
+wire signed [WIDTH-1:0] mag_sq_w    = zr_sq_c + zi_sq_c;
+wire signed [WIDTH-1:0] two_zr_zi_w = {zr_zi[WIDTH-2:0], 1'b0};
+wire signed [WIDTH-1:0] zr_diff_w   = zr_sq_c - zi_sq_c;
+
+wire zr_sq_overflow_w = |zr_sq_ovf_c;
+wire zi_sq_overflow_w = |zi_sq_ovf_c;
+// Sum-overflow check: both clamped operands are non-negative, so if
+// mag_sq's sign bit is set, the sum genuinely overflowed.
+wire sum_overflow_w   = mag_sq_w[WIDTH-1];
 wire escape_w = zr_sq_overflow_w | zi_sq_overflow_w | sum_overflow_w |
                 ($signed(mag_sq_w) > ESCAPE_THRESHOLD);
 
