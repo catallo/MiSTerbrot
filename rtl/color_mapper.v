@@ -42,19 +42,22 @@ module color_mapper (
 // Cycle speed → increment per vblank.  Normal = +4 (default, current behavior).
 reg [11:0] cycle_inc;
 always @(*) begin
+    // Modem-speed themed labels — see MiSTerbrot.sv OSD list.
+    // sel=0 is the displayed default (9600 baud = +6), so the list
+    // starts with the default and then walks slow→fast for the rest.
     case (cycle_speed_sel)
-        4'd0:  cycle_inc = 12'd4;    // Normal (default)
-        4'd1:  cycle_inc = 12'd1;    // Glacial
-        4'd2:  cycle_inc = 12'd2;    // Slow
-        4'd3:  cycle_inc = 12'd5;    // +5
-        4'd4:  cycle_inc = 12'd6;    // Quick
-        4'd5:  cycle_inc = 12'd7;    // +7
-        4'd6:  cycle_inc = 12'd8;    // Fast
-        4'd7:  cycle_inc = 12'd16;   // Very Fast
-        4'd8:  cycle_inc = 12'd32;   // Strobe
-        4'd9:  cycle_inc = 12'd64;   // Hyper
-        4'd10: cycle_inc = 12'd128;  // Insane
-        default: cycle_inc = 12'd4;
+        4'd0:  cycle_inc = 12'd6;    // 9600 baud   (default)
+        4'd1:  cycle_inc = 12'd1;    // Teletype    (slowest)
+        4'd2:  cycle_inc = 12'd2;    // 300 baud
+        4'd3:  cycle_inc = 12'd4;    // 1200 baud
+        4'd4:  cycle_inc = 12'd5;    // 2400 baud
+        4'd5:  cycle_inc = 12'd7;    // 14.4k
+        4'd6:  cycle_inc = 12'd8;    // 28.8k
+        4'd7:  cycle_inc = 12'd16;   // 33.6k
+        4'd8:  cycle_inc = 12'd32;   // 56k
+        4'd9:  cycle_inc = 12'd64;   // ISDN
+        4'd10: cycle_inc = 12'd128;  // Fiber       (fastest)
+        default: cycle_inc = 12'd6;
     endcase
 end
 
