@@ -126,7 +126,11 @@ reg  [6:0] pal_from, pal_to;
 reg  [6:0] fade_counter;
 reg        fade_tick_div;       // halves the decrement rate for Slow Crossfade
 wire       fade_active = (fade_counter != 7'd0);
-wire [3:0] crossfade_frac = fade_counter[6:3];   // 15 → 0 across the fade
+// 64-level crossfade: use top 6 bits of fade_counter as the weight.  With
+// dec=2 per vblank, the weight changes by 1 every vblank → 60 Hz step
+// rate, visually smooth (the previous 16-step ladder ran at ~16 Hz step
+// rate which read as ~10 fps choppiness).
+wire [5:0] crossfade_frac = fade_counter[6:1];   // 63 → 0 across the fade
 
 // Look up each pixel's color from BOTH palettes (FROM and TO) so we
 // can crossfade.  When fade is inactive (pal_from == pal_to or
@@ -162,6 +166,38 @@ function [7:0] blend_channel;
     begin
         blend_channel = (scale_u8_5bit(a, 5'd16 - {1'b0, frac}) +
                          scale_u8_5bit(b, {1'b0, frac})) >> 4;
+    end
+endfunction
+
+// 7-bit-weight scaler — used by the wider crossfade blend below.
+function [14:0] scale_u8_7bit;
+    input [7:0] value;
+    input [6:0] weight;
+    reg   [14:0] accum;
+    begin
+        accum = 15'd0;
+        if (weight[0]) accum = accum + {7'd0, value};
+        if (weight[1]) accum = accum + {6'd0, value, 1'b0};
+        if (weight[2]) accum = accum + {5'd0, value, 2'b0};
+        if (weight[3]) accum = accum + {4'd0, value, 3'b0};
+        if (weight[4]) accum = accum + {3'd0, value, 4'b0};
+        if (weight[5]) accum = accum + {2'd0, value, 5'b0};
+        if (weight[6]) accum = accum + {1'd0, value, 6'b0};
+        scale_u8_7bit = accum;
+    end
+endfunction
+
+// 64-step crossfade blend.  frac=0 → all `a` (the TO palette),
+// frac=63 → mostly `b` (the FROM palette).  Used by the palette
+// transition; 4× more blend levels than blend_channel for smooth
+// fades.
+function [7:0] blend_channel_64;
+    input [7:0] a;
+    input [7:0] b;
+    input [5:0] frac;
+    begin
+        blend_channel_64 = (scale_u8_7bit(a, 7'd64 - {1'b0, frac}) +
+                            scale_u8_7bit(b, {1'b0, frac})) >> 6;
     end
 endfunction
 
@@ -2303,11 +2339,11 @@ wire [7:0] from_blend_g = blend_channel(color_fa_g, color_fb_g, cycle_frac);
 wire [7:0] from_blend_b = blend_channel(color_fa_b, color_fb_b, cycle_frac);
 
 // Crossfade blend.  When inactive, output the TO palette directly.
-// blend_channel(a, b, frac): weight_a = 16 - frac, weight_b = frac.
-// crossfade_frac = 15 at start of fade → mostly FROM; 0 at end → mostly TO.
-wire [7:0] crossfade_r = fade_active ? blend_channel(to_blend_r, from_blend_r, crossfade_frac) : to_blend_r;
-wire [7:0] crossfade_g = fade_active ? blend_channel(to_blend_g, from_blend_g, crossfade_frac) : to_blend_g;
-wire [7:0] crossfade_b = fade_active ? blend_channel(to_blend_b, from_blend_b, crossfade_frac) : to_blend_b;
+// blend_channel_64(a, b, frac): a=TO, b=FROM, weights add to 64.
+// crossfade_frac = 63 at start of fade → mostly FROM; 0 at end → fully TO.
+wire [7:0] crossfade_r = fade_active ? blend_channel_64(to_blend_r, from_blend_r, crossfade_frac) : to_blend_r;
+wire [7:0] crossfade_g = fade_active ? blend_channel_64(to_blend_g, from_blend_g, crossfade_frac) : to_blend_g;
+wire [7:0] crossfade_b = fade_active ? blend_channel_64(to_blend_b, from_blend_b, crossfade_frac) : to_blend_b;
 
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
