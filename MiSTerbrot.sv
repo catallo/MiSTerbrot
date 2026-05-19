@@ -160,7 +160,7 @@ localparam CONF_STR = {
 	"O[26:25],P3 Bulb Precheck,Auto,On,Off;",
 	"P2,Color Cycling;",
 	"P2O[24],Color Cycling,On,Off;",
-	"P2O[40:37],Speed,9600 baud,Teletype,300 baud,1200 baud,2400 baud,14.4k,28.8k,33.6k,56k,ISDN,Fiber;",
+	"P2O[40:37],Speed,9600 baud (Default),Teletype,300 baud,1200 baud,2400 baud,14.4k,28.8k,33.6k,ISDN,DSL,Fiber;",
 	"P2O[42:41],Direction,Forward,Reverse,Ping-Pong;",
 	"P2O[43],Blending,Smooth,Hard-step;",
 	"P2O[45:44],Iter Band Mix,Off,Low Slow,Low Fast,Counter;",
