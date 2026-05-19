@@ -32,6 +32,11 @@ module color_mapper (
     input  wire [1:0]  cycle_direction,
     input  wire        cycle_blend_hard,
     input  wire [1:0]  cycle_band_mode,
+    // Palette Transition:
+    //   2'd0 = Instant (default, no crossfade)
+    //   2'd1 = Crossfade       (~1 s, fade_counter -2 per vblank)
+    //   2'd2 = Slow Crossfade  (~2 s, fade_counter -2 every other vblank)
+    input  wire [1:0]  palette_transition_mode,
 
     output reg         pixel_valid_out,
     output reg  [7:0]  color_r,
@@ -114,8 +119,23 @@ wire [3:0] cycle_frac       = (cycle_enable & ~cycle_blend_hard) ? phase_for_pix
 wire [7:0] base_cidx = iter_count[7:0] + cycle_idx_offset;
 wire [7:0] next_cidx = base_cidx + 8'd1;
 
-reg [7:0] color_a_r, color_a_g, color_a_b;
-reg [7:0] color_b_r, color_b_g, color_b_b;
+// Palette Transition (crossfade) state.  pal_to is the current target
+// palette (latches palette_sel); pal_from is the previous one, blended
+// out as fade_counter decrements 127 → 0.
+reg  [6:0] pal_from, pal_to;
+reg  [6:0] fade_counter;
+reg        fade_tick_div;       // halves the decrement rate for Slow Crossfade
+wire       fade_active = (fade_counter != 7'd0);
+wire [3:0] crossfade_frac = fade_counter[6:3];   // 15 → 0 across the fade
+
+// Look up each pixel's color from BOTH palettes (FROM and TO) so we
+// can crossfade.  When fade is inactive (pal_from == pal_to or
+// fade_counter == 0) the FROM lookup output is unused — synthesis will
+// usually optimise it away.
+reg [7:0] color_a_r, color_a_g, color_a_b;          // TO   palette, base entry
+reg [7:0] color_b_r, color_b_g, color_b_b;          // TO   palette, next entry
+reg [7:0] color_fa_r, color_fa_g, color_fa_b;       // FROM palette, base entry
+reg [7:0] color_fb_r, color_fb_g, color_fb_b;       // FROM palette, next entry
 
 wire [4:0] blend_a_weight = 5'd16 - {1'b0, cycle_frac};
 wire [4:0] blend_b_weight = {1'b0, cycle_frac};
@@ -2268,20 +2288,61 @@ task palette_rgb;
 endtask
 
 always @(*) begin
-    palette_rgb(palette_sel, base_cidx, color_a_r, color_a_g, color_a_b);
-    palette_rgb(palette_sel, next_cidx, color_b_r, color_b_g, color_b_b);
+    palette_rgb(pal_to,   base_cidx, color_a_r,  color_a_g,  color_a_b);
+    palette_rgb(pal_to,   next_cidx, color_b_r,  color_b_g,  color_b_b);
+    palette_rgb(pal_from, base_cidx, color_fa_r, color_fa_g, color_fa_b);
+    palette_rgb(pal_from, next_cidx, color_fb_r, color_fb_g, color_fb_b);
 end
+
+// Cycling blend within each palette
+wire [7:0] to_blend_r   = blend_channel(color_a_r,  color_b_r,  cycle_frac);
+wire [7:0] to_blend_g   = blend_channel(color_a_g,  color_b_g,  cycle_frac);
+wire [7:0] to_blend_b   = blend_channel(color_a_b,  color_b_b,  cycle_frac);
+wire [7:0] from_blend_r = blend_channel(color_fa_r, color_fb_r, cycle_frac);
+wire [7:0] from_blend_g = blend_channel(color_fa_g, color_fb_g, cycle_frac);
+wire [7:0] from_blend_b = blend_channel(color_fa_b, color_fb_b, cycle_frac);
+
+// Crossfade blend.  When inactive, output the TO palette directly.
+// blend_channel(a, b, frac): weight_a = 16 - frac, weight_b = frac.
+// crossfade_frac = 15 at start of fade → mostly FROM; 0 at end → mostly TO.
+wire [7:0] crossfade_r = fade_active ? blend_channel(to_blend_r, from_blend_r, crossfade_frac) : to_blend_r;
+wire [7:0] crossfade_g = fade_active ? blend_channel(to_blend_g, from_blend_g, crossfade_frac) : to_blend_g;
+wire [7:0] crossfade_b = fade_active ? blend_channel(to_blend_b, from_blend_b, crossfade_frac) : to_blend_b;
 
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         cycle_phase      <= 12'd0;
         cycle_phase_lo   <= 12'd0;
         ping_dir         <= 1'b0;
+        pal_from         <= 7'd0;
+        pal_to           <= 7'd0;
+        fade_counter     <= 7'd0;
+        fade_tick_div    <= 1'b0;
         pixel_valid_out  <= 1'b0;
         color_r          <= 8'd0;
         color_g          <= 8'd0;
         color_b          <= 8'd0;
     end else begin
+        // Palette change detector — runs every cycle (not gated on vblank)
+        // so we catch the change as soon as palette_sel updates.
+        if (palette_sel != pal_to) begin
+            pal_from     <= pal_to;
+            pal_to       <= palette_sel;
+            // Instant mode skips the fade entirely; the other modes start
+            // a full fade from the new pal_from to pal_to.
+            fade_counter <= (palette_transition_mode == 2'd0) ? 7'd0 : 7'd127;
+            fade_tick_div<= 1'b0;
+        end else if (vblank_rise && fade_counter > 7'd0) begin
+            case (palette_transition_mode)
+                2'd1: fade_counter <= (fade_counter > 7'd2) ? (fade_counter - 7'd2) : 7'd0;  // ~1 s
+                2'd2: begin                                                                    // ~2 s
+                    if (fade_tick_div)
+                        fade_counter <= (fade_counter > 7'd2) ? (fade_counter - 7'd2) : 7'd0;
+                    fade_tick_div <= ~fade_tick_div;
+                end
+                default: fade_counter <= 7'd0;  // Instant
+            endcase
+        end
         if (cycle_enable) begin
             if (vblank_rise) begin
                 // High-band phase update.  Ping-Pong CLAMPS at the boundary
@@ -2339,9 +2400,9 @@ always @(posedge clk or negedge rst_n) begin
 
         if (pixel_valid_in) begin
             if (escaped) begin
-                color_r <= blend_channel(color_a_r, color_b_r, cycle_frac);
-                color_g <= blend_channel(color_a_g, color_b_g, cycle_frac);
-                color_b <= blend_channel(color_a_b, color_b_b, cycle_frac);
+                color_r <= crossfade_r;
+                color_g <= crossfade_g;
+                color_b <= crossfade_b;
             end else begin
                 color_r <= 8'd0;
                 color_g <= 8'd0;

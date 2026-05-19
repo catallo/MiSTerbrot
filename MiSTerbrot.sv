@@ -164,6 +164,7 @@ localparam CONF_STR = {
 	"P2O[42:41],Direction,Forward,Reverse,Ping-Pong;",
 	"P2O[43],Blending,Smooth,Hard-step;",
 	"P2O[45:44],Iter Band Mix,Off,Low Slow,Low Fast,Counter;",
+	"P2O[47:46],Palette Transition,Instant,Crossfade,Slow Crossfade;",
 	"P1,Attract Mode;",
 	"P1O[29],Zoom In,On,Off;",
 	"P1O[30],Zoom Out,On,Off;",
