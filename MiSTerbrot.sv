@@ -169,7 +169,7 @@ localparam CONF_STR = {
 	"P1O[29],Zoom In,On,Off;",
 	"P1O[30],Zoom Out,On,Off;",
 	"P1O[35:31],Wait on POI,10s,1s,2s,3s,4s,5s,6s,7s,8s,9s,15s,1 cycle,20s,30s,2 cycles,3 cycles,1m,4 cycles,5 cycles,2m,10 cycles,5m;",
-	"P1O[49:48],Zoom Pacing,Constant,Cinematic,Distance-Proportional;",
+	"P1O[48],Zoom Pacing,Cinematic,Constant;",
 		"-;",
 	"-, Arrows/WASD/D-Pad: Pan;",
 	"-, +/-/PgUp/PgDn: Zoom;",

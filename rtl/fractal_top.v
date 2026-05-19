@@ -113,7 +113,7 @@ wire [1:0] cycle_direction;
 wire       cycle_blend_hard;
 wire [1:0] cycle_band_mode;
 wire [1:0] palette_transition_mode;
-wire [1:0] zoom_pacing_mode;
+wire       zoom_pacing_mode;
 wire       attract_zoom_in_enable;
 wire       attract_zoom_out_enable;
 wire [15:0] attract_wait_vblanks;
