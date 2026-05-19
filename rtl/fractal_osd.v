@@ -54,6 +54,7 @@ module fractal_osd #(
     output wire [1:0]   cycle_band_mode,    // [45:44] 0=Off(default),1=Low Slow,2=Low Fast,3=Counter
     output wire [1:0]   palette_transition_mode, // [47:46] 0=Instant(default),1=Crossfade ~1s,2=Slow Crossfade ~2s
     output wire         zoom_pacing_mode,        // [48] 0=Cinematic(default),1=Constant
+    output wire [1:0]   zoom_speed_sel           // [50:49] 0=Normal(default),1=Slow,2=Fast,3=VeryFast
     // Attract Mode submenu (status[35:29]):
     //   [29] zoom_in_disable  (default 0 = zoom-in enabled)
     //   [30] zoom_out_disable (default 0 = zoom-out enabled)
@@ -101,6 +102,7 @@ assign cycle_blend_hard = status[43];
 assign cycle_band_mode  = status[45:44];
 assign palette_transition_mode = status[47:46];
 assign zoom_pacing_mode        = status[48];
+assign zoom_speed_sel          = status[50:49];
 
 // Attract Mode decoding
 assign attract_zoom_in_enable  = ~status[29];

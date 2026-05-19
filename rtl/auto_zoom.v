@@ -33,6 +33,12 @@ module auto_zoom #(
     //   1'b0 = Cinematic (default — slow first ~60 steps + slow last few zoom levels)
     //   1'b1 = Constant  (step_delta = step/512 every frame, no pacing)
     input  wire                    zoom_pacing_mode,
+    // Zoom speed (auto-zoom only; manual zoom uses its own rate):
+    //   2'd0 = Normal     (step >>> 9 = step/512, current default)
+    //   2'd1 = Slow       (step >>> 10 = step/1024, half speed)
+    //   2'd2 = Fast       (step >>> 8  = step/256,  2x speed)
+    //   2'd3 = Very Fast  (step >>> 7  = step/128,  4x speed)
+    input  wire [1:0]              zoom_speed_sel,
 
     // BRAM framebuffer sampling (held inactive in deterministic zoom mode)
     input  wire [12:0]             fb_rd_data,
@@ -123,7 +129,18 @@ always @(*) begin
 end
 
 // ---- Zoom rate (per-frame step adjustment) ----
-wire signed [WIDTH-1:0] step_shift = step >>> 9;
+// Speed selector picks the shift amount applied to `step` to derive
+// step_shift.  Bigger shift = smaller delta = slower zoom.
+reg [3:0] zoom_speed_shift;
+always @(*) begin
+    case (zoom_speed_sel)
+        2'd1: zoom_speed_shift = 4'd10;  // Slow
+        2'd2: zoom_speed_shift = 4'd8;   // Fast
+        2'd3: zoom_speed_shift = 4'd7;   // Very Fast
+        default: zoom_speed_shift = 4'd9; // Normal (default)
+    endcase
+end
+wire signed [WIDTH-1:0] step_shift = step >>> zoom_speed_shift;
 wire signed [WIDTH-1:0] step_delta_base = (step_shift == {WIDTH{1'b0}}) ? {{(WIDTH-1){1'b0}}, 1'b1} : step_shift;
 
 // Zoom pacing — modifies step_delta on a per-frame basis based on
