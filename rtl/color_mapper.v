@@ -33,8 +33,8 @@ module color_mapper (
     input  wire        cycle_blend_hard,
     input  wire [1:0]  cycle_band_mode,
     // Palette Transition:
-    //   2'd0 = Instant (default, no crossfade)
-    //   2'd1 = Crossfade       (~1 s, fade_counter -2 per vblank)
+    //   2'd0 = Crossfade       (default, ~1 s, fade_counter -2 per vblank)
+    //   2'd1 = Instant         (no crossfade)
     //   2'd2 = Slow Crossfade  (~2 s, fade_counter -2 every other vblank)
     input  wire [1:0]  palette_transition_mode,
 
@@ -2366,17 +2366,17 @@ always @(posedge clk or negedge rst_n) begin
             pal_to       <= palette_sel;
             // Instant mode skips the fade entirely; the other modes start
             // a full fade from the new pal_from to pal_to.
-            fade_counter <= (palette_transition_mode == 2'd0) ? 7'd0 : 7'd127;
+            fade_counter <= (palette_transition_mode == 2'd1) ? 7'd0 : 7'd127;
             fade_tick_div<= 1'b0;
         end else if (vblank_rise && fade_counter > 7'd0) begin
             case (palette_transition_mode)
-                2'd1: fade_counter <= (fade_counter > 7'd2) ? (fade_counter - 7'd2) : 7'd0;  // ~1 s
-                2'd2: begin                                                                    // ~2 s
+                2'd0: fade_counter <= (fade_counter > 7'd2) ? (fade_counter - 7'd2) : 7'd0;  // Crossfade (~1 s)
+                2'd2: begin                                                                    // Slow Crossfade (~2 s)
                     if (fade_tick_div)
                         fade_counter <= (fade_counter > 7'd2) ? (fade_counter - 7'd2) : 7'd0;
                     fade_tick_div <= ~fade_tick_div;
                 end
-                default: fade_counter <= 7'd0;  // Instant
+                default: fade_counter <= 7'd0;  // Instant (sel=1) or unused (sel=3)
             endcase
         end
         if (cycle_enable) begin

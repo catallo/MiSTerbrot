@@ -113,6 +113,7 @@ wire [1:0] cycle_direction;
 wire       cycle_blend_hard;
 wire [1:0] cycle_band_mode;
 wire [1:0] palette_transition_mode;
+wire [1:0] zoom_pacing_mode;
 wire       attract_zoom_in_enable;
 wire       attract_zoom_out_enable;
 wire [15:0] attract_wait_vblanks;
@@ -142,6 +143,7 @@ fractal_osd #(
     .cycle_blend_hard(cycle_blend_hard),
     .cycle_band_mode(cycle_band_mode),
     .palette_transition_mode(palette_transition_mode),
+    .zoom_pacing_mode(zoom_pacing_mode),
     .attract_zoom_in_enable(attract_zoom_in_enable),
     .attract_zoom_out_enable(attract_zoom_out_enable),
     .attract_wait_vblanks(attract_wait_vblanks)
@@ -311,6 +313,7 @@ auto_zoom #(
     .attract_zoom_in_enable(attract_zoom_in_enable),
     .attract_zoom_out_enable(attract_zoom_out_enable),
     .attract_wait_vblanks(attract_wait_vblanks),
+    .zoom_pacing_mode(zoom_pacing_mode),
     .fb_rd_data(rd_data),
     .fb_rd_addr(az_fb_rd_addr),
     .fb_sampling(az_fb_sampling),

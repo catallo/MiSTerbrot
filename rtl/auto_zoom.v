@@ -29,6 +29,11 @@ module auto_zoom #(
     input  wire                    attract_zoom_in_enable,
     input  wire                    attract_zoom_out_enable,
     input  wire [15:0]             attract_wait_vblanks,
+    // Zoom pacing during S_ZOOM_IN:
+    //   2'd0 = Constant (default, current behaviour: step_delta = step/512)
+    //   2'd1 = Cinematic (slow first ~60 steps + slow last few zoom levels)
+    //   2'd2 = Distance-Proportional (continuous slowdown as zoom_remaining shrinks)
+    input  wire [1:0]              zoom_pacing_mode,
 
     // BRAM framebuffer sampling (held inactive in deterministic zoom mode)
     input  wire [12:0]             fb_rd_data,
@@ -120,7 +125,13 @@ end
 
 // ---- Zoom rate (per-frame step adjustment) ----
 wire signed [WIDTH-1:0] step_shift = step >>> 9;
-wire signed [WIDTH-1:0] step_delta = (step_shift == {WIDTH{1'b0}}) ? {{(WIDTH-1){1'b0}}, 1'b1} : step_shift;
+wire signed [WIDTH-1:0] step_delta_base = (step_shift == {WIDTH{1'b0}}) ? {{(WIDTH-1){1'b0}}, 1'b1} : step_shift;
+
+// Zoom pacing — modifies step_delta on a per-frame basis based on
+// where we are in the zoom-in trajectory.  See zoom_pacing_mode.
+// `zoom_remaining` and `is_early_phase` are below the zoom_level_x10
+// computation (lines 200-ish); the wire declarations there reference
+// values that exist by the time S_ZOOM_IN consumes step_delta.
 
 // ---- Snap target step: DEFAULT_STEP >>> target_zoom_int ----
 wire signed [WIDTH-1:0] snap_step = DEFAULT_STEP >>> target_zoom_int;
@@ -207,6 +218,45 @@ always @(*) begin
 end
 
 wire [9:0] zoom_level_x10 = zoom_exp * 4'd10 + {6'd0, zoom_frac_tenth_az};
+
+// ---- Zoom pacing helpers ----
+// zoom_remaining_x10 — how far (in zoom-x10 units) we still have to zoom.
+// is_early_phase — first ~60 frames of zoom; used for Cinematic anticipation.
+wire [9:0] zoom_remaining_x10 = (zoom_level_x10 < target_max_zoom_x10)
+                                ? (target_max_zoom_x10 - zoom_level_x10)
+                                : 10'd0;
+wire       is_early_phase = (zoom_steps < 16'd60);
+
+// Distance-Proportional shift amount: walks through 0..5 as we approach
+// target, scaling step_delta down from full speed to 1/32.
+reg [3:0] dp_shift;
+always @(*) begin
+    if      (zoom_remaining_x10 < 10'd2)  dp_shift = 4'd5;  // 1/32 speed
+    else if (zoom_remaining_x10 < 10'd5)  dp_shift = 4'd4;  // 1/16
+    else if (zoom_remaining_x10 < 10'd10) dp_shift = 4'd3;  // 1/8
+    else if (zoom_remaining_x10 < 10'd20) dp_shift = 4'd2;  // 1/4
+    else if (zoom_remaining_x10 < 10'd50) dp_shift = 4'd1;  // 1/2
+    else                                  dp_shift = 4'd0;  // full
+end
+
+// Cinematic: slow first 60 frames (anticipation) and last ~5 zoom levels
+// (landing).  Slowing factor is /4 in both phases.
+wire is_late_phase = (zoom_remaining_x10 < 10'd5);
+
+reg signed [WIDTH-1:0] step_delta_paced_raw;
+always @(*) begin
+    case (zoom_pacing_mode)
+        2'd1: step_delta_paced_raw = (is_early_phase || is_late_phase) ? // Cinematic
+                                     (step_delta_base >>> 2)
+                                     : step_delta_base;
+        2'd2: step_delta_paced_raw = (step_delta_base >>> dp_shift);     // Distance-Prop
+        default: step_delta_paced_raw = step_delta_base;                  // Constant
+    endcase
+end
+// Floor to 1 so the zoom never stalls completely.
+wire signed [WIDTH-1:0] step_delta = (step_delta_paced_raw == {WIDTH{1'b0}})
+                                     ? {{(WIDTH-1){1'b0}}, 1'b1}
+                                     : step_delta_paced_raw;
 
 // ---- LFSR-driven shuffle bookkeeping ----
 reg enable_prev;
