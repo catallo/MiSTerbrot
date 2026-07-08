@@ -86,15 +86,53 @@ wire       vblank_rise = vblank & ~vblank_prev;
 reg [15:0] free_counter;
 reg [15:0] target_lfsr;
 reg [15:0] palette_lfsr;
-reg [IDX_BITS-1:0] target_playlist  [0:N_TARGETS-1];
-reg [PAL_BITS-1:0] palette_playlist [0:N_PALETTES-1];
 reg [IDX_BITS-1:0] target_playlist_pos;
 reg [PAL_BITS-1:0] palette_playlist_pos;
 reg                shuffle_phase;
 reg [IDX_BITS-1:0] shuffle_idx;
 reg                zoom_out_final_pending;
 reg                seed_pending;
-integer            i;
+
+// ---- Playlist memories (ALM diet, 2026-07-08) ----
+// Synchronous-read 90-entry arrays so Quartus infers MLABs instead of
+// two 90:1 muxes + 1,260 flops (~1.4k ALUTs).  One read + one write
+// port each; the Fisher-Yates swap is sequenced over 5 cycles (see
+// S_SHUFFLE subphases) and the POI advance over 4 (S_NEXT/S_SNAP_LOAD)
+// — both are reset-time / once-per-POI paths where cycles are free.
+// NOTE: contents are NOT reset (that would block RAM inference); the
+// identity fill happens in the SSUB_FILL shuffle subphase instead.
+reg [IDX_BITS-1:0] target_playlist  [0:N_TARGETS-1];
+reg [PAL_BITS-1:0] palette_playlist [0:N_PALETTES-1];
+reg [IDX_BITS-1:0] tp_raddr, tp_waddr, tp_wdata;
+reg [IDX_BITS-1:0] tp_rdata;
+reg                tp_we;
+reg [PAL_BITS-1:0] pp_raddr, pp_waddr, pp_wdata;
+reg [PAL_BITS-1:0] pp_rdata;
+reg                pp_we;
+
+always @(posedge clk) begin
+    if (tp_we) target_playlist[tp_waddr] <= tp_wdata;
+    tp_rdata <= target_playlist[tp_raddr];
+end
+always @(posedge clk) begin
+    if (pp_we) palette_playlist[pp_waddr] <= pp_wdata;
+    pp_rdata <= palette_playlist[pp_raddr];
+end
+
+// Shuffle / advance sequencing state
+localparam [2:0] SSUB_FILL  = 3'd0,  // identity-fill both memories
+                 SSUB_DRAW  = 3'd1,  // advance LFSRs, accept/reject j
+                 SSUB_RD_HI = 3'd2,  // mem[i] read in flight
+                 SSUB_RD_LO = 3'd3,  // latch hi, mem[j] read in flight
+                 SSUB_WR_LO = 3'd4,  // write mem[i] <= lo
+                 SSUB_WR_HI = 3'd5,  // write mem[j] <= hi, advance i
+                 SSUB_FIN_A = 3'd6,  // (reserved — unused)
+                 SSUB_FIN_B = 3'd7;  // (reserved — unused)
+reg [2:0]          ssub;
+reg [IDX_BITS-1:0] shuffle_j_r;      // accepted swap partner
+reg [IDX_BITS-1:0] shuffle_hi_r;     // mem[i] held across the swap
+reg [IDX_BITS-1:0] fill_idx;
+reg [1:0]          adv_ph;           // S_NEXT / S_SNAP_LOAD subphase
 
 // ---- POI data (rom_cx, rom_cy, target_max_zoom_x10, target_zoom_int) ----
 reg signed [WIDTH-1:0] rom_cx, rom_cy;
@@ -181,58 +219,71 @@ function [IDX_BITS-1:0] next_shuffle_candidate;
     end
 endfunction
 
-function [1:0] nibble_msb;
-    input [3:0] nibble;
-    begin
-        casez (nibble)
-            4'b1???: nibble_msb = 2'd3;
-            4'b01??: nibble_msb = 2'd2;
-            4'b001?: nibble_msb = 2'd1;
-            default: nibble_msb = 2'd0;
-        endcase
+// ---- Step → zoom level, computed SERIALLY (ALM diet, 2026-07-08) ----
+// The old combinational form needed a 16-nibble priority tree plus a
+// 64-bit barrel shifter (~1k ALUTs) to normalize `step` every cycle —
+// but the result is only consumed at frame cadence.  Instead: whenever
+// `step` changes, shift a copy left one bit per clock until normalized
+// (<=64 cycles, i.e. <=1.3 us), then derive exponent and fraction from
+// the normalized value.  Consumers keep using the previous registered
+// value while a recompute is in flight; the freshness margin to the
+// next frame_done/vblank consumer is >100x the recompute time.  The
+// brief stale window can at most add one dwell vblank tick or pace one
+// frame with the previous delta — invisible.
+reg signed [WIDTH-1:0] zstep_prev;
+reg [63:0] znorm;
+reg [5:0]  znorm_sh;                // shift count so far
+reg        zbusy;
+reg [5:0]  zoom_exp_r;
+reg [3:0]  zoom_frac_nibble_r;
+reg        zoom_ge_default_r;
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        zstep_prev         <= {WIDTH{1'b0}};
+        znorm              <= 64'd0;
+        znorm_sh           <= 6'd0;
+        zbusy              <= 1'b0;
+        zoom_exp_r         <= 6'd0;
+        zoom_frac_nibble_r <= 4'd15;
+        zoom_ge_default_r  <= 1'b1;
+    end else begin
+        zstep_prev <= step;
+        if (step != zstep_prev) begin
+            znorm    <= step[63:0];
+            znorm_sh <= 6'd0;
+            zbusy    <= 1'b1;
+        end else if (zbusy) begin
+            if (znorm[63] || (znorm_sh == 6'd63)) begin
+                zbusy              <= 1'b0;
+                zoom_ge_default_r  <= (step >= DEFAULT_STEP);
+                zoom_frac_nibble_r <= znorm[62:59];
+                // step_msb = 63 - znorm_sh; zoom_exp = 49 - step_msb
+                zoom_exp_r         <= znorm_sh - 6'd14;
+            end else begin
+                znorm    <= {znorm[62:0], 1'b0};
+                znorm_sh <= znorm_sh + 6'd1;
+            end
+        end
     end
-endfunction
-
-// ---- Step → zoom level (for comparing against target_max_zoom_x10) ----
-reg [5:0] step_msb;
-always @(*) begin
-    if (step[63:60] != 4'd0)      step_msb = 6'd60 + {4'd0, nibble_msb(step[63:60])};
-    else if (step[59:56] != 4'd0) step_msb = 6'd56 + {4'd0, nibble_msb(step[59:56])};
-    else if (step[55:52] != 4'd0) step_msb = 6'd52 + {4'd0, nibble_msb(step[55:52])};
-    else if (step[51:48] != 4'd0) step_msb = 6'd48 + {4'd0, nibble_msb(step[51:48])};
-    else if (step[47:44] != 4'd0) step_msb = 6'd44 + {4'd0, nibble_msb(step[47:44])};
-    else if (step[43:40] != 4'd0) step_msb = 6'd40 + {4'd0, nibble_msb(step[43:40])};
-    else if (step[39:36] != 4'd0) step_msb = 6'd36 + {4'd0, nibble_msb(step[39:36])};
-    else if (step[35:32] != 4'd0) step_msb = 6'd32 + {4'd0, nibble_msb(step[35:32])};
-    else if (step[31:28] != 4'd0) step_msb = 6'd28 + {4'd0, nibble_msb(step[31:28])};
-    else if (step[27:24] != 4'd0) step_msb = 6'd24 + {4'd0, nibble_msb(step[27:24])};
-    else if (step[23:20] != 4'd0) step_msb = 6'd20 + {4'd0, nibble_msb(step[23:20])};
-    else if (step[19:16] != 4'd0) step_msb = 6'd16 + {4'd0, nibble_msb(step[19:16])};
-    else if (step[15:12] != 4'd0) step_msb = 6'd12 + {4'd0, nibble_msb(step[15:12])};
-    else if (step[11:8]  != 4'd0) step_msb = 6'd8  + {4'd0, nibble_msb(step[11:8])};
-    else if (step[7:4]   != 4'd0) step_msb = 6'd4  + {4'd0, nibble_msb(step[7:4])};
-    else                          step_msb = {4'd0, nibble_msb(step[3:0])};
 end
 
-wire [5:0] zoom_exp = (step >= DEFAULT_STEP) ? 6'd0 : (6'd49 - step_msb);
-
-wire [63:0] step_norm_az = step << (6'd63 - step_msb);
-wire [3:0]  frac_nibble_az = step_norm_az[62:59];
-reg  [3:0]  zoom_frac_tenth_az;
+reg [3:0] zoom_frac_tenth_az;
 always @(*) begin
-    if (step >= DEFAULT_STEP)         zoom_frac_tenth_az = 4'd0;
-    else if (frac_nibble_az >= 4'd14) zoom_frac_tenth_az = 4'd0;
-    else if (frac_nibble_az >= 4'd13) zoom_frac_tenth_az = 4'd1;
-    else if (frac_nibble_az >= 4'd11) zoom_frac_tenth_az = 4'd2;
-    else if (frac_nibble_az >= 4'd9)  zoom_frac_tenth_az = 4'd3;
-    else if (frac_nibble_az >= 4'd7)  zoom_frac_tenth_az = 4'd4;
-    else if (frac_nibble_az >= 4'd6)  zoom_frac_tenth_az = 4'd5;
-    else if (frac_nibble_az >= 4'd4)  zoom_frac_tenth_az = 4'd6;
-    else if (frac_nibble_az >= 4'd3)  zoom_frac_tenth_az = 4'd7;
-    else if (frac_nibble_az >= 4'd1)  zoom_frac_tenth_az = 4'd8;
-    else                              zoom_frac_tenth_az = 4'd9;
+    if (zoom_ge_default_r)                  zoom_frac_tenth_az = 4'd0;
+    else if (zoom_frac_nibble_r >= 4'd14) zoom_frac_tenth_az = 4'd0;
+    else if (zoom_frac_nibble_r >= 4'd13) zoom_frac_tenth_az = 4'd1;
+    else if (zoom_frac_nibble_r >= 4'd11) zoom_frac_tenth_az = 4'd2;
+    else if (zoom_frac_nibble_r >= 4'd9)  zoom_frac_tenth_az = 4'd3;
+    else if (zoom_frac_nibble_r >= 4'd7)  zoom_frac_tenth_az = 4'd4;
+    else if (zoom_frac_nibble_r >= 4'd6)  zoom_frac_tenth_az = 4'd5;
+    else if (zoom_frac_nibble_r >= 4'd4)  zoom_frac_tenth_az = 4'd6;
+    else if (zoom_frac_nibble_r >= 4'd3)  zoom_frac_tenth_az = 4'd7;
+    else if (zoom_frac_nibble_r >= 4'd1)  zoom_frac_tenth_az = 4'd8;
+    else                                  zoom_frac_tenth_az = 4'd9;
 end
 
+wire [5:0] zoom_exp = zoom_ge_default_r ? 6'd0 : zoom_exp_r;
 wire [9:0] zoom_level_x10 = zoom_exp * 4'd10 + {6'd0, zoom_frac_tenth_az};
 
 // ---- Zoom pacing (Cinematic by default) ----
@@ -258,7 +309,6 @@ wire signed [WIDTH-1:0] step_delta = (step_delta_paced_raw == {WIDTH{1'b0}})
 // ---- LFSR-driven shuffle bookkeeping ----
 reg enable_prev;
 wire enable_rise = enable & ~enable_prev;
-reg next_loaded;
 wire unused_ok = &{1'b0, vblank, fb_rd_data[12:0]};
 wire [15:0] target_seed_mix  = entropy_seed[15:0] ^ entropy_seed[31:16] ^ {15'd0, entropy_seed[32]};
 wire [15:0] palette_seed_mix = {entropy_seed[23:8]} ^ {entropy_seed[7:0], entropy_seed[31:24]} ^ {15'd0, entropy_seed[32]};
@@ -272,11 +322,9 @@ wire [IDX_BITS-1:0] shuffle_target_j  = next_shuffle_candidate(target_rand_pool,
 wire [IDX_BITS-1:0] shuffle_palette_j = next_shuffle_candidate(palette_rand_pool, shuffle_idx);
 wire target_shuffle_accept  = (shuffle_target_j  <= shuffle_idx);
 wire palette_shuffle_accept = (shuffle_palette_j <= shuffle_idx);
-wire [IDX_BITS-1:0] target_hi_val = target_playlist[shuffle_idx];
-wire [IDX_BITS-1:0] target_lo_val = target_shuffle_accept ? target_playlist[shuffle_target_j] : {IDX_BITS{1'b0}};
-wire [PAL_BITS-1:0] palette_hi_val = palette_playlist[shuffle_idx[PAL_BITS-1:0]];
-wire [PAL_BITS-1:0] palette_lo_val = palette_shuffle_accept ? palette_playlist[shuffle_palette_j[PAL_BITS-1:0]] : {PAL_BITS{1'b0}};
-wire [PAL_BITS-1:0] palette_first_val = (shuffle_idx == {{(IDX_BITS-1){1'b0}}, 1'b1} && shuffle_palette_j == {IDX_BITS{1'b0}}) ? palette_hi_val : palette_playlist[0];
+// (Playlist entry values are read through the synchronous memory ports —
+// see the S_SHUFFLE subphase machine; the old combinational hi/lo/first
+// helper wires were the 90:1 muxes this diet removes.)
 
 assign fb_rd_addr = 18'd0;
 assign fb_sampling = 1'b0;
@@ -296,7 +344,7 @@ always @(posedge clk or negedge rst_n) begin
         center_x <= 64'shFFD0000000000000; // -0.75
         center_y <= 64'sh0000000000000000;
         step <= DEFAULT_STEP; target_idx <= IDX_ZERO;
-        palette_idx <= PAL_ZERO; enable_prev <= 1'b0; next_loaded <= 1'b0;
+        palette_idx <= PAL_ZERO; enable_prev <= 1'b0;
         zoom_steps <= 16'd0;
         dwell_count <= 16'd0;
         vblank_prev <= 1'b0;
@@ -309,51 +357,116 @@ always @(posedge clk or negedge rst_n) begin
         shuffle_idx <= TARGET_LAST_IDX;
         zoom_out_final_pending <= 1'b0;
         seed_pending <= 1'b1;
-        for (i = 0; i < N_TARGETS; i = i + 1)
-            target_playlist[i] <= i[IDX_BITS-1:0];
-        for (i = 0; i < N_PALETTES; i = i + 1)
-            palette_playlist[i] <= i[PAL_BITS-1:0];
+        // Playlist memory contents deliberately NOT reset (MLAB inference);
+        // SSUB_FILL writes the identity permutation before shuffling.
+        ssub         <= SSUB_FILL;
+        fill_idx     <= IDX_ZERO;
+        adv_ph       <= 2'd0;
+        shuffle_j_r  <= IDX_ZERO;
+        shuffle_hi_r <= IDX_ZERO;
+        tp_raddr <= IDX_ZERO; tp_waddr <= IDX_ZERO; tp_wdata <= IDX_ZERO; tp_we <= 1'b0;
+        pp_raddr <= PAL_ZERO; pp_waddr <= PAL_ZERO; pp_wdata <= PAL_ZERO; pp_we <= 1'b0;
     end else begin
         if (unused_ok) begin end
         free_counter <= free_counter + 16'd1;
         enable_prev <= enable; view_changed <= 1'b0;
         vblank_prev <= vblank;
+        tp_we <= 1'b0;
+        pp_we <= 1'b0;
         if (seed_pending) begin
             target_lfsr <= 16'hA5C3 ^ target_seed_mix;
             palette_lfsr <= 16'h5E31 ^ palette_seed_mix;
             seed_pending <= 1'b0;
         end else case (state)
         S_SHUFFLE: begin
+            // Fisher-Yates over the two MLAB playlists, one swap per 5
+            // cycles (draw, read i, read j, write i, write j).  Runs
+            // once per reset (~1.2k cycles = 25 us) — latency-free zone.
             active <= 1'b0;
-            if (!shuffle_phase) begin
-                target_lfsr <= next_target_lfsr2;
-                if (target_shuffle_accept) begin
-                    target_playlist[shuffle_idx]        <= target_lo_val;
-                    target_playlist[shuffle_target_j]   <= target_hi_val;
+            case (ssub)
+            SSUB_FILL: begin
+                // Identity permutation into both memories, one entry/clk.
+                tp_we <= 1'b1; tp_waddr <= fill_idx; tp_wdata <= fill_idx;
+                pp_we <= 1'b1; pp_waddr <= fill_idx[PAL_BITS-1:0]; pp_wdata <= fill_idx[PAL_BITS-1:0];
+                if (fill_idx == TARGET_LAST_IDX) begin
+                    shuffle_phase <= 1'b0;
+                    shuffle_idx   <= TARGET_LAST_IDX;
+                    ssub          <= SSUB_DRAW;
+                end else begin
+                    fill_idx <= fill_idx + IDX_ONE;
+                end
+            end
+            SSUB_DRAW: begin
+                if (!shuffle_phase) begin
+                    target_lfsr <= next_target_lfsr2;
+                    if (target_shuffle_accept) begin
+                        shuffle_j_r <= shuffle_target_j;
+                        tp_raddr    <= shuffle_idx;
+                        ssub        <= SSUB_RD_HI;
+                    end
+                end else begin
+                    palette_lfsr <= next_palette_lfsr2;
+                    if (palette_shuffle_accept) begin
+                        shuffle_j_r <= shuffle_palette_j;
+                        pp_raddr    <= shuffle_idx[PAL_BITS-1:0];
+                        ssub        <= SSUB_RD_HI;
+                    end
+                end
+            end
+            SSUB_RD_HI: begin
+                // mem[i] read in flight; queue the mem[j] read.
+                if (!shuffle_phase) tp_raddr <= shuffle_j_r;
+                else                pp_raddr <= shuffle_j_r[PAL_BITS-1:0];
+                ssub <= SSUB_RD_LO;
+            end
+            SSUB_RD_LO: begin
+                // rdata now holds mem[i]; mem[j] read in flight.
+                shuffle_hi_r <= shuffle_phase
+                                ? {{(IDX_BITS-PAL_BITS){1'b0}}, pp_rdata}
+                                : tp_rdata;
+                ssub <= SSUB_WR_LO;
+            end
+            SSUB_WR_LO: begin
+                // rdata now holds mem[j]; write it to [i].
+                if (!shuffle_phase) begin
+                    tp_we <= 1'b1; tp_waddr <= shuffle_idx; tp_wdata <= tp_rdata;
+                end else begin
+                    pp_we <= 1'b1; pp_waddr <= shuffle_idx[PAL_BITS-1:0]; pp_wdata <= pp_rdata;
+                end
+                ssub <= SSUB_WR_HI;
+            end
+            SSUB_WR_HI: begin
+                // Write held mem[i] to [j]; advance / flip phase / finish.
+                if (!shuffle_phase) begin
+                    tp_we <= 1'b1; tp_waddr <= shuffle_j_r; tp_wdata <= shuffle_hi_r;
                     if (shuffle_idx == IDX_ONE) begin
                         shuffle_phase <= 1'b1;
                         shuffle_idx   <= {{(IDX_BITS-PAL_BITS){1'b0}}, PALETTE_LAST_IDX};
                     end else begin
                         shuffle_idx <= shuffle_idx - IDX_ONE;
                     end
-                end
-            end else begin
-                palette_lfsr <= next_palette_lfsr2;
-                if (palette_shuffle_accept) begin
-                    palette_playlist[shuffle_idx[PAL_BITS-1:0]]        <= palette_lo_val;
-                    palette_playlist[shuffle_palette_j[PAL_BITS-1:0]]  <= palette_hi_val;
+                end else begin
+                    pp_we <= 1'b1; pp_waddr <= shuffle_j_r[PAL_BITS-1:0]; pp_wdata <= shuffle_hi_r[PAL_BITS-1:0];
                     if (shuffle_idx == IDX_ONE) begin
-                        target_idx          <= target_playlist[0];
-                        palette_idx         <= palette_first_val;
-                        target_playlist_pos <= IDX_ONE;
-                        palette_playlist_pos<= PAL_ONE;
-                        state <= S_LOAD;
+                        // Done: start playback from playlist position 0 via
+                        // the S_NEXT advance machinery (replaces the old
+                        // combinational playlist[0] read + S_LOAD entry).
+                        target_playlist_pos  <= IDX_ZERO;
+                        palette_playlist_pos <= PAL_ZERO;
+                        adv_ph <= 2'd0;
+                        state  <= S_NEXT;
                     end else begin
                         shuffle_idx <= shuffle_idx - IDX_ONE;
                     end
                 end
+                ssub <= SSUB_DRAW;
             end
+            default: ssub <= SSUB_DRAW;
+            endcase
         end
+        // S_LOAD is no longer entered (the shuffle exits through the
+        // S_NEXT advance machinery since the MLAB restructure); kept as
+        // a safe landing state for the 4-bit encoding.
         S_LOAD: begin
             if (!enable) begin
                 active <= 1'b0;
@@ -377,7 +490,7 @@ always @(posedge clk or negedge rst_n) begin
                 dwell_count <= 16'd0;
                 active <= 1'b1;
                 view_changed <= 1'b1;
-                next_loaded <= 1'b0;
+                adv_ph <= 2'd0;
                 zoom_out_final_pending <= 1'b0;
                 state <= S_ZOOM_IN;
             end
@@ -406,7 +519,7 @@ always @(posedge clk or negedge rst_n) begin
                 view_changed <= 1'b1;
                 state <= S_HOLD;
             end
-            else if (skip_next) begin dwell_count<=16'd0; next_loaded<=1'b0; state<=S_NEXT; end
+            else if (skip_next) begin dwell_count<=16'd0; adv_ph<=2'd0; state<=S_NEXT; end
             else begin
                 // Dwell counts vblanks (wall-clock); zoom-in steps still
                 // gated on frame_done so each step shows a finished frame.
@@ -421,11 +534,11 @@ always @(posedge clk or negedge rst_n) begin
                     if (dwell_done) begin
                         dwell_count <= 16'd0;
                         zoom_out_final_pending <= 1'b0;
-                        // Reset next_loaded so S_NEXT actually advances to
+                        // Reset adv_ph so S_NEXT actually advances to
                         // the next POI/palette (S_ZOOM_OUT does this too,
                         // but when we skip directly to S_NEXT we'd loop on
                         // the same POI without it).
-                        next_loaded <= 1'b0;
+                        adv_ph <= 2'd0;
                         // Skip the zoom-out animation when disabled
                         state <= attract_zoom_out_enable ? S_ZOOM_OUT : S_NEXT;
                     end else if (vblank_rise) begin
@@ -446,11 +559,11 @@ always @(posedge clk or negedge rst_n) begin
                 view_changed <= 1'b1;
                 state <= S_HOLD;
             end
-            else if (skip_next) begin dwell_count<=16'd0; next_loaded<=1'b0; zoom_out_final_pending<=1'b0; state<=S_NEXT; end
+            else if (skip_next) begin dwell_count<=16'd0; adv_ph<=2'd0; zoom_out_final_pending<=1'b0; state<=S_NEXT; end
             else if (frame_done) begin
                 if (zoom_out_final_pending) begin
                     zoom_out_final_pending <= 1'b0;
-                    next_loaded <= 1'b0;
+                    adv_ph <= 2'd0;
                     dwell_count <= 16'd0;
                     state <= S_NEXT;
                 end else if (step >= DEFAULT_STEP) begin
@@ -469,19 +582,33 @@ always @(posedge clk or negedge rst_n) begin
             end
         end
         S_NEXT: begin
+            // 4-phase advance (synchronous playlist reads):
+            //   0: queue reads at the current positions
+            //   1: reads in flight
+            //   2: latch new target/palette idx, advance positions
+            //   3: rom_cx/snap_step now reflect the new idx — load view
             if (!enable) begin active<=1'b0; state<=S_IDLE; dwell_count<=16'd0; end
-            else if (!next_loaded) begin
-                target_idx <= target_playlist[target_playlist_pos];
-                palette_idx <= palette_playlist[palette_playlist_pos];
+            else case (adv_ph)
+            2'd0: begin
+                tp_raddr <= target_playlist_pos;
+                pp_raddr <= palette_playlist_pos;
+                adv_ph   <= 2'd1;
+            end
+            2'd1: adv_ph <= 2'd2;
+            2'd2: begin
+                target_idx  <= tp_rdata;
+                palette_idx <= pp_rdata;
                 target_playlist_pos  <= (target_playlist_pos  == TARGET_LAST_IDX)  ? IDX_ZERO : (target_playlist_pos  + IDX_ONE);
                 palette_playlist_pos <= (palette_playlist_pos == PALETTE_LAST_IDX) ? PAL_ZERO : (palette_playlist_pos + PAL_ONE);
-                next_loaded <= 1'b1;
-            end else begin
+                adv_ph <= 2'd3;
+            end
+            default: begin
                 center_x<=rom_cx; center_y<=rom_cy;
                 step <= attract_zoom_in_enable ? DEFAULT_STEP : snap_step;
                 zoom_steps<=16'd0; dwell_count<=16'd0;
-                view_changed<=1'b1; state<=S_ZOOM_IN;
+                view_changed<=1'b1; active<=1'b1; state<=S_ZOOM_IN;
             end
+            endcase
         end
         S_HOLD: begin
             // Static hold at canonical zoom. Exits on:
@@ -492,27 +619,35 @@ always @(posedge clk or negedge rst_n) begin
                 active <= 1'b0;
                 state <= S_IDLE;
             end else if (snap_next) begin
-                next_loaded <= 1'b0;
+                adv_ph <= 2'd0;
                 state <= S_SNAP_LOAD;
             end else if (skip_next) begin
-                dwell_count<=16'd0; next_loaded<=1'b0;
+                dwell_count<=16'd0; adv_ph<=2'd0;
                 zoom_out_final_pending<=1'b0;
                 state<=S_NEXT;
             end
         end
         S_SNAP_LOAD: begin
+            // Same 4-phase advance as S_NEXT, landing in S_HOLD at the
+            // POI's canonical snap depth.
             if (!enable) begin
                 active <= 1'b0;
                 state <= S_IDLE;
-            end else if (!next_loaded) begin
-                // Cycle 1: advance playlist, latch new target_idx
-                target_idx <= target_playlist[target_playlist_pos];
-                palette_idx <= palette_playlist[palette_playlist_pos];
+            end else case (adv_ph)
+            2'd0: begin
+                tp_raddr <= target_playlist_pos;
+                pp_raddr <= palette_playlist_pos;
+                adv_ph   <= 2'd1;
+            end
+            2'd1: adv_ph <= 2'd2;
+            2'd2: begin
+                target_idx  <= tp_rdata;
+                palette_idx <= pp_rdata;
                 target_playlist_pos  <= (target_playlist_pos  == TARGET_LAST_IDX)  ? IDX_ZERO : (target_playlist_pos  + IDX_ONE);
                 palette_playlist_pos <= (palette_playlist_pos == PALETTE_LAST_IDX) ? PAL_ZERO : (palette_playlist_pos + PAL_ONE);
-                next_loaded <= 1'b1;
-            end else begin
-                // Cycle 2: rom_cx/rom_cy and target_zoom_int now reflect new target_idx
+                adv_ph <= 2'd3;
+            end
+            default: begin
                 center_x <= rom_cx;
                 center_y <= rom_cy;
                 step <= snap_step;
@@ -520,6 +655,7 @@ always @(posedge clk or negedge rst_n) begin
                 active <= 1'b1;
                 state <= S_HOLD;
             end
+            endcase
         end
         default: state <= S_IDLE;
         endcase
