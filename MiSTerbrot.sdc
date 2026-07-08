@@ -41,10 +41,20 @@ set_net_delay -max 20 -from [get_registers {*u_quad|ctx_escaped[*]*}]
 # 20 ns single-cycle default and drags fitter effort away from clk_iter.
 # Real budget: BRAM data lands one clk after the address tick, capture on
 # the next tick -> exactly 3 clk_sys cycles in 640 mode (7 in 320 mode).
+# Narrowed to the FINAL color registers only: since the two-pass palette
+# evaluation (2026-07-08), the fb -> pass-A capture registers (cidx_*_r,
+# color_f*_*) are genuinely single-cycle and must stay unrelaxed.  The
+# fb paths still reaching the final regs directly (escaped, band select,
+# cycle_frac) retain the full 3-cycle budget.
 # NOTE: constrained -from the framebuffer so the ce_pix enable path into
 # the same registers stays single-cycle.
-set_multicycle_path -setup 3 -from [get_registers {*u_framebuffer|*}] -to [get_registers {*u_color_mapper|*}]
-set_multicycle_path -hold  2 -from [get_registers {*u_framebuffer|*}] -to [get_registers {*u_color_mapper|*}]
+set_multicycle_path -setup 3 -from [get_registers {*u_framebuffer|*}] -to [get_registers {*u_color_mapper|color_r[*]* *u_color_mapper|color_g[*]* *u_color_mapper|color_b[*]*}]
+set_multicycle_path -hold  2 -from [get_registers {*u_framebuffer|*}] -to [get_registers {*u_color_mapper|color_r[*]* *u_color_mapper|color_g[*]* *u_color_mapper|color_b[*]*}]
+
+# (The earlier shared-evaluator false path fb -> color_a_*/color_b_* was
+# removed with the three-evaluator restructure: every evaluator now reads
+# registered inputs only, so no structural fb path to those registers
+# exists.  fb's only single-cycle destination is the cidx_*_r adder path.)
 
 # Same cadence argument for the overlay/compositing cone: vid_pixel_*_d /
 # vid_active_d update on ce_pix (fractal_top), color_mapper's output regs

@@ -19,8 +19,8 @@ MiSTerbrot is a MiSTer FPGA core for real-time Mandelbrot set rendering on the D
   - **Secondary**: LG C1 OLED via HDMI
 - **15 kHz CRT support is a hard requirement** even though we cannot test it locally. Many MiSTer users drive RGB SCART / arcade monitors at the SD line rate, and the core's native 240p timing (15.625 kHz line rate, ~59.7 Hz refresh) is what makes that work. Any change to `rtl/video_timing.v` or the analog video path must preserve this — break 15 kHz output and we lose a chunk of the user base. Validate on the multisync VGA CRT here at minimum; defer to community feedback for true 15 kHz fixed-frequency displays.
 - Build implications: do **not** enable `MISTER_DISABLE_YC` even though we don't deliberately use Y/C output — the analog addon board path shares framework code with the YC encoder, and removing it has not been validated against the CRT. Audio is unused, so `MISTER_DISABLE_ALSA` is safe.
-- Current fitted build resource usage (post-A2 + A3 + A7 + cy=0 fix + Attract Mode + Color Depth + Color Cycling submenu + Palette Crossfade):
-  - ALMs at `92%` — the crossfade feature (4 parallel palette evaluators) pushed this up from the earlier `85%` band; see `output_files/MiSTerbrot.fit.summary` after each compile.  ALM recovery candidate: time-multiplex the crossfade palette lookups (2 evaluators instead of 4).
+- Current fitted build resource usage (post-A2 + A3 + A7 + cy=0 fix + Attract Mode + Color Depth + Color Cycling submenu + Palette Crossfade + 3-eval restructure):
+  - ALMs at `88%` — the crossfade feature had peaked at 92% with 4 parallel palette evaluators; the staged three-evaluator restructure (2026-07-08) recovered ~4%.  See `output_files/MiSTerbrot.fit.summary` after each compile.
   - DSP blocks stay pinned at `112 / 112` (`100%`)
   - RAM blocks around `77%`
   - PLLs `3 / 6` (`50%`)
@@ -68,7 +68,7 @@ Major blocks:
 - `rtl/pixel_pipeline.v`
   - `24` logical iterators total (`N_ITERATORS=24`)
   - Implemented as `4` instances of `rtl/iter_quad.v`, each serving six alternating contexts (6-context DSP time-share)
-  - Dispatch and collect FSMs run in `clk_sys`; the iterator math runs in `clk_iter`. Round-robin dispatch fills idle slots; result valid pulses on clk_sys when a slot completes.
+  - Dispatch and collect FSMs run in `clk_sys`; the iterator math runs in `clk_iter`. **Dispatch targets the first free slot** (priority encoder over the busy vector, 2026-07-08); the collect FSM walks slots round-robin with per-slot pending flags.  The original in-order ring (`dispatch_idx` advancing only on dispatch) confined the in-flight set to a contiguous window of ≤24 consecutive scan pixels — one slow pixel idled the other 23 iterators once their pixels finished (head-of-line blocking).  Free-slot dispatch measured 1.90× faster to frame_done on a mixed-content seahorse-valley frame in Verilator (bit-identical per-pixel results, verified against the pre-change pipeline).
   - **A3 plumbing**: `p3_precheck_enable` input (CDC-synced to `clk_iter` with a 2-FF chain, same pattern as `max_iter`) gates the period-3 bulb precheck in iter_quad.  Driven by `fractal_top.v` from the OSD setting + per-POI bench flag.
 - `rtl/iter_quad.v`
   - Six Mandelbrot iterators sharing the multiplier pipeline via 6-context DSP time-multiplexing
@@ -87,6 +87,7 @@ Major blocks:
 - `rtl/color_mapper.v`
   - Integer escape-count based mapping
   - Uses only `iter_count[7:0]` as the palette index, so colors wrap every `256` iterations
+  - **Staged three-evaluator lookup** (2026-07-08): the crossfade originally instantiated four parallel 90-palette procedural evaluators (~11.2k ALUTs, 20% of the design's combinational logic).  Now three dedicated evaluators (TO-base, TO-next, FROM-base) run off ce_pix-staged registered indices: cidx pair registers 2 clk after the tick, evaluators capture on the next clk, blends-only in the final cycle — output latency unchanged, steady-state output bit-identical (Verilator equivalence vs the 4-eval original: 26,916 pixel comparisons, 0 mismatches).  Quality note: the FROM (outgoing) palette has no next-entry lookup, so during a 1-2 s crossfade the dissolving image's cycling interpolation is hard-stepped — imperceptible under the incoming image.  Every evaluator input is a register, which is what let clk_sys close timing (a live BRAM→adder→evaluator single-cycle variant missed by ~1.3 ns at any seed).
   - Color cycling (On/Off toggle) uses a `12-bit` phase accumulator for palette offset plus 4-bit adjacent-entry blending. Toggled via OSD, keyboard `C`, or joystick `B`.
   - `90` procedural palettes (indices `7'd0`..`7'd89`)
 - **A2 mirror-write FIFO** (in `fractal_top.v`, not a separate module): when `sym_active_frame=1` (real-axis POI), every pipeline result for rows `0..119` also needs a mirror write to row `(239-y)`.  The framebuffer has a single write port per bank, so the mirror is enqueued into a 32-deep FIFO and drained on cycles where the pipeline isn't producing a result.  Backpressure on `coord_generator` (both `cg_valid` and `cg_ready` gated) prevents overflow on sustained-fast scenes.  Both sides of the valid/ready handshake must be gated — gating only `cg_ready` lets the pipeline redispatch the held pixel into every free slot, causing 24× redundant work (discovered the hard way).
@@ -446,9 +447,10 @@ Requires Python 3 with `numpy` and `Pillow`. The pipeline is the source of truth
 
 ### Throughput / timing
 
-- **Timing state (2026-07-08, seed 7, placement effort 4.0):** `clk_sys` closes at `+1.5` ns after the SDC multicycle work (it had been silently failing at `-5.8` ns since the crossfade feature — the video compositing cone is ce_pix-cadenced but was being analyzed single-cycle, and nobody read the STA summary).  `clk_iter` is at `-0.53` ns worst / `-9.3` TNS against the 85 °C slow-corner model on the known phase→operand-mux path — a seed sweep (1/3/5/7/9) found no closing placement at the current `92%` ALM congestion.  Runs correctly on bench silicon at room temp (slow-corner margin).  **Closing clk_iter again most likely requires the color_mapper ALM diet** (crossfade currently instantiates 4 parallel 90-palette evaluators; 2 would suffice with time-multiplexing).
+- **Timing state (2026-07-08 evening, seed 5, placement effort 4.0): ALL clocks closed.**  `clk_iter +0.060` ns, `clk_sys +2.17` ns, HDMI PLL `+0.33` ns — the first fully timing-clean build since the crossfade feature.  Three things got it there: (1) SDC multicycle constraints encoding the ce_pix video cadence (clk_sys had been silently failing at `-5.8` ns; the fake goals were also soaking fitter effort away from clk_iter), (2) the color_mapper three-evaluator restructure freeing ~4% ALMs (92% → 88%) and keeping every palette-evaluator input registered, (3) seed sweep on the final netlist (parallel scratchpad builds; seed 5 closed, 3/7/9 did not — margins remain seed-sensitive, re-sweep after any netlist change).
 - Historical: pre-crossfade builds closed `clk_iter` with marginal positive slack (+0.013 to +0.42 ns; placement-variant, seed-sensitive).
 - Per the 90-POI bench sweep: real-axis POIs reach clean 2.00× speedup from A2 on the half that aren't vsync-capped already; period-3 bulb POIs go from 2.5-6.7 fps to vsync-cap or close (P3 BULB DEEP 2.5 → 59.7 fps via A3, P3 BULB UPPER/LOWER 6.7 → 12.0 fps).  Catalogue geomean is up ~13% vs the pre-A2 baseline.
+- **Free-slot dispatch (P1, 2026-07-08): catalogue geomean +17%** (measured, 90-scene A/B, zero regressions).  43 scenes improved >5%; the seahorse/valley family gained 50-98% (SEAHORSE TAIL 12→19.9, SEAHORSE TAIL2 10→19.8, R2T 1/2 ISLE STEP 6→11.9); ELEPHANT TRUNK, EJS CAULI and M_8,4 CASCADE 2 hit the vsync cap (29.8→59.6).  Interior-bound deep satellites moved only 5-18% — as predicted, their homogeneous max-iter workload has no head-of-line asymmetry to reclaim; they are the periodicity-detection (P2) target.  Gains are vsync-quantized (fps values are 596/n).
 
 ## Known Issues
 
@@ -473,11 +475,11 @@ The only genuine inferred latch in the build is Quartus Warning 10240 on the `in
 - Core math currently relies on `8.56` fixed-point and truncated multiply decomposition; changing this has wide impact.
 - The active framebuffer is on-chip BRAM, sized for `640×240` × 13 bits per bank.
 - Double buffering and VBLANK-only swap are core correctness constraints.
-- Project headroom (post-crossfade):
+- Project headroom (post-3-eval restructure, 2026-07-08):
   - `100%` DSP usage (no headroom)
   - `77%` RAM blocks
-  - `92%` ALMs — critically tight.  The color_mapper crossfade (4 parallel palette evaluators) is the top ALM-recovery candidate.  Future work adding state machines (e.g., Track B SDRAM controller, MS region_manager re-instantiation) is effectively blocked until ALMs are recovered.
-  - clk_iter at 100 MHz currently `-0.53` ns at the slow corner (see Throughput / timing)
+  - `88%` ALMs (36,908) — recovered from the 92% crossfade peak via the color_mapper three-evaluator restructure.  Next ALM-recovery candidates if Track B / periodicity work needs room: text_overlay (4.9k ALUTs), auto_zoom zoom-compare cone (4.4k ALUTs).
+  - clk_iter at 100 MHz closed at `+0.060` ns (seed 5; margins are seed-sensitive — re-sweep after netlist changes)
 - Any feature work that increases arithmetic width, palette logic depth, framebuffer width, or control complexity must be evaluated against those limits first.
 
 ## Practical Guidance

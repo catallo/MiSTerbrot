@@ -234,16 +234,32 @@ assign frame_done = coord_frame_done & ~any_busy;
 // Per-slot done_pending flag latches the synchronized done pulse, so
 // the collect FSM can pick it up whenever collect_idx wraps around to it.
 // Without this, pulses arriving while collect_idx is elsewhere would be lost.
+//
+// Dispatch targets the FIRST FREE slot (priority encoder over the busy
+// vector).  The previous in-order ring (`dispatch_idx` advancing only on
+// dispatch) meant the in-flight set was always a contiguous window of
+// <=24 consecutive scan pixels: one slow pixel stalled the window and
+// idled the other 23 iterators once their pixels finished — severe
+// head-of-line blocking on scenes with interleaved fast/slow pixels
+// (dendrites, seahorse valley).  Free-slot dispatch lets fast slots
+// recycle immediately regardless of the stragglers.
 // =====================================================================
-reg [IDX_W-1:0] dispatch_idx, collect_idx;
+reg [IDX_W-1:0] collect_idx;
 reg             iter_done_pending [0:N_ITERATORS-1];
-wire dispatch_slot_free = !iter_busy[dispatch_idx];
-assign coord_ready = dispatch_slot_free;
+
+// First-free priority encoder over the (already flattened) busy vector.
+reg [IDX_W-1:0] dispatch_slot;
+integer pe;
+always @(*) begin
+    dispatch_slot = {IDX_W{1'b0}};
+    for (pe = N_ITERATORS - 1; pe >= 0; pe = pe - 1)
+        if (!busy_flat[pe]) dispatch_slot = pe[IDX_W-1:0];
+end
+assign coord_ready = ~&busy_flat;
 
 integer i;
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
-        dispatch_idx <= {IDX_W{1'b0}};
         collect_idx  <= {IDX_W{1'b0}};
         result_valid <= 1'b0;
         result_x <= 11'd0; result_y <= 10'd0;
@@ -268,18 +284,16 @@ always @(posedge clk or negedge rst_n) begin
                 iter_done_pending[i] <= 1'b1;
         end
 
-        // ---- Dispatch ----
+        // ---- Dispatch (first free slot) ----
         if (coord_valid && coord_ready) begin
             // Toggle the slot's start bit; CDC pulse-syncs into clk_iter.
-            iter_start_q[dispatch_idx] <= ~iter_start_q[dispatch_idx];
-            iter_busy[dispatch_idx]    <= 1'b1;
-            iter_px[dispatch_idx]      <= coord_px;
-            iter_py[dispatch_idx]      <= coord_py;
-            iter_cr[dispatch_idx]      <= coord_cr;
-            iter_ci[dispatch_idx]      <= coord_ci;
-            iter_rid[dispatch_idx]     <= coord_region_id;
-            dispatch_idx <= (dispatch_idx == N_ITERATORS[IDX_W-1:0] - 1'b1)
-                            ? {IDX_W{1'b0}} : dispatch_idx + 1'b1;
+            iter_start_q[dispatch_slot] <= ~iter_start_q[dispatch_slot];
+            iter_busy[dispatch_slot]    <= 1'b1;
+            iter_px[dispatch_slot]      <= coord_px;
+            iter_py[dispatch_slot]      <= coord_py;
+            iter_cr[dispatch_slot]      <= coord_cr;
+            iter_ci[dispatch_slot]      <= coord_ci;
+            iter_rid[dispatch_slot]     <= coord_region_id;
         end
 
         // ---- Collect ----

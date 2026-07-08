@@ -117,7 +117,10 @@ wire [7:0] cycle_idx_offset = cycle_enable ? phase_for_pixel[11:4]              
 wire [3:0] cycle_frac       = (cycle_enable & ~cycle_blend_hard) ? phase_for_pixel[3:0] : 4'd0;
 
 wire [7:0] base_cidx = iter_count[7:0] + cycle_idx_offset;
-wire [7:0] next_cidx = base_cidx + 8'd1;
+// Parallel 3-input add (not base_cidx + 1): keeps the next-entry index
+// off the serial two-adder path — it feeds the single-cycle pass-A
+// evaluator stage where that extra adder level was the worst slack.
+wire [7:0] next_cidx = iter_count[7:0] + cycle_idx_offset + 8'd1;
 
 // Palette Transition (crossfade) state.  pal_to is the current target
 // palette (latches palette_sel); pal_from is the previous one, blended
@@ -132,14 +135,40 @@ wire       fade_active = (fade_counter != 7'd0);
 // rate which read as ~10 fps choppiness).
 wire [5:0] crossfade_frac = fade_counter[6:1];   // 63 → 0 across the fade
 
-// Look up each pixel's color from BOTH palettes (FROM and TO) so we
-// can crossfade.  When fade is inactive (pal_from == pal_to or
-// fade_counter == 0) the FROM lookup output is unused — synthesis will
-// usually optimise it away.
-reg [7:0] color_a_r, color_a_g, color_a_b;          // TO   palette, base entry
-reg [7:0] color_b_r, color_b_g, color_b_b;          // TO   palette, next entry
-reg [7:0] color_fa_r, color_fa_g, color_fa_b;       // FROM palette, base entry
-reg [7:0] color_fb_r, color_fb_g, color_fb_b;       // FROM palette, next entry
+// === Staged three-evaluator palette lookup (ALM diet, 2026-07-08) =====
+// The crossfade wants four palette lookups per pixel: {FROM, TO} palette
+// x {base, next} entry.  Four parallel evaluators cost ~11.2k ALUTs
+// (20% of the device's combinational logic).  The video path is
+// ce_pix-cadenced (>=4 clk cycles per pixel), so the lookups are staged
+// behind registered indices instead:
+//   tick T : ce_pix; vid pixel advances, PREVIOUS pixel's colors latch
+//   T+1    : framebuffer BRAM output registers the new pixel's data
+//   T+2    : cidx pair computed and REGISTERED (short adder path, ce_d2)
+//   T+3    : three dedicated evaluators (TO-base, TO-next, FROM-base),
+//            all combinational from registers, capture on ce_d3
+//   T+4..  : blends only; final capture on the next tick, as before —
+//            output latency unchanged.
+// Every evaluator input is a register (cidx_*_r, pal_to, pal_from), so
+// each eval stage has a clean single cycle with no BRAM routing in the
+// cone — this shape closes timing where the earlier live-index variant
+// (evaluate straight off the BRAM output in one cycle) missed by ~1.3ns.
+//
+// Quality note: the FROM (outgoing) palette drops its next-entry lookup,
+// so during a crossfade (~1-2 s) the dissolving image's color-cycling
+// interpolation is hard-stepped instead of 16-level smoothed.  The
+// incoming palette keeps full quality; steady-state rendering is
+// bit-identical to the original four-evaluator design.
+// rd_data stays stable until after the next tick, so the live `escaped`
+// and band-select paths at the final capture still see the current pixel.
+reg        ce_d1, ce_d2, ce_d3;                     // tick delay chain
+reg [7:0]  cidx_base_r, cidx_next_r;                // cidx pair, latched T+2
+reg [7:0] color_a_r, color_a_g, color_a_b;          // TO   palette, base entry (latched T+3)
+reg [7:0] color_b_r, color_b_g, color_b_b;          // TO   palette, next entry (latched T+3)
+reg [7:0] color_fa_r, color_fa_g, color_fa_b;       // FROM palette, base entry (latched T+3)
+
+reg [7:0] eval_tb_r, eval_tb_g, eval_tb_b;          // TO-base evaluator out
+reg [7:0] eval_tn_r, eval_tn_g, eval_tn_b;          // TO-next evaluator out
+reg [7:0] eval_fb_r, eval_fb_g, eval_fb_b;          // FROM-base evaluator out
 
 wire [4:0] blend_a_weight = 5'd16 - {1'b0, cycle_frac};
 wire [4:0] blend_b_weight = {1'b0, cycle_frac};
@@ -2323,20 +2352,49 @@ task palette_rgb;
     end
 endtask
 
+// Three dedicated evaluators, all reading registered inputs only.
 always @(*) begin
-    palette_rgb(pal_to,   base_cidx, color_a_r,  color_a_g,  color_a_b);
-    palette_rgb(pal_to,   next_cidx, color_b_r,  color_b_g,  color_b_b);
-    palette_rgb(pal_from, base_cidx, color_fa_r, color_fa_g, color_fa_b);
-    palette_rgb(pal_from, next_cidx, color_fb_r, color_fb_g, color_fb_b);
+    palette_rgb(pal_to,   cidx_base_r, eval_tb_r, eval_tb_g, eval_tb_b);
+    palette_rgb(pal_to,   cidx_next_r, eval_tn_r, eval_tn_g, eval_tn_b);
+    palette_rgb(pal_from, cidx_base_r, eval_fb_r, eval_fb_g, eval_fb_b);
+end
+
+// Stage sequencing + capture.  ce_d1..ce_d3 track the ce_pix tick; the
+// cidx pair registers on ce_d2, all three evaluator outputs on ce_d3.
+// No reset needed — the pipeline self-flushes within one tick period and
+// blanking hides warmup pixels.
+always @(posedge clk) begin
+    ce_d1 <= pixel_valid_in;
+    ce_d2 <= ce_d1;
+    ce_d3 <= ce_d2;
+    if (ce_d2) begin
+        cidx_base_r <= base_cidx;
+        cidx_next_r <= next_cidx;
+    end
+    if (ce_d3) begin
+        color_a_r  <= eval_tb_r;
+        color_a_g  <= eval_tb_g;
+        color_a_b  <= eval_tb_b;
+        color_b_r  <= eval_tn_r;
+        color_b_g  <= eval_tn_g;
+        color_b_b  <= eval_tn_b;
+        color_fa_r <= eval_fb_r;
+        color_fa_g <= eval_fb_g;
+        color_fa_b <= eval_fb_b;
+    end
 end
 
 // Cycling blend within each palette
 wire [7:0] to_blend_r   = blend_channel(color_a_r,  color_b_r,  cycle_frac);
 wire [7:0] to_blend_g   = blend_channel(color_a_g,  color_b_g,  cycle_frac);
 wire [7:0] to_blend_b   = blend_channel(color_a_b,  color_b_b,  cycle_frac);
-wire [7:0] from_blend_r = blend_channel(color_fa_r, color_fb_r, cycle_frac);
-wire [7:0] from_blend_g = blend_channel(color_fa_g, color_fb_g, cycle_frac);
-wire [7:0] from_blend_b = blend_channel(color_fa_b, color_fb_b, cycle_frac);
+// FROM (outgoing) palette uses the base entry only — its next-entry
+// evaluator was dropped in the three-evaluator restructure.  During a
+// crossfade the dissolving image's cycling interpolation is hard-stepped;
+// steady-state output never uses these values.
+wire [7:0] from_blend_r = color_fa_r;
+wire [7:0] from_blend_g = color_fa_g;
+wire [7:0] from_blend_b = color_fa_b;
 
 // Crossfade blend.  When inactive, output the TO palette directly.
 // blend_channel_64(a, b, frac): a=TO, b=FROM, weights add to 64.
