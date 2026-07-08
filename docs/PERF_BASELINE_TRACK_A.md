@@ -56,6 +56,118 @@ with `tools/bench_diff.py <before.json> <after.json>`.
 
 ---
 
+## 2026-07-08 · `free-slot-dispatch + 3-eval color_mapper` — P1 + P6 from the full-codebase review
+
+Build: `MiSTerbrot_20260708.rbf` (seed 5, placement effort 4.0, **all clocks
+closed**: clk_iter +0.060 / clk_sys +2.17 / HDMI +0.33; ALMs 88%).
+Baseline = same-day build with only the coord_generator last-pixel +
+A2 sym-skew bug fixes (seed 7).  Changes measured here:
+
+- **P1 free-slot dispatch** (pixel_pipeline): first-free priority encoder
+  replaces the in-order ring; kills head-of-line blocking.
+- **P6 three-evaluator color_mapper** (display path only — no fps effect;
+  included for attribution completeness).
+
+**Geomean +17.0% (1.17x), zero regressions, 43/90 scenes >5% faster.**
+Seahorse/valley family +50..98%; ELEPHANT TRUNK, EJS CAULI, M_8,4
+CASCADE 2 newly vsync-capped.  Interior-bound deep satellites +5..18%
+only (homogeneous max-iter load — periodicity detection is their fix).
+
+| idx | scene | F10 before | F10 after | ratio |
+|----:|-------|-----------:|----------:|------:|
+| 0 | P6 SUB BULB | 596 | 596 | 1.00x |
+| 1 | P3 ISLAND | 596 | 596 | 1.00x |
+| 2 | P3 ISLAND TIP | 596 | 596 | 1.00x |
+| 3 | P4 ISLAND | 596 | 596 | 1.00x |
+| 4 | P5 ISLAND | 299 | 299 | 1.00x |
+| 5 | P6 ISLAND | 595 | 595 | 1.00x |
+| 6 | P7 ISLAND | 298 | 298 | 1.00x |
+| 7 | P8 ISLAND | 298 | 298 | 1.00x |
+| 8 | P9 ISLAND | 298 | 298 | 1.00x |
+| 9 | P11 ISLAND | 198 | 199 | 1.01x |
+| 10 | P22 ISLAND | 120 | 198 | 1.65x |
+| 11 | ELEPHANT TRUNK | 298 | 596 | 2.00x |
+| 12 | ELEPHANT HEADS | 67 | 100 | 1.49x |
+| 13 | ELEPHANT ISLAND | 32 | 35 | 1.09x |
+| 14 | ELEPHANT P19 | 149 | 198 | 1.33x |
+| 15 | ELEPHANT P16 | 150 | 198 | 1.32x |
+| 16 | SEAHORSE BODY | 50 | 86 | 1.72x |
+| 17 | SEAHORSE TAIL | 120 | 199 | 1.66x |
+| 18 | SEAHORSE DEEP | 40 | 66 | 1.65x |
+| 19 | SEAHORSE TAIL2 | 100 | 198 | 1.98x |
+| 20 | DOUBLE HOOK | 119 | 149 | 1.25x |
+| 21 | SH SATELLITE | 60 | 85 | 1.42x |
+| 22 | SAT ANTENNA | 17 | 20 | 1.18x |
+| 23 | SAT HEAD | 11 | 12 | 1.09x |
+| 24 | SAT SEAHORSE | 10 | 11 | 1.10x |
+| 25 | SAT DBL SPIRAL | 9 | 10 | 1.11x |
+| 26 | JULIA ISLANDS | 22 | 23 | 1.05x |
+| 27 | TRIPLE WEST | 31 | 46 | 1.48x |
+| 28 | TRIPLE DEEP | 59 | 100 | 1.69x |
+| 29 | FEIGENBAUM | 198 | 297 | 1.50x |
+| 30 | FEIGENBAUM ZOOM | 119 | 149 | 1.25x |
+| 31 | FEIGENBAUM DEEP | 54 | 60 | 1.11x |
+| 32 | GEN FEIGENBAUM | 596 | 597 | 1.00x |
+| 33 | MISIUREWICZ M4 | 597 | 596 | 1.00x |
+| 34 | MISIUREWICZ M4-2 | 298 | 299 | 1.00x |
+| 35 | MISIUREWICZ SPIR | 149 | 199 | 1.34x |
+| 36 | MISIUREWICZ -1.94 | 595 | 596 | 1.00x |
+| 37 | MISIUREWICZ -1.84 | 596 | 596 | 1.00x |
+| 38 | DBL SPIRAL P4 | 596 | 596 | 1.00x |
+| 39 | SINGLE SPIRAL | 596 | 596 | 1.00x |
+| 40 | TRIPLE MEDALLION | 199 | 199 | 1.00x |
+| 41 | DBL SPIRAL ISLE | 85 | 99 | 1.16x |
+| 42 | TRIPLE ISLE MED | 75 | 99 | 1.32x |
+| 43 | CAULIFLOWER MED | 149 | 149 | 1.00x |
+| 44 | EJS CAULI | 298 | 596 | 2.00x |
+| 45 | EJS DBL SPIRAL | 149 | 199 | 1.34x |
+| 46 | EJS BRANCH | 199 | 199 | 1.00x |
+| 47 | EJS NUCLEUS | 13 | 14 | 1.08x |
+| 48 | LOVE CANAL | 31 | 34 | 1.10x |
+| 49 | P5 ISLAND DEEP | 148 | 149 | 1.01x |
+| 50 | ELEPHANT MED | 99 | 149 | 1.51x |
+| 51 | STARFISH | 119 | 149 | 1.25x |
+| 52 | M3,1 WAKE 3/7 | 149 | 150 | 1.01x |
+| 53 | M11,1 WAKE 5/11 | 85 | 100 | 1.18x |
+| 54 | CONCHA APPROACH | 593 | 593 | 1.00x |
+| 55 | M7,1 WAKE 1/7 | 150 | 149 | 0.99x |
+| 56 | SH CUSP DEEP | 20 | 21 | 1.05x |
+| 57 | EJS PERIOD 44 | 198 | 197 | 0.99x |
+| 58 | JEWEL BOX | 66 | 100 | 1.52x |
+| 59 | R2T P6 ISLAND | 297 | 298 | 1.00x |
+| 60 | SH CUSP FINE | 10 | 10 | 1.00x |
+| 61 | R2 HALF ISLE | 18 | 23 | 1.28x |
+| 62 | R2T P7 ISLAND | 592 | 593 | 1.00x |
+| 63 | SCEPTER MED | 119 | 120 | 1.01x |
+| 64 | BRANCH MED | 297 | 298 | 1.00x |
+| 65 | EJS P3 DEEP | 75 | 86 | 1.15x |
+| 66 | NEEDLE MED | 298 | 298 | 1.00x |
+| 67 | M3,1 1/3 LIMB TIP | 595 | 597 | 1.00x |
+| 68 | M_4,2 CASCADE 1 | 597 | 597 | 1.00x |
+| 69 | M_8,4 CASCADE 2 | 298 | 596 | 2.00x |
+| 70 | M_16,8 CASCADE 3 | 297 | 298 | 1.00x |
+| 71 | EJS P47 ALPHA | 149 | 199 | 1.34x |
+| 72 | EJS P50 BETA | 198 | 199 | 1.01x |
+| 73 | EJS WAKE 1/4 | 199 | 199 | 1.00x |
+| 74 | SH SPIRAL CONT | 120 | 199 | 1.66x |
+| 75 | SH TAIL SPIRAL | 100 | 150 | 1.50x |
+| 76 | ELEPHANT MED 2 | 149 | 149 | 1.00x |
+| 77 | R2T 1/2 ISLE STEP | 60 | 119 | 1.98x |
+| 78 | BEYER STEP 13 | 23 | 23 | 1.00x |
+| 79 | BEYER STEP 14 | 19 | 20 | 1.05x |
+| 80 | TRIPLE SPIRAL P4 | 16 | 16 | 1.00x |
+| 81 | MERCATOR P189 | 99 | 98 | 0.99x |
+| 82 | MERCATOR P38 | 299 | 298 | 1.00x |
+| 83 | M(3,3) WAKE 1/3 DP | 298 | 298 | 1.00x |
+| 84 | M(7,7) WAKE 1/4 DP | 298 | 298 | 1.00x |
+| 85 | EJS P47 GAMMA | 149 | 198 | 1.33x |
+| 86 | P3 BULB UPPER | 119 | 149 | 1.25x |
+| 87 | P3 BULB LOWER | 119 | 149 | 1.25x |
+| 88 | P3 LIMB FULL | 298 | 298 | 1.00x |
+| 89 | P3 BULB DEEP | 597 | 597 | 1.00x |
+
+---
+
 ## 2026-05-16 · `frame-snapshot` — coord_generator latches step + mode_640 at frame start
 
 Visual correctness fix, **not a perf change**.  Included here because
