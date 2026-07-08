@@ -180,9 +180,19 @@ always @(posedge clk or negedge rst_n) begin
         end
 
         S_DONE: begin
-            valid      <= 1'b0;
-            frame_done <= 1'b1;
+            // Hold the final pixel until the consumer takes it.  Clearing
+            // valid unconditionally here dropped the last pixel of the
+            // frame whenever the dispatcher back-pressured on that exact
+            // cycle (which it almost always does at end-of-frame — the
+            // round-robin ring's oldest slot is still busy), leaving one
+            // permanently stale framebuffer pixel per frame.  frame_done
+            // must not assert until the pixel is actually handed off.
+            if (!valid || ready) begin
+                valid      <= 1'b0;
+                frame_done <= 1'b1;
+            end
             if (start_frame) begin
+                valid          <= 1'b0;
                 px             <= 11'd0;
                 py             <= 10'd0;
                 cr_accum       <= cr_start;

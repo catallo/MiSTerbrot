@@ -19,10 +19,10 @@ MiSTerbrot is a MiSTer FPGA core for real-time Mandelbrot set rendering on the D
   - **Secondary**: LG C1 OLED via HDMI
 - **15 kHz CRT support is a hard requirement** even though we cannot test it locally. Many MiSTer users drive RGB SCART / arcade monitors at the SD line rate, and the core's native 240p timing (15.625 kHz line rate, ~59.7 Hz refresh) is what makes that work. Any change to `rtl/video_timing.v` or the analog video path must preserve this — break 15 kHz output and we lose a chunk of the user base. Validate on the multisync VGA CRT here at minimum; defer to community feedback for true 15 kHz fixed-frequency displays.
 - Build implications: do **not** enable `MISTER_DISABLE_YC` even though we don't deliberately use Y/C output — the analog addon board path shares framework code with the YC encoder, and removing it has not been validated against the CRT. Audio is unused, so `MISTER_DISABLE_ALSA` is safe.
-- Current fitted build resource usage (post-A2 + A3 + A7 + cy=0 fix + Attract Mode + Color Depth):
-  - ALMs holding around the `85%` band — see `output_files/MiSTerbrot.fit.summary` after each compile
+- Current fitted build resource usage (post-A2 + A3 + A7 + cy=0 fix + Attract Mode + Color Depth + Color Cycling submenu + Palette Crossfade):
+  - ALMs at `92%` — the crossfade feature (4 parallel palette evaluators) pushed this up from the earlier `85%` band; see `output_files/MiSTerbrot.fit.summary` after each compile.  ALM recovery candidate: time-multiplex the crossfade palette lookups (2 evaluators instead of 4).
   - DSP blocks stay pinned at `112 / 112` (`100%`)
-  - RAM blocks around `78%`
+  - RAM blocks around `77%`
   - PLLs `3 / 6` (`50%`)
 
 ## Current Architecture
@@ -31,8 +31,8 @@ MiSTerbrot is a MiSTer FPGA core for real-time Mandelbrot set rendering on the D
 
 - `clk_sys` = `50 MHz` — video timing, framebuffer, control logic, coord_generator, dispatch/collect FSMs.
 - `clk_iter` = `100 MHz` (PLL outclk_1) — iterator math (`iter_quad` instances).
-- CDC sits at the `iter_quad` boundary: per-slot `start` toggles into clk_iter via 3-FF synchronizer; `done` edges synchronized back into clk_sys. Slow-changing control buses (`max_iter`, `cr`/`ci`) are sampled when synchronized strobes fire — `view_changed` triggers a frame restart that flushes any in-flight contexts on parameter change.
-- Note: `MiSTerbrot.sdc` still labels `clk_iter` as 90 MHz in a comment; the actual PLL output is 100 MHz and timing closes there with marginal positive slack.
+- CDC sits at the `iter_quad` boundary: per-slot `start` toggles into clk_iter via 3-FF synchronizer; `done` edges synchronized back into clk_sys. Slow-changing control buses (`max_iter`, `cr`/`ci`) are sampled when synchronized strobes fire.  (Note: a parameter change does NOT abort the in-flight frame — the render FSM completes the current frame and re-renders; a torn `max_iter` sample can therefore paint a few wrong pixels for one displayed frame, which the immediate re-render replaces.)
+- `MiSTerbrot.sdc` declares clk_sys/clk_iter as asynchronous clock groups AND bounds the CDC data-bus routing with `set_net_delay -max` constraints (added 2026-07-07).  Without the net-delay bounds the async groups cut all cross-domain timing, leaving the quasi-static buses (`iter_cr`/`iter_ci`, result buses, `max_iter`) free to route arbitrarily slowly — the CDC contract needs them settled within ~2 destination-clock cycles of the synchronized strobe.
 
 ### Core video model
 
@@ -62,8 +62,9 @@ Major blocks:
   - Scans the frame in raster order and maps pixels into complex-plane coordinates from `center_x`, `center_y`, and `step`. Receives `mode_640` so the scan range matches the active resolution.
   - **Complex-plane aspect is always 4:3, regardless of `mode_640`.** 320 mode covers `320·step × 240·step`; 640 mode covers the same complex-plane region but at 2× horizontal resolution via `step_x = step >>> 1`. Both modes evaluate `cr_start = center_x − 160·step` (no mux needed). This invariant is the source-of-truth for the Python reference renderer: `tools/poi_render.py` uses `H_OVERSAMPLE = 2` and `step_x = step / 2` when rendering at 640×240 so its complex-plane coverage matches the FPGA pixel-for-pixel.
   - **Half-step ci grid shift** (`ci_start = center_y − 120·step + step/2`): no pixel row ever lands on `ci=0` exactly.  This avoids the canonical "horizontal line" artifact on views crossing the real axis — `M ∩ ℝ = [-2, 0.25]` is a 1D line of zero imaginary width and a single-sample renderer hitting it would produce dramatically different iter counts than `ci=±step` neighbours.  See Cheritat (math.univ-toulouse.fr) for the underlying description; cost is one constant changed, side-effect is a sub-pixel image shift in ci.
+  - **Last-pixel hold (fixed 2026-07-07).** `S_DONE` previously cleared `valid` unconditionally, presenting the frame's final pixel for exactly one cycle; the dispatcher back-pressures on that cycle almost every frame (the round-robin ring's oldest slot is still busy), so the last pixel was silently dropped and its framebuffer entry stayed permanently stale.  `S_DONE` now holds `valid` (and defers `frame_done`) until the handshake completes.  Reproduced + verified with a Verilator TB (76,799 vs 76,800 handshakes under end-of-frame backpressure).
   - **Frame-start parameter snapshot.** `step` and `mode_640` are latched into `step_frame` / `mode_640_frame` on `start_frame` (S_IDLE → S_SCAN and S_DONE → S_SCAN transitions), and the per-pixel cr increment / per-row ci increment / H_PIXELS check use the latched values.  Without this, auto_zoom's continuous interpolation of `step` between POIs would cause the per-pixel and per-row increments to drift mid-frame, producing visible geometric warping on slow renders (visible at <10 fps).  Same pattern as `sym_frame` (real-axis symmetry per-frame latch).
-  - **Real-axis symmetry mode** (A2): when `symmetry_active=1` (latched per-frame as `sym_frame`), the scan terminates after row 119 instead of row 239.  The caller (`fractal_top.v`) mirror-writes the remaining 120 rows.  Used when `center_y == 0` exactly.
+  - **Real-axis symmetry mode** (A2): when `symmetry_active=1` (latched per-frame as `sym_frame`), the scan terminates after row 119 instead of row 239.  The caller (`fractal_top.v`) mirror-writes the remaining 120 rows.  Used when `center_y == 0` exactly.  **Latch-skew fix (2026-07-07):** `fractal_top` now feeds the raw `cy_is_zero` (not the registered `sym_active_frame`) into `symmetry_active`, so coord_generator and the mirror logic latch the same value on the same `start_render` edge.  Previously coord_generator captured the previous frame's flag: on a sym→non-sym POI transition it scanned only rows 0..119 while the mirror logic (correctly) didn't mirror — one frame with a stale bottom half.
 - `rtl/pixel_pipeline.v`
   - `24` logical iterators total (`N_ITERATORS=24`)
   - Implemented as `4` instances of `rtl/iter_quad.v`, each serving six alternating contexts (6-context DSP time-share)
@@ -198,7 +199,7 @@ Main page:
 | `O[22]`   | Resolution (320×240 / 640×240)|
 | `O[23]`   | Overlay BG (Transparent/Dimmed) |
 | `O[26:25]`| P3 Bulb Precheck (Auto/On/Off) — Auto uses per-POI flag in bench mode |
-| `O[28:27]`| Colors (262K Analog / 16.7M Full / 32K / 4K) — 6/8/5/4 bit output quantization mask |
+| `O[36]`   | Limit Colours to (262K Recommended / 16.7M) — 6-bit output quantization mask on/off |
 | `O[122:121]` | Aspect ratio               |
 
 Attract Mode submenu (page 1):
@@ -445,7 +446,8 @@ Requires Python 3 with `numpy` and `Pillow`. The pipeline is the source of truth
 
 ### Throughput / timing
 
-- Build closes timing at `clk_iter = 100 MHz` with marginal positive slack (typically +0.013 to +0.42 ns; placement-variant, seed-sensitive). Works on real silicon at room temp.
+- **Timing state (2026-07-08, seed 7, placement effort 4.0):** `clk_sys` closes at `+1.5` ns after the SDC multicycle work (it had been silently failing at `-5.8` ns since the crossfade feature — the video compositing cone is ce_pix-cadenced but was being analyzed single-cycle, and nobody read the STA summary).  `clk_iter` is at `-0.53` ns worst / `-9.3` TNS against the 85 °C slow-corner model on the known phase→operand-mux path — a seed sweep (1/3/5/7/9) found no closing placement at the current `92%` ALM congestion.  Runs correctly on bench silicon at room temp (slow-corner margin).  **Closing clk_iter again most likely requires the color_mapper ALM diet** (crossfade currently instantiates 4 parallel 90-palette evaluators; 2 would suffice with time-multiplexing).
+- Historical: pre-crossfade builds closed `clk_iter` with marginal positive slack (+0.013 to +0.42 ns; placement-variant, seed-sensitive).
 - Per the 90-POI bench sweep: real-axis POIs reach clean 2.00× speedup from A2 on the half that aren't vsync-capped already; period-3 bulb POIs go from 2.5-6.7 fps to vsync-cap or close (P3 BULB DEEP 2.5 → 59.7 fps via A3, P3 BULB UPPER/LOWER 6.7 → 12.0 fps).  Catalogue geomean is up ~13% vs the pre-A2 baseline.
 
 ## Known Issues
@@ -454,9 +456,9 @@ Requires Python 3 with `numpy` and `Pillow`. The pipeline is the source of truth
 
 Current fit uses `112 / 112` DSP blocks (`100%`). Any new DSP-based math is effectively blocked unless something else is removed or restructured.
 
-### Latch / combinational-loop warnings
+### Latch warnings — root-caused, harmless (closed 2026-07-07)
 
-The fitted reports include latch-related warnings. `output_files/MiSTerbrot.fit.rpt` reports latch analysis; these need proper root-cause analysis and should not be normalized away as harmless noise.
+The only genuine inferred latch in the build is Quartus Warning 10240 on the `integer i` loop variable in `auto_zoom.v` (reset-branch-only loop index — standard Quartus noise, no functional latch survives synthesis).  Every other "latch" hit in `output_files/MiSTerbrot.fit.rpt` is a MiSTer framework register whose *name* contains "latch" (`f2sdram_safe_terminator|address_latch`), listed in ordinary register tables — not inferred latches.
 
 ### Missing / TODO
 
@@ -471,11 +473,11 @@ The fitted reports include latch-related warnings. `output_files/MiSTerbrot.fit.
 - Core math currently relies on `8.56` fixed-point and truncated multiply decomposition; changing this has wide impact.
 - The active framebuffer is on-chip BRAM, sized for `640×240` × 13 bits per bank.
 - Double buffering and VBLANK-only swap are core correctness constraints.
-- Project headroom (post-A2 + A3):
+- Project headroom (post-crossfade):
   - `100%` DSP usage (no headroom)
-  - `78%` RAM blocks
-  - `85%` ALMs — significantly tighter than pre-A2.  Future work adding state machines (e.g., Track B SDRAM controller, MS region_manager re-instantiation) needs ALM budget consideration.
-  - clk_iter at 100 MHz with marginal positive slack
+  - `77%` RAM blocks
+  - `92%` ALMs — critically tight.  The color_mapper crossfade (4 parallel palette evaluators) is the top ALM-recovery candidate.  Future work adding state machines (e.g., Track B SDRAM controller, MS region_manager re-instantiation) is effectively blocked until ALMs are recovered.
+  - clk_iter at 100 MHz currently `-0.53` ns at the slow corner (see Throughput / timing)
 - Any feature work that increases arithmetic width, palette logic depth, framebuffer width, or control complexity must be evaluated against those limits first.
 
 ## Practical Guidance

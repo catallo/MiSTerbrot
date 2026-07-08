@@ -621,7 +621,14 @@ coord_generator #(
     .clk(clk), .rst_n(rst_n),
     .mode_640(effective_mode_640),
     .start_frame(start_render),
-    .symmetry_active(sym_active_frame),
+    // Raw cy_is_zero, NOT sym_active_frame: coord_generator latches its
+    // own copy at start_frame — the same edge sym_active_frame latches.
+    // Feeding it the registered flag gave it the PREVIOUS frame's value,
+    // so on a sym→non-sym POI transition the scan stopped at row 119
+    // while the mirror logic (correctly) didn't mirror — one frame with
+    // a stale bottom half.  Both latching cy_is_zero at the same edge
+    // keeps scan range and mirror writes in lockstep.
+    .symmetry_active(cy_is_zero),
     .center_x(center_x), .center_y(center_y), .step(step),
     .ready(cg_ready), .valid(cg_valid),
     .pixel_x(cg_px), .pixel_y(cg_py),

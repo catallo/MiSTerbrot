@@ -206,7 +206,13 @@ assign ctx_ci_in[5] = ci_f;
 // giving each of the two operand muxes its own preserved+dont_merge counter,
 // the placer is free to put each adjacent to its 5:1 mux LUT cluster. The
 // original `phase` is kept as the source for downstream `phase_d1` tracking.
-reg [2:0] phase;
+// `phase` and the phase_d* delay chain carry the same protection,
+// defensively: congested fits have shown cross-quad phase→multiplier
+// routes in the timing report (gen_quad[3]|phase feeding gen_quad[2]
+// logic).  Verified inert on the current netlist (bit-identical fit with
+// and without), so this guards against future netlist-optimization
+// regressions rather than fixing a present one.
+(* preserve = "true", dont_merge = "true" *) reg [2:0] phase;
 (* preserve = "true", dont_merge = "true" *) reg [2:0] phase_zr;
 (* preserve = "true", dont_merge = "true" *) reg [2:0] phase_zi;
 
@@ -236,7 +242,7 @@ wire signed [WIDTH-1:0] mul_zi_w = ctx_zi[phase_zi];
 // the pipeline still fires one iter per cycle per quad.
 // ============================================================
 reg signed [WIDTH-1:0] mul_zr_r, mul_zi_r;
-reg [2:0]              phase_d0;
+(* preserve = "true", dont_merge = "true" *) reg [2:0] phase_d0;
 always @(posedge clk) begin
     mul_zr_r <= mul_zr_w;
     mul_zi_r <= mul_zi_w;
@@ -261,7 +267,7 @@ reg signed [64:0] zisq_cross;
 reg signed [63:0] zrzi_hh;
 reg signed [64:0] zrzi_hl;
 reg signed [64:0] zrzi_lh;
-reg [2:0] phase_d1;
+(* preserve = "true", dont_merge = "true" *) reg [2:0] phase_d1;
 
 always @(posedge clk) begin
     zrsq_hh    <= zr_hi * zr_hi;
@@ -323,7 +329,7 @@ reg        zrsq_cross_sign_r, zisq_cross_sign_r, zrzi_mid_sign_r;
 reg [1:0]  zrsq_cross_top_r, zisq_cross_top_r, zrzi_mid_top_r;
 // Passthrough: bits [31:0] of slice
 reg [31:0] zrsq_pass_r, zisq_pass_r, zrzi_pass_r;
-reg [2:0]  phase_d2;
+(* preserve = "true", dont_merge = "true" *) reg [2:0] phase_d2;
 
 always @(posedge clk) begin
     zrsq_lo_r         <= zrsq_lo_sum_w[31:0];
@@ -377,7 +383,7 @@ wire signed [WIDTH-1:0] zr_zi_w   = zrzi_sum_w[87:24];
 
 reg signed [WIDTH-1:0] zr_sq, zi_sq, zr_zi;
 reg [7:0]              zr_sq_ovf, zi_sq_ovf;
-reg [2:0]              phase_d3;
+(* preserve = "true", dont_merge = "true" *) reg [2:0] phase_d3;
 
 always @(posedge clk) begin
     zr_sq     <= zr_sq_w;
@@ -449,7 +455,7 @@ reg signed [WIDTH-1:0] s2_c_real;
 reg signed [WIDTH-1:0] s2_c_imag;
 reg signed [WIDTH-1:0] s2_cardioid_x;
 reg signed [WIDTH-1:0] s2_cardioid_ci_sq;
-reg [2:0]              phase_d4;
+(* preserve = "true", dont_merge = "true" *) reg [2:0] phase_d4;
 // The Stage 0 operand-input register adds a stage at the START of the pipe.
 // phase_d4 (4 chained registers from `phase`) is now 5 cycles behind phase,
 // which matches the data age in Stage 2b2 (Stage 0 -> Stage 2b1 = 5 stages).
