@@ -158,6 +158,7 @@ localparam CONF_STR = {
 	"O[18],Buffer,Double,Single;",
 	"O[36],Limit Colours to,262K (Recommended),16.7M;",
 	"O[26:25],P3 Bulb Precheck,Auto,On,Off;",
+	"O[51],Periodicity Check,On,Off;",
 	"P2,Color Cycling;",
 	"P2O[24],Color Cycling,On,Off;",
 	"P2O[40:37],Speed,9600 baud (Default),Teletype,300 baud,1200 baud,2400 baud,14.4k,28.8k,33.6k,ISDN,DSL,Fiber;",

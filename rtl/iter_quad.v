@@ -52,6 +52,19 @@ module iter_quad #(
     // extra cycles paid for non-period-3 scenes.
     input  wire                    p3_precheck_enable,
 
+    // P2 (Brent periodicity detection) enable.  Same CDC treatment as
+    // p3_precheck_enable.  When 1, interior orbits that settle into an
+    // exact repeating cycle are detected and classified as interior
+    // (iter_count = max_iter, escaped = 0 — identical to the geometric
+    // prechecks) without burning the remaining iterations.  Fixed-point
+    // arithmetic is deterministic, so a captured cycle repeats exactly;
+    // the 48-bit {zr[23:0], zi[23:0]} snapshot subset can never miss a
+    // true cycle; a false positive (~2^-48 per compare, roughly one
+    // single-frame single-pixel blemish per days of continuous deep-zoom
+    // runtime) is invisible.  48 bits rather than 64 keeps 384 FF out of
+    // the congested quad placement regions.
+    input  wire                    periodicity_enable,
+
     // Context A
     input  wire                    start_a,
     input  wire signed [WIDTH-1:0] cr_a,
@@ -149,6 +162,18 @@ reg [11:0]             ctx_iter_count     [0:5];
 reg                    ctx_escaped        [0:5];
 reg signed [WIDTH-1:0] ctx_final_mag_sq   [0:5];
 
+// P2 Brent periodicity state.  ctx_snap holds {zr[23:0], zi[23:0]} of the
+// orbit point captured when the iteration count last hit a power of two
+// (Brent's schedule — no extra counter needed).  ctx_snap_new suppresses
+// the compare for one firing after a snapshot so the fresh snapshot can't
+// match itself; ctx_phit is the compare result, registered in its own
+// always block off the critical path (ctx_zr/zi are stable between
+// firings, so the one-cycle lag is invisible).
+reg [47:0]             ctx_snap           [0:5];
+reg                    ctx_snap_ok        [0:5];
+reg                    ctx_snap_new       [0:5];
+reg                    ctx_phit           [0:5];
+
 // ---- Connect output ports ----
 assign done_a         = ctx_done[0];
 assign iter_count_a   = ctx_iter_count[0];
@@ -213,25 +238,36 @@ assign ctx_ci_in[5] = ci_f;
 // and without), so this guards against future netlist-optimization
 // regressions rather than fixing a present one.
 (* preserve = "true", dont_merge = "true" *) reg [2:0] phase;
-(* preserve = "true", dont_merge = "true" *) reg [2:0] phase_zr;
-(* preserve = "true", dont_merge = "true" *) reg [2:0] phase_zi;
+// Four operand-mux select replicas — one per 32-bit half of each operand
+// mux (2026-07-08: was one per operand).  Halves each counter's select
+// fanout so the placer can nestle each replica against its own 32-bit
+// mux slice; the phase->mux->mul_z*_r Stage-0 path is the perennial
+// clk_iter closure blocker.
+(* preserve = "true", dont_merge = "true" *) reg [2:0] phase_zr_h;
+(* preserve = "true", dont_merge = "true" *) reg [2:0] phase_zr_l;
+(* preserve = "true", dont_merge = "true" *) reg [2:0] phase_zi_h;
+(* preserve = "true", dont_merge = "true" *) reg [2:0] phase_zi_l;
 
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
-        phase    <= 3'd0;
-        phase_zr <= 3'd0;
-        phase_zi <= 3'd0;
+        phase      <= 3'd0;
+        phase_zr_h <= 3'd0;
+        phase_zr_l <= 3'd0;
+        phase_zi_h <= 3'd0;
+        phase_zi_l <= 3'd0;
     end else begin
-        phase    <= (phase    == PHASE_MAX) ? 3'd0 : phase    + 3'd1;
-        phase_zr <= (phase_zr == PHASE_MAX) ? 3'd0 : phase_zr + 3'd1;
-        phase_zi <= (phase_zi == PHASE_MAX) ? 3'd0 : phase_zi + 3'd1;
+        phase      <= (phase      == PHASE_MAX) ? 3'd0 : phase      + 3'd1;
+        phase_zr_h <= (phase_zr_h == PHASE_MAX) ? 3'd0 : phase_zr_h + 3'd1;
+        phase_zr_l <= (phase_zr_l == PHASE_MAX) ? 3'd0 : phase_zr_l + 3'd1;
+        phase_zi_h <= (phase_zi_h == PHASE_MAX) ? 3'd0 : phase_zi_h + 3'd1;
+        phase_zi_l <= (phase_zi_l == PHASE_MAX) ? 3'd0 : phase_zi_l + 3'd1;
     end
 end
 
 // ---- Multiplier input mux (selects active context's z based on phase) ----
 // Use the dedicated counter replicas so each mux can be placed near its DSPs.
-wire signed [WIDTH-1:0] mul_zr_w = ctx_zr[phase_zr];
-wire signed [WIDTH-1:0] mul_zi_w = ctx_zi[phase_zi];
+wire signed [WIDTH-1:0] mul_zr_w = {ctx_zr[phase_zr_h][63:32], ctx_zr[phase_zr_l][31:0]};
+wire signed [WIDTH-1:0] mul_zi_w = {ctx_zi[phase_zi_h][63:32], ctx_zi[phase_zi_l][31:0]};
 
 // ============================================================
 // Stage 0: register the muxed operands so Quartus can pack these regs into
@@ -500,6 +536,17 @@ generate
 for (k = 0; k < 6; k = k + 1) begin : ctx_sm
     localparam [2:0] CTX_K = k[2:0];
 
+    // P2: registered periodicity compare, deliberately in its own always
+    // block so the 64-bit equality never lands in the writeback decision
+    // cone.  ctx_zr/zi only change on this context's firing (every 6
+    // clks), so the one-cycle register lag is absorbed before the next
+    // firing consumes the flag.
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) ctx_phit[k] <= 1'b0;
+        else        ctx_phit[k] <= periodicity_enable & ctx_snap_ok[k] &
+                                   (ctx_snap[k] == {ctx_zr[k][23:0], ctx_zi[k][23:0]});
+    end
+
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             ctx_state[k]          <= S_IDLE;
@@ -515,6 +562,9 @@ for (k = 0; k < 6; k = k + 1) begin : ctx_sm
             ctx_primed[k]         <= 1'b0;
             ctx_cardioid_x[k]     <= {WIDTH{1'b0}};
             ctx_cardioid_ci_sq[k] <= {WIDTH{1'b0}};
+            ctx_snap[k]           <= 48'd0;
+            ctx_snap_ok[k]        <= 1'b0;
+            ctx_snap_new[k]       <= 1'b0;
         end else begin
             case (ctx_state[k])
 
@@ -525,6 +575,8 @@ for (k = 0; k < 6; k = k + 1) begin : ctx_sm
                 ctx_final_mag_sq[k] <= {WIDTH{1'b0}};
                 ctx_iter[k]         <= 12'd0;
                 ctx_primed[k]       <= 1'b0;
+                ctx_snap_ok[k]      <= 1'b0;
+                ctx_snap_new[k]     <= 1'b0;
                 ctx_c_real[k]         <= ctx_cr_in[k];
                 ctx_c_imag[k]         <= ctx_ci_in[k];
                 ctx_cardioid_x[k]     <= ctx_cr_in[k] - QUARTER_FIXED;
@@ -644,10 +696,34 @@ for (k = 0; k < 6; k = k + 1) begin : ctx_sm
                         ctx_final_mag_sq[k] <= mag_sq_eff;
                         ctx_done[k]         <= 1'b1;
                         ctx_state[k]        <= S_DONE;
+                    end else if (ctx_phit[k] && !ctx_snap_new[k]) begin
+                        // P2: the orbit revisited the Brent snapshot
+                        // exactly — periodic, therefore interior.  Same
+                        // classification as the geometric prechecks.
+                        // ctx_snap_new suppresses the one firing right
+                        // after a snapshot (it would match itself).
+                        ctx_escaped[k]      <= 1'b0;
+                        ctx_iter_count[k]   <= max_iter;
+                        ctx_final_mag_sq[k] <= {WIDTH{1'b0}};
+                        ctx_done[k]         <= 1'b1;
+                        ctx_state[k]        <= S_DONE;
                     end else begin
                         ctx_zr[k]   <= zr_next_std;
                         ctx_zi[k]   <= zi_next;
                         ctx_iter[k] <= ctx_iter[k] + 12'd1;
+                        // Brent snapshot schedule: re-capture whenever
+                        // the NEW iteration count (ctx_iter+1) is a power
+                        // of two.  (x+1) is a power of two iff
+                        // (x+1) & x == 0.  FF-write only — nothing added
+                        // to the writeback logic cone.
+                        if (periodicity_enable &&
+                            (((ctx_iter[k] + 12'd1) & ctx_iter[k]) == 12'd0)) begin
+                            ctx_snap[k]     <= {zr_next_std[23:0], zi_next[23:0]};
+                            ctx_snap_ok[k]  <= 1'b1;
+                            ctx_snap_new[k] <= 1'b1;
+                        end else begin
+                            ctx_snap_new[k] <= 1'b0;
+                        end
                     end
                 end
             end
@@ -659,6 +735,8 @@ for (k = 0; k < 6; k = k + 1) begin : ctx_sm
                 ctx_final_mag_sq[k] <= {WIDTH{1'b0}};
                 ctx_iter[k]         <= 12'd0;
                 ctx_primed[k]       <= 1'b0;
+                ctx_snap_ok[k]      <= 1'b0;
+                ctx_snap_new[k]     <= 1'b0;
                 ctx_c_real[k]         <= ctx_cr_in[k];
                 ctx_c_imag[k]         <= ctx_ci_in[k];
                 ctx_cardioid_x[k]     <= ctx_cr_in[k] - QUARTER_FIXED;

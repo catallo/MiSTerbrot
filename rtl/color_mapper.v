@@ -2492,7 +2492,15 @@ always @(posedge clk or negedge rst_n) begin
 
         pixel_valid_out <= pixel_valid_in;
 
-        if (pixel_valid_in) begin
+        // Final capture on ce_d1 (one clk AFTER the tick), not the tick
+        // itself: the downstream consumer (arcade_video RGB_fix) samples
+        // these registers only at the NEXT tick, so the extra clk is free
+        // — and it doubles the blend cone's budget (eval regs latch on
+        // ce_d3, capture here at tick+1 = 2 cycles; SDC multicycle 2).
+        // rd_data is still stable at tick+1 (the BRAM output for the next
+        // pixel re-latches at the END of tick+1), so the live `escaped`
+        // and band-select paths still see the current pixel.
+        if (ce_d1) begin
             if (escaped) begin
                 color_r <= crossfade_r;
                 color_g <= crossfade_g;

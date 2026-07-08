@@ -56,6 +56,13 @@ set_multicycle_path -hold  2 -from [get_registers {*u_framebuffer|*}] -to [get_r
 # registered inputs only, so no structural fb path to those registers
 # exists.  fb's only single-cycle destination is the cidx_*_r adder path.)
 
+# Blend cone: evaluator-output registers (latched on ce_d3) -> final color
+# registers (latched on ce_d1 of the NEXT tick, i.e. tick+1) = 2 clk_sys
+# cycles by construction.  This cone was the consistent -1.4..-2.5 ns
+# placement casualty when analyzed single-cycle.
+set_multicycle_path -setup 2 -from [get_registers {*u_color_mapper|color_a_* *u_color_mapper|color_b_* *u_color_mapper|color_fa_*}] -to [get_registers {*u_color_mapper|color_r[*]* *u_color_mapper|color_g[*]* *u_color_mapper|color_b[*]*}]
+set_multicycle_path -hold  1 -from [get_registers {*u_color_mapper|color_a_* *u_color_mapper|color_b_* *u_color_mapper|color_fa_*}] -to [get_registers {*u_color_mapper|color_r[*]* *u_color_mapper|color_g[*]* *u_color_mapper|color_b[*]*}]
+
 # Same cadence argument for the overlay/compositing cone: vid_pixel_*_d /
 # vid_active_d update on ce_pix (fractal_top), color_mapper's output regs
 # are ce_pix-enabled, and arcade_video's RGB_fix/HS/HBL capture only on

@@ -107,6 +107,7 @@ wire       key_blank_text_on, key_blank_text_off;
 // A3 OSD mode: 2'd0 = Auto (use per-POI flag), 2'd1 = On (force-enable),
 // 2'd2 = Off (force-disable).  Decoded from status[26:25] in fractal_osd.v.
 wire [1:0] osd_p3_mode;
+wire       osd_periodicity_enable;
 wire       color_depth_mode;
 wire [3:0] cycle_speed_sel;
 wire [1:0] cycle_direction;
@@ -138,6 +139,7 @@ fractal_osd #(
     .always_show_poi(always_show_poi),
     .overlay_bg_dim(osd_overlay_bg_dim),
     .p3_mode(osd_p3_mode),
+    .periodicity_enable(osd_periodicity_enable),
     .color_depth_mode(color_depth_mode),
     .cycle_speed_sel(cycle_speed_sel),
     .cycle_direction(cycle_direction),
@@ -689,6 +691,7 @@ pixel_pipeline #(
     .frame_done(frame_done),
     .max_iter(max_iter),
     .p3_precheck_enable(p3_precheck_enable),
+    .periodicity_enable(osd_periodicity_enable),
     .coord_valid(pipe_coord_valid),
     .coord_ready(pipe_coord_ready),
     .coord_px(pipe_coord_px),

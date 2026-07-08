@@ -43,6 +43,8 @@ module fractal_osd #(
     //   2'd1 = On  (force-enable for all scenes)
     //   2'd2 = Off (force-disable for all scenes)
     output wire [1:0]   p3_mode,
+    // P2 periodicity detection (status[51]): 0 = On (default), 1 = Off
+    output wire         periodicity_enable,
     // Color depth (status[36]):
     //   1'b0 = 6-bit (default, recommended — matches MiSTer Analog I/O R-2R DAC)
     //   1'b1 = 8-bit full (no quantization)
@@ -93,6 +95,7 @@ assign palette_sel   = status[10:4];
 assign color_cycle_enable = ~status[24];  // 0=On, 1=Off
 // A3 P3 Bulb Precheck: status[26:25] — Auto/On/Off (2 bits, 3 used).
 assign p3_mode = status[26:25];
+assign periodicity_enable = ~status[51];
 assign color_depth_mode = status[36];
 
 // Color Cycling submenu decoding
