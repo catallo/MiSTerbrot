@@ -108,6 +108,7 @@ wire       key_blank_text_on, key_blank_text_off;
 // 2'd2 = Off (force-disable).  Decoded from status[26:25] in fractal_osd.v.
 wire [1:0] osd_p3_mode;
 wire       osd_periodicity_enable;
+wire       attract_randomize;
 wire       color_depth_mode;
 wire [3:0] cycle_speed_sel;
 wire [1:0] cycle_direction;
@@ -140,6 +141,7 @@ fractal_osd #(
     .overlay_bg_dim(osd_overlay_bg_dim),
     .p3_mode(osd_p3_mode),
     .periodicity_enable(osd_periodicity_enable),
+    .attract_randomize(attract_randomize),
     .color_depth_mode(color_depth_mode),
     .cycle_speed_sel(cycle_speed_sel),
     .cycle_direction(cycle_direction),
@@ -202,6 +204,8 @@ wire [17:0]             az_fb_rd_addr;
 wire                    az_fb_sampling;
 wire [6:0]              az_target_idx;
 wire [11:0]             az_max_iter;
+wire [3:0]              az_rnd_cycle_speed;
+wire [1:0]              az_rnd_cycle_direction;
 reg  [6:0]              az_target_idx_prev;
 reg                     az_enable;
 reg                     az_enable_prev;
@@ -319,6 +323,7 @@ auto_zoom #(
     .attract_wait_vblanks(attract_wait_vblanks),
     .zoom_pacing_mode(zoom_pacing_mode),
     .zoom_speed_sel(zoom_speed_sel),
+    .randomize_enable(attract_randomize),
     .fb_rd_data(rd_data),
     .fb_rd_addr(az_fb_rd_addr),
     .fb_sampling(az_fb_sampling),
@@ -329,7 +334,10 @@ auto_zoom #(
     .view_changed(az_view_changed),
     .palette_idx(az_palette_idx),
     .target_idx_out(az_target_idx),
-    .target_max_iter(az_max_iter)
+    .target_max_iter(az_max_iter),
+    .rnd_cycle_speed(az_rnd_cycle_speed),
+    .rnd_cycle_direction(az_rnd_cycle_direction),
+    .rnd_zoom_speed()
 );
 
 // ---- Mux: auto_zoom overrides manual when active ----
@@ -959,8 +967,8 @@ color_mapper u_color_mapper (
     .escaped(fb_escaped),
     .palette_sel(palette_sel),
     .cycle_enable(effective_color_cycle_enable),
-    .cycle_speed_sel(cycle_speed_sel),
-    .cycle_direction(cycle_direction),
+    .cycle_speed_sel((attract_randomize && auto_zoom_active) ? az_rnd_cycle_speed : cycle_speed_sel),
+    .cycle_direction((attract_randomize && auto_zoom_active) ? az_rnd_cycle_direction : cycle_direction),
     .cycle_blend_hard(cycle_blend_hard),
     .cycle_band_mode(cycle_band_mode),
     .palette_transition_mode(palette_transition_mode),

@@ -39,6 +39,12 @@ module auto_zoom #(
     //   2'd2 = Fast       (step >>> 8  = step/256,  2x speed)
     //   2'd3 = Very Fast  (step >>> 7  = step/128,  4x speed)
     input  wire [1:0]              zoom_speed_sel,
+    // Attract Randomizer (OSD O[52], default On): per-POI random draw of
+    // color-cycling speed/direction and auto-zoom speed.  Pools chosen
+    // for screensaver taste: CC speed 300 baud..33.6k (no Teletype, no
+    // ISDN+), direction forward/reverse only (no ping-pong), zoom speed
+    // Normal/Fast/Very Fast (no Slow).
+    input  wire                    randomize_enable,
 
     // BRAM framebuffer sampling (held inactive in deterministic zoom mode)
     input  wire [12:0]             fb_rd_data,
@@ -52,7 +58,12 @@ module auto_zoom #(
     output reg                     view_changed,
     output reg  [6:0]              palette_idx,
     output wire [`POI_IDX_BITS-1:0] target_idx_out,
-    output reg  [11:0]              target_max_iter
+    output reg  [11:0]              target_max_iter,
+    // Per-POI random draws (valid whenever randomize_enable; consumers
+    // in fractal_top additionally gate on auto_zoom active)
+    output reg  [3:0]               rnd_cycle_speed,
+    output reg  [1:0]               rnd_cycle_direction,
+    output reg  [1:0]               rnd_zoom_speed
 );
 
 localparam signed [WIDTH-1:0] DEFAULT_STEP = 64'sh0003333333333333;
@@ -169,9 +180,10 @@ end
 // ---- Zoom rate (per-frame step adjustment) ----
 // Speed selector picks the shift amount applied to `step` to derive
 // step_shift.  Bigger shift = smaller delta = slower zoom.
+wire [1:0] effective_zoom_speed = randomize_enable ? rnd_zoom_speed : zoom_speed_sel;
 reg [3:0] zoom_speed_shift;
 always @(*) begin
-    case (zoom_speed_sel)
+    case (effective_zoom_speed)
         2'd1: zoom_speed_shift = 4'd10;  // Slow
         2'd2: zoom_speed_shift = 4'd8;   // Fast
         2'd3: zoom_speed_shift = 4'd7;   // Very Fast
@@ -332,6 +344,38 @@ assign target_idx_out = target_idx;
 
 wire dwell_done = (dwell_count >= (attract_wait_vblanks - 16'd1));
 
+// ---- Attract Randomizer draw ----
+// Dedicated free-running LFSR, advanced EVERY clock: the thousands of
+// cycles between POI advances fully decorrelate consecutive draws.
+// (A first attempt derived draws as lfsr_advance(static ^ free_counter)
+// once per draw — near-linear in the counter, so regular attract pacing
+// produced strongly correlated speeds/directions.  Caught by the TB.)
+reg [15:0] rnd_lfsr;
+// CC speed pool (OSD sel values): 300(2), 1200(3), 2400(4), 9600(0),
+// 14.4k(5), 28.8k(6), 33.6k(7); 3 bits with 9600 double-weighted.
+reg [3:0] rnd_speed_map;
+always @(*) begin
+    case (rnd_lfsr[2:0])
+        3'd0: rnd_speed_map = 4'd2;   // 300 baud
+        3'd1: rnd_speed_map = 4'd3;   // 1200
+        3'd2: rnd_speed_map = 4'd4;   // 2400
+        3'd3: rnd_speed_map = 4'd0;   // 9600
+        3'd4: rnd_speed_map = 4'd5;   // 14.4k
+        3'd5: rnd_speed_map = 4'd6;   // 28.8k
+        3'd6: rnd_speed_map = 4'd7;   // 33.6k
+        default: rnd_speed_map = 4'd0; // 9600 (double weight)
+    endcase
+end
+// Zoom speed pool: Normal(0), Fast(2), Very Fast(3); Normal double-weighted.
+reg [1:0] rnd_zoom_map;
+always @(*) begin
+    case (rnd_lfsr[5:4])
+        2'd1: rnd_zoom_map = 2'd2;    // Fast
+        2'd2: rnd_zoom_map = 2'd3;    // Very Fast
+        default: rnd_zoom_map = 2'd0; // Normal (double weight)
+    endcase
+end
+
 // ---- Width helpers (used in many state-machine transitions) ----
 localparam [IDX_BITS-1:0] IDX_ZERO = {IDX_BITS{1'b0}};
 localparam [IDX_BITS-1:0] IDX_ONE  = {{(IDX_BITS-1){1'b0}}, 1'b1};
@@ -357,6 +401,10 @@ always @(posedge clk or negedge rst_n) begin
         shuffle_idx <= TARGET_LAST_IDX;
         zoom_out_final_pending <= 1'b0;
         seed_pending <= 1'b1;
+        rnd_cycle_speed     <= 4'd0;   // 9600 (default)
+        rnd_cycle_direction <= 2'd0;   // forward
+        rnd_zoom_speed      <= 2'd0;   // normal
+        rnd_lfsr            <= 16'h7A21;
         // Playlist memory contents deliberately NOT reset (MLAB inference);
         // SSUB_FILL writes the identity permutation before shuffling.
         ssub         <= SSUB_FILL;
@@ -373,9 +421,11 @@ always @(posedge clk or negedge rst_n) begin
         vblank_prev <= vblank;
         tp_we <= 1'b0;
         pp_we <= 1'b0;
+        rnd_lfsr <= lfsr_advance(rnd_lfsr);
         if (seed_pending) begin
             target_lfsr <= 16'hA5C3 ^ target_seed_mix;
             palette_lfsr <= 16'h5E31 ^ palette_seed_mix;
+            rnd_lfsr <= 16'h7A21 ^ target_seed_mix ^ {palette_seed_mix[7:0], palette_seed_mix[15:8]};
             seed_pending <= 1'b0;
         end else case (state)
         S_SHUFFLE: begin
@@ -600,6 +650,10 @@ always @(posedge clk or negedge rst_n) begin
                 palette_idx <= pp_rdata;
                 target_playlist_pos  <= (target_playlist_pos  == TARGET_LAST_IDX)  ? IDX_ZERO : (target_playlist_pos  + IDX_ONE);
                 palette_playlist_pos <= (palette_playlist_pos == PALETTE_LAST_IDX) ? PAL_ZERO : (palette_playlist_pos + PAL_ONE);
+                // Attract Randomizer: fresh draws land with the new POI.
+                rnd_cycle_speed     <= rnd_speed_map;
+                rnd_cycle_direction <= {1'b0, rnd_lfsr[3]};
+                rnd_zoom_speed      <= rnd_zoom_map;
                 adv_ph <= 2'd3;
             end
             default: begin
@@ -645,6 +699,10 @@ always @(posedge clk or negedge rst_n) begin
                 palette_idx <= pp_rdata;
                 target_playlist_pos  <= (target_playlist_pos  == TARGET_LAST_IDX)  ? IDX_ZERO : (target_playlist_pos  + IDX_ONE);
                 palette_playlist_pos <= (palette_playlist_pos == PALETTE_LAST_IDX) ? PAL_ZERO : (palette_playlist_pos + PAL_ONE);
+                // Attract Randomizer: fresh draws land with the new POI.
+                rnd_cycle_speed     <= rnd_speed_map;
+                rnd_cycle_direction <= {1'b0, rnd_lfsr[3]};
+                rnd_zoom_speed      <= rnd_zoom_map;
                 adv_ph <= 2'd3;
             end
             default: begin

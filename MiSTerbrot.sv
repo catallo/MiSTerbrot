@@ -172,6 +172,7 @@ localparam CONF_STR = {
 	"P1O[35:31],Wait on POI,10s,1s,2s,3s,4s,5s,6s,7s,8s,9s,15s,1 cycle,20s,30s,2 cycles,3 cycles,1m,4 cycles,5 cycles,2m,10 cycles,5m;",
 	"P1O[48],Zoom Pacing,Cinematic,Constant;",
 	"P1O[50:49],Zoom Speed,Normal,Slow,Fast,Very Fast;",
+	"P1O[52],Randomize CC+Zoom Speed,On,Off;",
 		"-;",
 	"-, Arrows/WASD/D-Pad: Pan;",
 	"-, +/-/PgUp/PgDn: Zoom;",
