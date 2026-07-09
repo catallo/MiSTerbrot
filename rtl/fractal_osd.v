@@ -50,9 +50,11 @@ module fractal_osd #(
     // Unified resolution (status[55:54]): 0 = 320x240 (default),
     // 1 = 640x240, 2 = 320x480i.  Replaces the former O[22]/O[53] pair.
     output wire [1:0]   res_mode,
-    // HDMI deinterlace for 480i (status[56]): 0 = Weave (sharp, combs on
-    // motion), 1 = Bob (no combing, slightly softer)
-    output wire         bob_deint,
+    // Deinterlace mode for 480i (status[58:57]): 0 = Weave (default;
+    // sharp, combs on motion), 1 = Bob (no combing, slightly softer),
+    // 2 = Off (fields scaled as independent half-pictures: F1 is
+    // suppressed toward the framework)
+    output wire [1:0]   deint_mode,
     // Color depth (status[36]):
     //   1'b0 = 6-bit (default, recommended — matches MiSTer Analog I/O R-2R DAC)
     //   1'b1 = 8-bit full (no quantization)
@@ -106,7 +108,7 @@ assign p3_mode = status[26:25];
 assign periodicity_enable = ~status[51];
 assign attract_randomize = ~status[52];
 assign res_mode = status[55:54];
-assign bob_deint = status[56];
+assign deint_mode = status[58:57];
 assign color_depth_mode = status[36];
 
 // Color Cycling submenu decoding

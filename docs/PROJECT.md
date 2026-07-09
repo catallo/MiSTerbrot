@@ -200,7 +200,7 @@ Main page:
 | `O[20]`   | Always Show FPS               |
 | `O[21]`   | Always Show POI/Palette       |
 | `O[55:54]`| Resolution (320×240 / 640×240 / 320×480i) — unified selector; replaces the former O[22]+O[53] pair |
-| `O[56]`   | Deinterlace (HDMI): Weave (sharp, combs on motion) / Bob (no combing, softer) — drives `HDMI_BOB_DEINT` |
+| `O[58:57]`| Deinterlace (HDMI): Weave default (sharp, combs on motion) / Bob (no combing, softer) / Off (F1 suppressed — fields scaled as independent half-pictures) |
 | `O[23]`   | Overlay BG (Transparent/Dimmed) |
 | `O[26:25]`| P3 Bulb Precheck (Auto/On/Off) — Auto uses per-POI flag in bench mode |
 | `O[51]`   | Periodicity Check (On/Off) — Brent cycle detection for interior pixels (P2) |

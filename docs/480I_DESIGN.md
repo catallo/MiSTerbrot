@@ -95,7 +95,10 @@ muxes 239−y / 479−y.
     PROJECT.md has always applied to 15 kHz 240p.  Flag in release
     notes when this ships.
   - Weave combing on motion is inherent to deinterlacing a zooming
-    fractal; `O[56]` exposes Bob as the remedy.
+    fractal; `O[58:57]` exposes Weave (default) / Bob / Off.  Off
+    suppresses the F1 field flag so the framework scales each field
+    as an independent progressive half-picture — no combing and no
+    bob shimmer, at half the vertical detail.
   - Tooling: poi_walkthrough/poi_ocr assume 240p capture geometry —
     480i captures (320x480) silently match nothing.  Stage 3 item.
 

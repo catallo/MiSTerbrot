@@ -42,7 +42,7 @@ module fractal_top #(
     output wire        vga_f1,     // interlace field flag (0 when progressive)
     output wire        vga_interlaced,  // level: 480i mode active
     output reg         new_vmode,  // toggles on any resolution change (hps_io)
-    output wire        bob_deint,  // HDMI deinterlace mode for the framework
+    output wire        bob_deint,  // HDMI deinterlace: 1 = Bob
     output wire [7:0]  vga_r,
     output wire [7:0]  vga_g,
     output wire [7:0]  vga_b,
@@ -135,7 +135,7 @@ wire [1:0] osd_p3_mode;
 wire       osd_periodicity_enable;
 wire       attract_randomize;
 wire [1:0] osd_res_mode;
-wire       osd_bob_deint;
+wire [1:0] osd_deint_mode;
 wire       color_depth_mode;
 wire [3:0] cycle_speed_sel;
 wire [1:0] cycle_direction;
@@ -170,7 +170,7 @@ fractal_osd #(
     .periodicity_enable(osd_periodicity_enable),
     .attract_randomize(attract_randomize),
     .res_mode(osd_res_mode),
-    .bob_deint(osd_bob_deint),
+    .deint_mode(osd_deint_mode),
     .color_depth_mode(color_depth_mode),
     .cycle_speed_sel(cycle_speed_sel),
     .cycle_direction(cycle_direction),
@@ -992,9 +992,12 @@ video_timing u_video_timing (
     .pixel_y(vid_pixel_y),
     .field(vid_field)
 );
-assign vga_f1 = interlace_mode & vid_field;
+// Deinterlace Off (mode 2) suppresses the field flag: the framework
+// then treats each field as an independent progressive half-picture
+// (no weave combing, no bob shimmer, softer vertical resolution).
+assign vga_f1 = interlace_mode & vid_field & (osd_deint_mode != 2'd2);
 assign vga_interlaced = interlace_mode;
-assign bob_deint = osd_bob_deint;
+assign bob_deint = (osd_deint_mode == 2'd1);
 
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin

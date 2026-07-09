@@ -154,7 +154,7 @@ localparam CONF_STR = {
 	"O[20],Always Show FPS,Off,On;",
 	"O[21],Always Show POI/Palette,On,Off;",
 	"O[55:54],Resolution,320x240,640x240,320x480i;",
-	"O[56],Deinterlace (HDMI),Weave,Bob;",
+	"O[58:57],Deinterlace (HDMI),Weave,Bob,Off;",
 	"O[23],Overlay BG,Transparent,Dimmed;",
 	"O[17:15],Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
 	// Mariani-Silver was on the Optimisations page but had an intermittent
