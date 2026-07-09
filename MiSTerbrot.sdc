@@ -48,8 +48,13 @@ set_net_delay -max 20 -from [get_registers {*u_quad|ctx_escaped[*]*}]
 # cycle_frac) retain the full 3-cycle budget.
 # NOTE: constrained -from the framebuffer so the ce_pix enable path into
 # the same registers stays single-cycle.
-set_multicycle_path -setup 3 -from [get_registers {*u_framebuffer|*}] -to [get_registers {*u_color_mapper|color_r[*]* *u_color_mapper|color_g[*]* *u_color_mapper|color_b[*]*}]
-set_multicycle_path -hold  2 -from [get_registers {*u_framebuffer|*}] -to [get_registers {*u_color_mapper|color_r[*]* *u_color_mapper|color_g[*]* *u_color_mapper|color_b[*]*}]
+# u_fb_ddr3 (Track B): the DDR3 line-buffer read regs (Quartus merges
+# rd_word_r into the altsyncram output register) feed the same color
+# cone with the same ce_pix cadence — identical 3-cycle real budget.
+# The fb_ddr3 -> cidx_*_r pass-A path stays single-cycle (not in -to),
+# exactly like the BRAM equivalent.
+set_multicycle_path -setup 3 -from [get_registers {*u_framebuffer|* *u_fb_ddr3|*}] -to [get_registers {*u_color_mapper|color_r[*]* *u_color_mapper|color_g[*]* *u_color_mapper|color_b[*]*}]
+set_multicycle_path -hold  2 -from [get_registers {*u_framebuffer|* *u_fb_ddr3|*}] -to [get_registers {*u_color_mapper|color_r[*]* *u_color_mapper|color_g[*]* *u_color_mapper|color_b[*]*}]
 
 # (The earlier shared-evaluator false path fb -> color_a_*/color_b_* was
 # removed with the three-evaluator restructure: every evaluator now reads
@@ -81,8 +86,11 @@ set_multicycle_path -hold  1 -from [get_registers {*u_color_mapper|color_*}] -to
 # late settle of any of these into a ce_pix-sampled capture is invisible;
 # none of these groups contain the ce_pix counter, so register enables
 # stay single-cycle.
-set_multicycle_path -setup 2 -from [get_registers {*u_fractal_top|benchmark_* *u_fractal_top|bench_* *u_fractal_top|last_bench_window_frames[*] *u_fractal_top|sym_overflow_sticky *u_fractal_top|overlay_visible *u_fractal_top|blank_text_override[*] *u_fractal_top|bg_dim_override[*] *u_fractal_top|fps_value[*] *u_fractal_top|bank_sel}] -to [get_registers {*u_arcade_video|* *u_color_mapper|* *|dvid_*}]
-set_multicycle_path -hold  1 -from [get_registers {*u_fractal_top|benchmark_* *u_fractal_top|bench_* *u_fractal_top|last_bench_window_frames[*] *u_fractal_top|sym_overflow_sticky *u_fractal_top|overlay_visible *u_fractal_top|blank_text_override[*] *u_fractal_top|bg_dim_override[*] *u_fractal_top|fps_value[*] *u_fractal_top|bank_sel}] -to [get_registers {*u_arcade_video|* *u_color_mapper|* *|dvid_*}]
+# boot_grace_cnt / res_override* joined this family with Track B: they
+# reach the color cone through ddr_fb_mode (pixel-source mux) and change
+# once at boot / on keypress respectively.
+set_multicycle_path -setup 2 -from [get_registers {*u_fractal_top|benchmark_* *u_fractal_top|bench_* *u_fractal_top|last_bench_window_frames[*] *u_fractal_top|sym_overflow_sticky *u_fractal_top|overlay_visible *u_fractal_top|blank_text_override[*] *u_fractal_top|bg_dim_override[*] *u_fractal_top|fps_value[*] *u_fractal_top|bank_sel *u_fractal_top|boot_grace_cnt[*] *u_fractal_top|res_override*}] -to [get_registers {*u_arcade_video|* *u_color_mapper|* *|dvid_*}]
+set_multicycle_path -hold  1 -from [get_registers {*u_fractal_top|benchmark_* *u_fractal_top|bench_* *u_fractal_top|last_bench_window_frames[*] *u_fractal_top|sym_overflow_sticky *u_fractal_top|overlay_visible *u_fractal_top|blank_text_override[*] *u_fractal_top|bg_dim_override[*] *u_fractal_top|fps_value[*] *u_fractal_top|bank_sel *u_fractal_top|boot_grace_cnt[*] *u_fractal_top|res_override*}] -to [get_registers {*u_arcade_video|* *u_color_mapper|* *|dvid_*}]
 set_multicycle_path -setup 2 -from [get_registers {*u_auto_zoom|* *u_input|*}] -to [get_registers {*u_arcade_video|* *u_color_mapper|* *|dvid_*}]
 set_multicycle_path -hold  1 -from [get_registers {*u_auto_zoom|* *u_input|*}] -to [get_registers {*u_arcade_video|* *u_color_mapper|* *|dvid_*}]
 set_multicycle_path -setup 2 -from [get_registers {*u_color_mapper|cycle_phase* *u_color_mapper|pal_* *u_color_mapper|fade_* *u_color_mapper|ping_dir}] -to [get_registers {*u_arcade_video|* *u_color_mapper|* *|dvid_*}]
