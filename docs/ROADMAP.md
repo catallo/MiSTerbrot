@@ -337,6 +337,26 @@ Both modes via new OSD bits or by extending `O[22]`.
 - Does `auto_zoom.v`'s framebuffer sampling (`fb_rd_data`, `fb_rd_addr`) still work transparently? Yes — it just reads via the same line-cache path the display uses.
 - What's the visible behaviour at SDRAM module absent? Either: graceful fallback to 240p BRAM, or boot-time failure with a clear OSD message. Decide before integration.
 
+### Field-sequential rendering (idea, low priority — behind 480p)
+
+User-suggested option (2026-07-09): in the interlaced modes, render
+only the 240 lines of the CURRENT field per pass instead of the full
+progressive frame — the classic TV approach.  Roughly doubles the
+effective temporal rate (a 640-wide field costs ~640×240, not
+640×480).  Trade-offs that keep it low priority:
+
+- Only benefits NATIVE 15 kHz displays, where temporally offset
+  fields are the normal look.  Through any scaler (the user's own
+  setup: `vga_scaler` CRT + HDMI OLED) the deinterlacer weaves two
+  time-different fields → permanent combing (or bob shimmer).  Native
+  15 kHz 480i is itself still unverified on real hardware.
+- A2 symmetry must be disabled in this mode: the mirror row 479−y
+  always has opposite parity, i.e. lands in the other field — so the
+  scenes that are fastest today lose their halving.
+- Would ship as an extra OSD toggle (e.g. "Field Render") applying
+  only to 480i modes, default off; Weave deinterlace should probably
+  be discouraged while it is on.
+
 ## Variety enhancements (secondary track)
 
 Independent of resolution/framerate work. Worth pursuing whenever Track A/B has spare capacity. Ranked impact-vs-cost:
