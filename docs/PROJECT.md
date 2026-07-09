@@ -212,7 +212,7 @@ Attract Mode submenu (page 1):
 | `O[29]`   | Zoom In (On/Off) — Off snaps directly to the POI's canonical zoom |
 | `O[30]`   | Zoom Out (On/Off) — Off skips the zoom-out animation, jumps straight to next POI |
 | `O[35:31]`| Wait on POI (10s default; 22 options spanning 1s..5m + 1/2/3/4/5/10 color cycles) |
-| `O[52]`   | Randomize CC+Zoom Speed (On default / Off) — per-POI random draw of color-cycling speed (300 baud..33.6k pool), cycling direction (forward/reverse), and auto-zoom speed (Normal/Fast/Very Fast pool).  Draws come from a dedicated free-running LFSR in `auto_zoom.v`; manual OSD selections apply whenever the randomizer is Off or auto-zoom is inactive. |
+| `O[52]`   | Randomize CC+Zoom Speed (On default / Off) — per-POI random draw of color-cycling speed (300 baud..28.8k pool, 28.8k double-weighted), cycling direction (forward/reverse), and auto-zoom speed (Fast/Very Fast pool, Fast ~2:1).  Draws come from a dedicated free-running LFSR in `auto_zoom.v`; manual OSD selections apply whenever the randomizer is Off or auto-zoom is inactive. |
 
 The Colors selector applies an output-stage mask `{rgb[7:N], N'b0}` to match the MiSTer Analog I/O R-2R DAC (6-bit) when on HDMI — so the HDMI output exhibits the same colour banding the CRT does.  Bench telemetry strip stays full 8-bit so the screenshot decoder isn't affected.
 

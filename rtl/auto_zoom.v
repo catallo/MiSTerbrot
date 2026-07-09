@@ -352,7 +352,8 @@ wire dwell_done = (dwell_count >= (attract_wait_vblanks - 16'd1));
 // produced strongly correlated speeds/directions.  Caught by the TB.)
 reg [15:0] rnd_lfsr;
 // CC speed pool (OSD sel values): 300(2), 1200(3), 2400(4), 9600(0),
-// 14.4k(5), 28.8k(6), 33.6k(7); 3 bits with 9600 double-weighted.
+// 14.4k(5), 28.8k(6) — top tier 33.6k excluded per user spec, 28.8k
+// double-weighted; the leftover 3-bit slot goes to the neutral 9600.
 reg [3:0] rnd_speed_map;
 always @(*) begin
     case (rnd_lfsr[2:0])
@@ -362,18 +363,15 @@ always @(*) begin
         3'd3: rnd_speed_map = 4'd0;   // 9600
         3'd4: rnd_speed_map = 4'd5;   // 14.4k
         3'd5: rnd_speed_map = 4'd6;   // 28.8k
-        3'd6: rnd_speed_map = 4'd7;   // 33.6k
-        default: rnd_speed_map = 4'd0; // 9600 (double weight)
+        3'd6: rnd_speed_map = 4'd6;   // 28.8k (double weight)
+        default: rnd_speed_map = 4'd0; // 9600
     endcase
 end
-// Zoom speed pool: Normal(0), Fast(2), Very Fast(3); Normal double-weighted.
+// Zoom speed pool: Fast(2) and Very Fast(3) only, Fast double-weighted —
+// 4-bit threshold gives 11/16 : 5/16 (~2.2:1, closest binary fit to 2:1).
 reg [1:0] rnd_zoom_map;
 always @(*) begin
-    case (rnd_lfsr[5:4])
-        2'd1: rnd_zoom_map = 2'd2;    // Fast
-        2'd2: rnd_zoom_map = 2'd3;    // Very Fast
-        default: rnd_zoom_map = 2'd0; // Normal (double weight)
-    endcase
+    rnd_zoom_map = (rnd_lfsr[9:6] < 4'd11) ? 2'd2 : 2'd3;
 end
 
 // ---- Width helpers (used in many state-machine transitions) ----
