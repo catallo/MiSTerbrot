@@ -51,10 +51,13 @@ set_net_delay -max 20 -from [get_registers {*u_quad|ctx_escaped[*]*}]
 # u_fb_ddr3 (Track B): the DDR3 line-buffer read regs (Quartus merges
 # rd_word_r into the altsyncram output register) feed the same color
 # cone with the same ce_pix cadence — identical 3-cycle real budget.
+# to_blend_q joined the -to list with the blend retiming: the iter-band
+# select (cycle_frac) reaches it straight from fb data, with the same
+# data-at-tick+1 -> capture-at-next-tick+1 budget as the final regs.
 # The fb_ddr3 -> cidx_*_r pass-A path stays single-cycle (not in -to),
 # exactly like the BRAM equivalent.
-set_multicycle_path -setup 3 -from [get_registers {*u_framebuffer|* *u_fb_ddr3|*}] -to [get_registers {*u_color_mapper|color_r[*]* *u_color_mapper|color_g[*]* *u_color_mapper|color_b[*]*}]
-set_multicycle_path -hold  2 -from [get_registers {*u_framebuffer|* *u_fb_ddr3|*}] -to [get_registers {*u_color_mapper|color_r[*]* *u_color_mapper|color_g[*]* *u_color_mapper|color_b[*]*}]
+set_multicycle_path -setup 3 -from [get_registers {*u_framebuffer|* *u_fb_ddr3|*}] -to [get_registers {*u_color_mapper|color_r[*]* *u_color_mapper|color_g[*]* *u_color_mapper|color_b[*]* *u_color_mapper|to_blend_q*}]
+set_multicycle_path -hold  2 -from [get_registers {*u_framebuffer|* *u_fb_ddr3|*}] -to [get_registers {*u_color_mapper|color_r[*]* *u_color_mapper|color_g[*]* *u_color_mapper|color_b[*]* *u_color_mapper|to_blend_q*}]
 
 # (The earlier shared-evaluator false path fb -> color_a_*/color_b_* was
 # removed with the three-evaluator restructure: every evaluator now reads
@@ -76,10 +79,18 @@ set_multicycle_path -hold  1 -from [get_registers {*u_color_mapper|to_blend_q* *
 # are ce_pix-enabled, and arcade_video's RGB_fix/HS/HBL capture only on
 # the ce_pix rising edge (sys/arcade_video.v).  Launch and capture sit on
 # the same tick grid >=4 clk_sys cycles apart.
-set_multicycle_path -setup 2 -from [get_registers {*u_fractal_top|vid_pixel_x_d[*] *u_fractal_top|vid_pixel_y_d[*] *u_fractal_top|vid_active_d}] -to [get_registers {*u_arcade_video|* *|dvid_*}]
-set_multicycle_path -hold  1 -from [get_registers {*u_fractal_top|vid_pixel_x_d[*] *u_fractal_top|vid_pixel_y_d[*] *u_fractal_top|vid_active_d}] -to [get_registers {*u_arcade_video|* *|dvid_*}]
-set_multicycle_path -setup 2 -from [get_registers {*u_color_mapper|color_*}] -to [get_registers {*u_arcade_video|* *|dvid_*}]
-set_multicycle_path -hold  1 -from [get_registers {*u_color_mapper|color_*}] -to [get_registers {*u_arcade_video|* *|dvid_*}]
+# Raised to 3 with the 100 MHz move: the text_overlay glyph cone off
+# vid_pixel_*_d measures ~25 ns and the real budget is one full tick —
+# 8 clk_vid today (/8), still 4 at a future 480p (/4), so setup 3 stays
+# valid in every mode.
+set_multicycle_path -setup 3 -from [get_registers {*u_fractal_top|vid_pixel_x_d[*] *u_fractal_top|vid_pixel_y_d[*] *u_fractal_top|vid_active_d}] -to [get_registers {*u_arcade_video|* *|dvid_* *ascal|i_pix*}]
+set_multicycle_path -hold  2 -from [get_registers {*u_fractal_top|vid_pixel_x_d[*] *u_fractal_top|vid_pixel_y_d[*] *u_fractal_top|vid_active_d}] -to [get_registers {*u_arcade_video|* *|dvid_* *ascal|i_pix*}]
+# NOTE for 480p (stage 2): with the ce_d3 final capture the real
+# budget of color_r -> RGB_fix/dvid shrinks to 1 clk at /4 cadence —
+# this setup-2 must be removed or the output re-staged before the
+# 480p mode ships.  Valid today (real budget 5 clks at /8).
+set_multicycle_path -setup 2 -from [get_registers {*u_color_mapper|color_*}] -to [get_registers {*u_arcade_video|* *|dvid_* *ascal|i_pix*}]
+set_multicycle_path -hold  1 -from [get_registers {*u_color_mapper|color_*}] -to [get_registers {*u_arcade_video|* *|dvid_* *ascal|i_pix*}]
 
 # ---- 100 MHz video-domain move (docs/480P_DESIGN.md) ----
 # The display path (video_timing, fb read, color_mapper, text_overlay,
@@ -113,3 +124,12 @@ set_multicycle_path -hold  1 -from [get_registers {*u_color_mapper|cycle_phase* 
 # and must stay single-cycle.
 set_multicycle_path -setup 2 -from [get_registers {*u_auto_zoom|step[*]}] -to [get_registers {*u_auto_zoom|*}]
 set_multicycle_path -hold  1 -from [get_registers {*u_auto_zoom|step[*]}] -to [get_registers {*u_auto_zoom|*}]
+
+# ascal input downscaler (framework): the C1..C5 stages including the
+# i_mem line-RAM -> i_pix bilinear cone all advance under i_pce (the
+# CE tick, sys/ascal.vhd) — launch at tick+1 (RAM output register),
+# capture at the next tick+1.  Multicycle-2 holds at every ce_pix
+# cadence incl. a future 480p (/4).  Only this cone is relaxed; the
+# rest of ascal's input stage stays single-cycle.
+set_multicycle_path -setup 2 -from [get_registers {*ascal|i_mem*}] -to [get_registers {*ascal|i_pix*}]
+set_multicycle_path -hold  1 -from [get_registers {*ascal|i_mem*}] -to [get_registers {*ascal|i_pix*}]
