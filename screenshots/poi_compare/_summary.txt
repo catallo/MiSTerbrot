@@ -1,95 +1,99 @@
 # POI walkthrough summary
 # press  idx  poi_name             ocr_text                 score
-  1      3  P4 ISLAND            P4 ISLAND                1.00
-  2      7  P8 ISLAND            P8 ISLAND                1.00
-  3      5  P6 ISLAND            P6 ISLAND                1.00
-  4     77  R2T 1/2 ISLE STEP    R2T 12 ISLE STEP         0.97
-  5     44  EJS CAULI            EJS CAULI                1.00
-  6     76  ELEPHANT MED 2       ELEPHANT MED 2           1.00
-  7     11  ELEPHANT TRUNK       ELEPHANT TRUNK           1.00
-  8     69  M_8,4 CASCADE 2      M84 CASCADE 2            0.93
-  9     17  SEAHORSE TAIL        SEAHORSE TAIL            1.00
- 10      8  P9 ISLAND            P9 ISLAND                1.00
- 11     84  M(7,7) WAKE 1/4 DP   M77 WAKE 14 DP           0.88
- 12     18  SEAHORSE DEEP        SEAHORSE DEEP            1.00
- 13     32  GEN FEIGENBAUM       GEN FEIGENBAUM           1.00
- 14     23  SAT HEAD             SAT HEAD                 1.00
- 15     22  SAT ANTENNA          SAT ANTENNA              1.00
- 16     40  TRIPLE MEDALLION     TRIPLE MEDALLION         1.00
- 17     39  SINGLE SPIRAL        SINGLE SPIRAL            1.00
- 18     26  JULIA ISLANDS        JULIA ISLANDS            1.00
- 19     36  MISIUREWICZ -1.94    MISIUREWICZ -194         0.97
- 20     34  MISIUREWICZ M4-2     MISIUREWICZ M4-2         1.00
- 21     28  TRIPLE DEEP          TRIPLE DEEP              1.00
- 22     53  M11,1 WAKE 5/11      M111 WAKE 511            0.93
- 23    ---  ---                 4IM   4G  X  L X%D4[     0.00
- 24     83  M(3,3) WAKE 1/3 DP   M33 WAKE 13 DP           0.88
- 25     27  TRIPLE WEST          TRIPLE WEST              1.00
- 26     13  ELEPHANT ISLAND      ELEPHANT ISLAND          1.00
- 27     41  DBL SPIRAL ISLE      DBL SPIRAL ISLE          1.00
- 28     43  CAULIFLOWER MED      CAULIFLOWER MED          1.00
- 29     48  LOVE CANAL           LOVE CANAL               1.00
- 30     20  DOUBLE HOOK          DOUBLE HOOK              1.00
- 31     78  BEYER STEP 13        BEYER STEP 13            1.00
- 32     71  EJS P47 ALPHA        EJS P47 ALPHA            1.00
- 33     56  SH CUSP DEEP         SH CUSP DEEP             1.00
- 34      0  P6 SUB BULB          P6 SUB BULB              1.00
- 35     62  R2T P7 ISLAND        R2T P7 ISLAND            1.00
- 36     31  FEIGENBAUM DEEP      FEIGENBAUM DEEP          1.00
- 37      6  P7 ISLAND            P7 ISLAND                1.00
- 38     24  SAT SEAHORSE         SAT SEAHORSE             1.00
- 39     68  M_4,2 CASCADE 1      M42 CASCADE 1            0.93
- 40     70  M_16,8 CASCADE 3     M168 CASCADE 3           0.93
- 41     58  JEWEL BOX            JEWEL BOX                1.00
- 42     33  MISIUREWICZ M4       MISIUREWICZ M4           1.00
- 43     25  SAT DBL SPIRAL       SAT DBL SPIRAL           1.00
- 44     60  SH CUSP FINE         SH CUSP FINE             1.00
- 45     57  EJS PERIOD 44        EJS PERIOD 44            1.00
- 46      4  P5 ISLAND            P5 ISLAND                1.00
- 47     73  EJS WAKE 1/4         EJS WAKE 14              0.96
- 48     37  MISIUREWICZ -1.84    MISIUREWICZ -184         0.97
- 49     65  EJS P3 DEEP          EJS P3 DEEP              1.00
- 50     38  DBL SPIRAL P4        DBL SPIRAL P4            1.00
- 51      9  P11 ISLAND           P11 ISLAND               1.00
- 52     12  ELEPHANT HEADS       ELEPHANT HEADS           1.00
- 53     72  EJS P50 BETA         EJS P50 BETA             1.00
- 54     10  P22 ISLAND           P22 ISLAND               1.00
- 55     21  SH SATELLITE         SH SATELLITE             1.00
- 56     63  SCEPTER MED          SCEPTER MED              1.00
- 58     35  MISIUREWICZ SPIR     MISIUREWICZ SPIR         1.00
- 59     61  R2 HALF ISLE         R2 HALF ISLE             1.00
- 60     89  P3 BULB DEEP         P3 BULB DEEP             1.00
- 61      2  P3 ISLAND TIP        P3 ISLAND TIP            1.00
- 62     79  BEYER STEP 14        BEYER STEP 14            1.00
- 63     29  FEIGENBAUM           FEIGENBAUM               1.00
- 64     86  P3 BULB UPPER        P3 BULB UPPER            1.00
- 65     30  FEIGENBAUM ZOOM      FEIGENBAUM ZOOM          1.00
- 66     47  EJS NUCLEUS          EJS NUCLEUS              1.00
- 67     16  SEAHORSE BODY        SEAHORSE BODY            1.00
- 68     67  M3,1 1/3 LIMB TIP    M31 13 LIMB TIP          0.94
- 69     42  TRIPLE ISLE MED      TRIPLE ISLE MED          1.00
- 70     82  MERCATOR P38         MERCATOR P38             1.00
- 71     45  EJS DBL SPIRAL       EJS DBL SPIRAL           1.00
- 72     15  ELEPHANT P16         ELEPHANT P16             1.00
- 73     88  P3 LIMB FULL         P3 LIMB FULL             1.00
- 74     64  BRANCH MED           BRANCH MED               1.00
- 75     80  TRIPLE SPIRAL P4     TRIPLE SPIRAL P4         1.00
+  1     85  EJS P47 GAMMA        EJS P47 GAMMA            1.00
+  2     13  ELEPHANT ISLAND      ELEPHANT ISLAND          1.00
+  3     10  P22 ISLAND           P22 ISLAND               1.00
+  4     69  M_8,4 CASCADE 2      M84 CASCADE 2            0.93
+  5     46  EJS BRANCH           EJS BRANCH               1.00
+  6     40  TRIPLE MEDALLION     TRIPLE MEDALLION         1.00
+  7     34  MISIUREWICZ M4-2     MISIUREWICZ M4-2         1.00
+  8     44  EJS CAULI            EJS CAULI                1.00
+  9      7  P8 ISLAND            P8 ISLAND                1.00
+ 10     25  SAT DBL SPIRAL       SAT DBL SPIRAL           1.00
+ 11     51  STARFISH             STARFISH                 1.00
+ 12     89  P3 BULB DEEP         P3 BULB DEEP             1.00
+ 13     79  BEYER STEP 14        BEYER STEP 14            1.00
+ 14     17  SEAHORSE TAIL        SEAHORSE TAIL            1.00
+ 15     15  ELEPHANT P16         ELEPHANT P16             1.00
+ 16     70  M_16,8 CASCADE 3     M168 CASCADE 3           0.93
+ 17     64  BRANCH MED           BRANCH MED               1.00
+ 18     60  SH CUSP FINE         SH CUSP FINE             1.00
+ 19     29  FEIGENBAUM           FEIGENBAUM               1.00
+ 20     84  M(7,7) WAKE 1/4 DP   M77 WAKE 14 DP           0.88
+ 21     54  CONCHA APPROACH      CONCHA APPROACH          1.00
+ 22      0  P6 SUB BULB          P6 SUB BULB              1.00
+ 23     73  EJS WAKE 1/4         EJS WAKE 14              0.96
+ 24     72  EJS P50 BETA         EJS P50 BETA             1.00
+ 25     76  ELEPHANT MED 2       ELEPHANT MED 2           1.00
+ 26     55  M7,1 WAKE 1/7        M71 WAKE 17              0.92
+ 27     43  CAULIFLOWER MED      CAULIFLOWER MED          1.00
+ 28     66  NEEDLE MED           NEEDLE MED               1.00
+ 29      5  P6 ISLAND            P6 ISLAND                1.00
+ 30     59  R2T P6 ISLAND        R2T P6 ISLAND            1.00
+ 31     53  M11,1 WAKE 5/11      M111 WAKE 511            0.93
+ 32     61  R2 HALF ISLE         R2 HALF ISLE             1.00
+ 33     52  M3,1 WAKE 3/7        M31 WAKE 37              0.92
+ 34     80  TRIPLE SPIRAL P4     TRIPLE SPIRAL P4         1.00
+ 35     11  ELEPHANT TRUNK       ELEPHANT TRUNK           1.00
+ 36     82  MERCATOR P38         MERCATOR P38             1.00
+ 37     88  P3 LIMB FULL         P3 LIMB FULL             1.00
+ 38      3  P4 ISLAND            P4 ISLAND                1.00
+ 39     32  GEN FEIGENBAUM       GEN FEIGENBAUM           1.00
+ 40     50  ELEPHANT MED         ELEPHANT MED             1.00
+ 41     28  TRIPLE DEEP          TRIPLE DEEP              1.00
+ 42     27  TRIPLE WEST          TRIPLE WEST              1.00
+ 43     30  FEIGENBAUM ZOOM      FEIGENBAUM ZOOM          1.00
+ 44     71  EJS P47 ALPHA        EJS P47 ALPHA            1.00
+ 45     20  DOUBLE HOOK          DOUBLE HOOK              1.00
+ 47    ---  ---                 M4[ A(D  % DN4  L        0.00
+ 48     39  SINGLE SPIRAL        SINGLE SPIRAL            1.00
+ 49     41  DBL SPIRAL ISLE      DBL SPIRAL ISLE          1.00
+ 50     68  M_4,2 CASCADE 1      M42 CASCADE 1            0.93
+ 51     21  SH SATELLITE         SH SATELLITE             1.00
+ 52     78  BEYER STEP 13        BEYER STEP 13            1.00
+ 53     35  MISIUREWICZ SPIR     MISIUREWICZ SPIR         1.00
+ 54     33  MISIUREWICZ M4       MISIUREWICZ M4           1.00
+ 55     57  EJS PERIOD 44        EJS PERIOD 44            1.00
+ 56     26  JULIA ISLANDS        JULIA ISLANDS            1.00
+ 57      9  P11 ISLAND           P11 ISLAND               1.00
+ 58    ---  ---                 %(F %D4*XM%  L  X        0.00
+ 59     47  EJS NUCLEUS          EJS NUCLEUS              1.00
+ 60      6  P7 ISLAND            P7 ISLAND                1.00
+ 61      4  P5 ISLAND            P5 ISLAND                1.00
+ 62     63  SCEPTER MED          SCEPTER MED              1.00
+ 63     37  MISIUREWICZ -1.84    MISIUREWICZ -184         0.97
+ 64     18  SEAHORSE DEEP        SEAHORSE DEEP            1.00
+ 65     31  FEIGENBAUM DEEP      FEIGENBAUM DEEP          1.00
+ 66     22  SAT ANTENNA          SAT ANTENNA              1.00
+ 67     19  SEAHORSE TAIL2       SEAHORSE TAIL2           1.00
+ 68     58  JEWEL BOX            JEWEL BOX                1.00
+ 69      8  P9 ISLAND            P9 ISLAND                1.00
+ 70     45  EJS DBL SPIRAL       EJS DBL SPIRAL           1.00
+ 71     65  EJS P3 DEEP          EJS P3 DEEP              1.00
+ 72     87  P3 BULB LOWER        P3 BULB LOWER            1.00
+ 73     74  SH SPIRAL CONT       SH SPIRAL CONT           1.00
+ 74      2  P3 ISLAND TIP        P3 ISLAND TIP            1.00
+ 75     49  P5 ISLAND DEEP       P5 ISLAND DEEP           1.00
  76      1  P3 ISLAND            P3 ISLAND                1.00
- 77     49  P5 ISLAND DEEP       P5 ISLAND DEEP           1.00
- 78     66  NEEDLE MED           NEEDLE MED               1.00
- 79     19  SEAHORSE TAIL2       SEAHORSE TAIL2           1.00
- 80     54  CONCHA APPROACH      CONCHA APPROACH          1.00
- 81     74  SH SPIRAL CONT       SH SPIRAL CONT           1.00
- 82     75  SH TAIL SPIRAL       SH TAIL SPIRAL           1.00
- 83     55  M7,1 WAKE 1/7        M71 WAKE 17              0.92
- 84     87  P3 BULB LOWER        P3 BULB LOWER            1.00
- 85     81  MERCATOR P189        MERCATOR P189            1.00
- 86     14  ELEPHANT P19         ELEPHANT P19             1.00
- 87     59  R2T P6 ISLAND        R2T P6 ISLAND            1.00
- 88     50  ELEPHANT MED         ELEPHANT MED             1.00
- 89     46  EJS BRANCH           EJS BRANCH               1.00
- 90     51  STARFISH             STARFISH                 1.00
-113     52  M3,1 WAKE 3/7        M31 WAKE 37              0.92
-147     85  EJS P47 GAMMA        EJS P47 GAMMA            1.00
+ 77     12  ELEPHANT HEADS       ELEPHANT HEADS           1.00
+ 78     42  TRIPLE ISLE MED      TRIPLE ISLE MED          1.00
+ 79     48  LOVE CANAL           LOVE CANAL               1.00
+ 80     38  DBL SPIRAL P4        DBL SPIRAL P4            1.00
+ 81     81  MERCATOR P189        MERCATOR P189            1.00
+ 82     14  ELEPHANT P19         ELEPHANT P19             1.00
+ 83     62  R2T P7 ISLAND        R2T P7 ISLAND            1.00
+ 84     56  SH CUSP DEEP         SH CUSP DEEP             1.00
+ 85     83  M(3,3) WAKE 1/3 DP   M33 WAKE 13 DP           0.88
+ 86     77  R2T 1/2 ISLE STEP    R2T 12 ISLE STEP         0.97
+ 87     86  P3 BULB UPPER        P3 BULB UPPER            1.00
+ 88     16  SEAHORSE BODY        SEAHORSE BODY            1.00
+ 89     67  M3,1 1/3 LIMB TIP    M31 13 LIMB TIP          0.94
+ 90     36  MISIUREWICZ -1.94    MISIUREWICZ -194         0.97
+ 93    ---  ---                 4~%  L%_4 ( L %%%D*( %X(P 0.00
+134    ---  ---                 H %  "[  4J4 ( L X"FA4N  0.00
+136     23  SAT HEAD             SAT HEAD                 1.00
+137    ---  ---                 M4[ A(D  % DN4  L        0.00
+148     24  SAT SEAHORSE         SAT SEAHORSE             1.00
 
-# Captured 90/90 POIs in 148 presses
+# MISSED 1 POIs: [75]
+# Captured 89/90 POIs in 180 presses
