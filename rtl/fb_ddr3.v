@@ -39,10 +39,11 @@ module fb_ddr3 #(
     parameter [28:0] BANK_WORDS = 29'd131072,    // 1 MB bank stride
     parameter        FIFO_AW    = 8              // 256-deep write FIFO
 )(
-    input  wire        clk,
+    input  wire        clk,             // clk_sys: Avalon engine, FIFO, fetch
+    input  wire        clk_vid,         // 100 MHz video domain: display reads
     input  wire        rst_n,
 
-    // render write port (targets bank render_bank)
+    // render write port (targets bank render_bank), clk domain
     input  wire        wr_en,
     input  wire [10:0] wr_x,
     input  wire [9:0]  wr_y,
@@ -51,10 +52,13 @@ module fb_ddr3 #(
     output wire        wr_ready,        // stall dispatch when low
     output wire        wr_idle,         // FIFO empty, nothing in flight
 
-    // display line port (reads bank ~render_bank)
+    // display line port (reads bank ~render_bank), clk_vid domain.
+    // line_req/line_row cross into clk (toggle sync; line_row follows
+    // the project CDC contract: stable from req until the next req,
+    // >=2 destination clocks before the synced strobe fires).
     input  wire        line_req,        // pulse; row into ping-pong buffer
     input  wire [9:0]  line_row,        // logical row 0..479
-    output reg         line_busy,       // high while the fetch runs
+    output reg         line_busy,       // high while the fetch runs (clk)
     input  wire [9:0]  rd_x,            // 0..639, last completed line
     output reg  [8:0]  rd_data,         // 1-cycle sync read
     output reg         underrun_sticky,
@@ -109,7 +113,37 @@ wire [28:0] wfh_addr = BASE_WORD + (wfh_bank ? BANK_WORDS : 29'd0)
 assign wr_idle = wf_empty & ~ddram_we;
 
 // ---------------------------------------------------------------------
-// Line fetch request
+// Line fetch request — video-domain side.
+// disp_sel toggles on the raw req (display rotates immediately at line
+// start, microseconds before active pixels); the fetch engine sees the
+// same req a few clocks later through the toggle synchronizer.  Both
+// count the same requests, so disp_sel and fetch_buf stay consistent.
+// ---------------------------------------------------------------------
+reg        req_tgl_v;
+reg        disp_sel;
+reg [9:0]  line_row_hold;   // stable until the next req (>=1 line period)
+
+always @(posedge clk_vid or negedge rst_n) begin
+    if (!rst_n) begin
+        req_tgl_v     <= 1'b0;
+        disp_sel      <= 1'b0;
+        line_row_hold <= 10'd0;
+    end else if (line_req) begin
+        req_tgl_v     <= ~req_tgl_v;
+        disp_sel      <= ~disp_sel;
+        line_row_hold <= line_row;
+    end
+end
+
+reg [2:0] req_sync;
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) req_sync <= 3'd0;
+    else        req_sync <= {req_sync[1:0], req_tgl_v};
+end
+wire req_pulse = req_sync[2] ^ req_sync[1];
+
+// ---------------------------------------------------------------------
+// Line fetch — clk (engine) domain
 // ---------------------------------------------------------------------
 reg  [28:0] fetch_addr;    // next burst address to issue
 reg  [2:0]  rd_pending;    // bursts left to issue (incl. current)
@@ -127,9 +161,9 @@ always @(posedge clk) begin
         underrun_sticky <= 1'b0;
         fetch_addr <= BASE_WORD;
     end else begin
-        if (line_req) begin
+        if (req_pulse) begin
             if (line_busy) underrun_sticky <= 1'b1;
-            fetch_addr <= disp_base + {11'd0, line_row, 8'd0};
+            fetch_addr <= disp_base + {11'd0, line_row_hold, 8'd0};
             rd_pending <= BURSTS_PER_LINE;
             beat_cnt <= 8'd0;
             fetch_buf <= ~fetch_buf;
@@ -148,7 +182,10 @@ end
 // ---------------------------------------------------------------------
 // Line buffer: 2 x 160 x 36 bit (4 pixels per 64-bit beat), stored
 // with a 256-word stride per buffer so {buf, beat[7:0]} indexes
-// directly.  Written by the fetch engine, read by the display side.
+// directly.  Dual-clock: written by the fetch engine (clk), read by
+// the display side (clk_vid).  The halves are always disjoint —
+// display reads the last completed line (~disp_sel) while the fetch
+// fills the other.
 // ---------------------------------------------------------------------
 reg [35:0] linebuf [0:511];
 reg [35:0] rd_word_r;
@@ -161,8 +198,8 @@ always @(posedge clk) begin
              ddram_dout[24:16], ddram_dout[8:0]};
 end
 
-always @(posedge clk) begin
-    rd_word_r <= linebuf[{~fetch_buf, rd_x[9:2]}];
+always @(posedge clk_vid) begin
+    rd_word_r <= linebuf[{~disp_sel, rd_x[9:2]}];
     rd_lane_d <= rd_x[1:0];
 end
 

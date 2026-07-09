@@ -19,18 +19,26 @@ module framebuffer #(
     parameter DATA_WIDTH = 9,       // 8-bit iteration + 1-bit escaped
     parameter ADDR_WIDTH = 18       // ceil(log2(640*240)) = 18
 )(
+    // Dual-clock since the 100 MHz video-domain move (480P_DESIGN.md):
+    // render writes in clk (clk_sys), display reads in rd_clk (clk_vid).
+    // Banks strictly separate display/render, so cross-domain access to
+    // the same cell only happens in single-buffer mode — where the
+    // old/new nondeterminism was already accepted on one clock.
     input  wire                    clk,
+    input  wire                    rd_clk,
 
-    // Write port (render pipeline -> back buffer)
+    // Write port (render pipeline -> back buffer), clk domain
     input  wire                    wr_en,
     input  wire [ADDR_WIDTH-1:0]   wr_addr,
     input  wire [DATA_WIDTH-1:0]   wr_data,
 
-    // Read port (video display <- front buffer)
+    // Read port (video display <- front buffer), rd_clk domain
     input  wire [ADDR_WIDTH-1:0]   rd_addr,
     output wire [DATA_WIDTH-1:0]   rd_data,
 
     // Buffer swap control (toggle during VBLANK only!)
+    // bank_sel is clk-domain; display_bank_sel must already be
+    // synchronized into rd_clk by the caller.
     input  wire                    bank_sel,
     input  wire                    display_bank_sel
 );
@@ -49,8 +57,8 @@ always @(posedge clk) begin
         mem_a[wr_addr] <= wr_data;
 end
 
-// Read: always (for front buffer mux)
-always @(posedge clk) begin
+// Read: always (for front buffer mux), video domain
+always @(posedge rd_clk) begin
     rd_data_a <= mem_a[rd_addr];
 end
 
@@ -64,8 +72,8 @@ always @(posedge clk) begin
         mem_b[wr_addr] <= wr_data;
 end
 
-// Read: always
-always @(posedge clk) begin
+// Read: always, video domain
+always @(posedge rd_clk) begin
     rd_data_b <= mem_b[rd_addr];
 end
 

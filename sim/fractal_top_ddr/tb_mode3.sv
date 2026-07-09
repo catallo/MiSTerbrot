@@ -48,7 +48,7 @@ fractal_top #(
     .WIDTH(64), .FRAC_BITS(56),
     .BOOT_GRACE_VBLANKS(6'd2)
 ) dut (
-    .clk(clk), .clk_iter(clk_iter), .rst_n(rst_n),
+    .clk(clk), .clk_iter(clk_iter), .clk_vid(clk_iter), .rst_n(rst_n),
     .joystick(16'd0), .ps2_key(11'd0), .status(status),
     .entropy_seed(33'h1_2345_6789),
     .ce_pix(ce_pix), .hsync(hsync), .vsync(vsync),

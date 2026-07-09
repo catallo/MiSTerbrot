@@ -130,7 +130,11 @@ wire core_bob_deint;
 assign VGA_F1 = core_f1;
 assign VGA_SCALER  = 0;
 assign VGA_DISABLE = 0;
-assign HDMI_FREEZE = core_rendering;
+// core_rendering is clk_sys; the framework consumes HDMI_FREEZE in the
+// video clock domain — 2FF since the 100 MHz video move.
+reg [1:0] freeze_sync;
+always @(posedge clk_iter) freeze_sync <= {freeze_sync[0], core_rendering};
+assign HDMI_FREEZE = freeze_sync[1];
 assign HDMI_BLACKOUT = 0;
 assign HDMI_BOB_DEINT = core_bob_deint;
 assign AUDIO_S = 0;
@@ -257,6 +261,7 @@ fractal_top #(
 ) u_fractal_top (
 	.clk(clk_sys),
 	.clk_iter(clk_iter),
+	.clk_vid(clk_iter),
 	.rst_n(rst_n),
 	.joystick(joystick_0),
 	.ps2_key(ps2_key),
@@ -288,9 +293,10 @@ fractal_top #(
 );
 
 // WIDTH sized for max resolution (640) — line buffer absorbs unused space in 320 mode.
+// Video runs in the 100 MHz domain since the 480p domain move (clk_iter output).
 arcade_video #(.WIDTH(640), .DW(24)) u_arcade_video
 (
-	.clk_video(clk_sys),
+	.clk_video(clk_iter),
 	.ce_pix(ce_pix),
 	.RGB_in({core_r, core_g, core_b}),
 	.HBlank(core_hblank),
@@ -325,7 +331,7 @@ reg        dvid_ce;
 reg [7:0]  dvid_r, dvid_g, dvid_b;
 reg        dvid_hs, dvid_vs, dvid_de;
 reg        d_oldvid_ce;
-always @(posedge clk_sys) begin
+always @(posedge clk_iter) begin
 	d_oldvid_ce <= ce_pix;
 	dvid_ce     <= ce_pix & ~d_oldvid_ce;
 	if (ce_pix) begin

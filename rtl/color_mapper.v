@@ -2382,12 +2382,28 @@ always @(posedge clk) begin
         color_fa_g <= eval_fb_g;
         color_fa_b <= eval_fb_b;
     end
+    // Blend retiming stage (100 MHz video-domain move): the cycling
+    // blend registers at the NEXT tick's ce_d1 (2 clks after the ce_d3
+    // eval latch), splitting the two chained blends across separate
+    // multicycle-2 hops.  escaped pipelines along — the final capture
+    // moved past the point where the live rd_data still holds this
+    // pixel.  Values are pixel N's throughout (evals latched at N's
+    // ce_d3 stay stable until N+1's).
+    if (ce_d1) begin
+        to_blend_qr <= to_blend_r;
+        to_blend_qg <= to_blend_g;
+        to_blend_qb <= to_blend_b;
+        escaped_d1  <= escaped;
+    end
 end
 
-// Cycling blend within each palette
+// Cycling blend within each palette — registered into to_blend_q* on
+// the next tick's ce_d1 (see retiming stage above).
 wire [7:0] to_blend_r   = blend_channel(color_a_r,  color_b_r,  cycle_frac);
 wire [7:0] to_blend_g   = blend_channel(color_a_g,  color_b_g,  cycle_frac);
 wire [7:0] to_blend_b   = blend_channel(color_a_b,  color_b_b,  cycle_frac);
+reg  [7:0] to_blend_qr, to_blend_qg, to_blend_qb;
+reg        escaped_d1;
 // FROM (outgoing) palette uses the base entry only — its next-entry
 // evaluator was dropped in the three-evaluator restructure.  During a
 // crossfade the dissolving image's cycling interpolation is hard-stepped;
@@ -2399,9 +2415,9 @@ wire [7:0] from_blend_b = color_fa_b;
 // Crossfade blend.  When inactive, output the TO palette directly.
 // blend_channel_64(a, b, frac): a=TO, b=FROM, weights add to 64.
 // crossfade_frac = 63 at start of fade → mostly FROM; 0 at end → fully TO.
-wire [7:0] crossfade_r = fade_active ? blend_channel_64(to_blend_r, from_blend_r, crossfade_frac) : to_blend_r;
-wire [7:0] crossfade_g = fade_active ? blend_channel_64(to_blend_g, from_blend_g, crossfade_frac) : to_blend_g;
-wire [7:0] crossfade_b = fade_active ? blend_channel_64(to_blend_b, from_blend_b, crossfade_frac) : to_blend_b;
+wire [7:0] crossfade_r = fade_active ? blend_channel_64(to_blend_qr, from_blend_r, crossfade_frac) : to_blend_qr;
+wire [7:0] crossfade_g = fade_active ? blend_channel_64(to_blend_qg, from_blend_g, crossfade_frac) : to_blend_qg;
+wire [7:0] crossfade_b = fade_active ? blend_channel_64(to_blend_qb, from_blend_b, crossfade_frac) : to_blend_qb;
 
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
@@ -2492,16 +2508,17 @@ always @(posedge clk or negedge rst_n) begin
 
         pixel_valid_out <= pixel_valid_in;
 
-        // Final capture on ce_d1 (one clk AFTER the tick), not the tick
-        // itself: the downstream consumer (arcade_video RGB_fix) samples
-        // these registers only at the NEXT tick, so the extra clk is free
-        // — and it doubles the blend cone's budget (eval regs latch on
-        // ce_d3, capture here at tick+1 = 2 cycles; SDC multicycle 2).
-        // rd_data is still stable at tick+1 (the BRAM output for the next
-        // pixel re-latches at the END of tick+1), so the live `escaped`
-        // and band-select paths still see the current pixel.
-        if (ce_d1) begin
-            if (escaped) begin
+        // Final capture on ce_d3 (three clks AFTER the tick): the
+        // downstream consumer (arcade_video RGB_fix) samples these
+        // registers only at the NEXT tick, so anything up to tick+3 is
+        // free at the minimum cadence (ce every 4 clks in 640/480p).
+        // With the to_blend_q retiming stage at ce_d1, each blend hop
+        // gets 2 cycles (SDC multicycle 2 per hop) — required for
+        // closure at 10 ns/cycle in the 100 MHz video domain.  escaped
+        // uses the ce_d1-pipelined copy: live rd_data no longer holds
+        // this pixel at tick+3.
+        if (ce_d3) begin
+            if (escaped_d1) begin
                 color_r <= crossfade_r;
                 color_g <= crossfade_g;
                 color_b <= crossfade_b;

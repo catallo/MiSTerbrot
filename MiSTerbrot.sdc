@@ -61,12 +61,15 @@ set_multicycle_path -hold  2 -from [get_registers {*u_framebuffer|* *u_fb_ddr3|*
 # registered inputs only, so no structural fb path to those registers
 # exists.  fb's only single-cycle destination is the cidx_*_r adder path.)
 
-# Blend cone: evaluator-output registers (latched on ce_d3) -> final color
-# registers (latched on ce_d1 of the NEXT tick, i.e. tick+1) = 2 clk_sys
-# cycles by construction.  This cone was the consistent -1.4..-2.5 ns
-# placement casualty when analyzed single-cycle.
-set_multicycle_path -setup 2 -from [get_registers {*u_color_mapper|color_a_* *u_color_mapper|color_b_* *u_color_mapper|color_fa_*}] -to [get_registers {*u_color_mapper|color_r[*]* *u_color_mapper|color_g[*]* *u_color_mapper|color_b[*]*}]
-set_multicycle_path -hold  1 -from [get_registers {*u_color_mapper|color_a_* *u_color_mapper|color_b_* *u_color_mapper|color_fa_*}] -to [get_registers {*u_color_mapper|color_r[*]* *u_color_mapper|color_g[*]* *u_color_mapper|color_b[*]*}]
+# Blend cone, retimed for the 100 MHz video domain: eval regs (ce_d3)
+# -> to_blend_q (ce_d1 of the next tick) -> final color regs (ce_d3 of
+# the next tick).  Each hop is 2 cycles by construction at the minimum
+# cadence (ce every 4 clks); the downstream consumer samples only at
+# the following tick, so the later final capture is free.
+set_multicycle_path -setup 2 -from [get_registers {*u_color_mapper|color_a_* *u_color_mapper|color_b_*}] -to [get_registers {*u_color_mapper|to_blend_q*}]
+set_multicycle_path -hold  1 -from [get_registers {*u_color_mapper|color_a_* *u_color_mapper|color_b_*}] -to [get_registers {*u_color_mapper|to_blend_q*}]
+set_multicycle_path -setup 2 -from [get_registers {*u_color_mapper|to_blend_q* *u_color_mapper|color_fa_*}] -to [get_registers {*u_color_mapper|color_r[*]* *u_color_mapper|color_g[*]* *u_color_mapper|color_b[*]*}]
+set_multicycle_path -hold  1 -from [get_registers {*u_color_mapper|to_blend_q* *u_color_mapper|color_fa_*}] -to [get_registers {*u_color_mapper|color_r[*]* *u_color_mapper|color_g[*]* *u_color_mapper|color_b[*]*}]
 
 # Same cadence argument for the overlay/compositing cone: vid_pixel_*_d /
 # vid_active_d update on ce_pix (fractal_top), color_mapper's output regs
@@ -78,25 +81,29 @@ set_multicycle_path -hold  1 -from [get_registers {*u_fractal_top|vid_pixel_x_d[
 set_multicycle_path -setup 2 -from [get_registers {*u_color_mapper|color_*}] -to [get_registers {*u_arcade_video|* *|dvid_*}]
 set_multicycle_path -hold  1 -from [get_registers {*u_color_mapper|color_*}] -to [get_registers {*u_arcade_video|* *|dvid_*}]
 
-# Quasi-static control registers feeding the same compositing cone:
-# benchmark mode/scene/telemetry (change on keypress or 10 s window),
-# auto_zoom outputs and input_handler state (change per frame at most),
-# color_mapper cycling/crossfade phase regs (change on vblank), and the
-# OSD status bits from hps_io (change on menu interaction).  A one-tick-
-# late settle of any of these into a ce_pix-sampled capture is invisible;
-# none of these groups contain the ce_pix counter, so register enables
-# stay single-cycle.
-# boot_grace_cnt / res_override* joined this family with Track B: they
-# reach the color cone through ddr_fb_mode (pixel-source mux) and change
-# once at boot / on keypress respectively.
-set_multicycle_path -setup 2 -from [get_registers {*u_fractal_top|benchmark_* *u_fractal_top|bench_* *u_fractal_top|last_bench_window_frames[*] *u_fractal_top|sym_overflow_sticky *u_fractal_top|overlay_visible *u_fractal_top|blank_text_override[*] *u_fractal_top|bg_dim_override[*] *u_fractal_top|fps_value[*] *u_fractal_top|bank_sel *u_fractal_top|boot_grace_cnt[*] *u_fractal_top|res_override*}] -to [get_registers {*u_arcade_video|* *u_color_mapper|* *|dvid_*}]
-set_multicycle_path -hold  1 -from [get_registers {*u_fractal_top|benchmark_* *u_fractal_top|bench_* *u_fractal_top|last_bench_window_frames[*] *u_fractal_top|sym_overflow_sticky *u_fractal_top|overlay_visible *u_fractal_top|blank_text_override[*] *u_fractal_top|bg_dim_override[*] *u_fractal_top|fps_value[*] *u_fractal_top|bank_sel *u_fractal_top|boot_grace_cnt[*] *u_fractal_top|res_override*}] -to [get_registers {*u_arcade_video|* *u_color_mapper|* *|dvid_*}]
-set_multicycle_path -setup 2 -from [get_registers {*u_auto_zoom|* *u_input|*}] -to [get_registers {*u_arcade_video|* *u_color_mapper|* *|dvid_*}]
-set_multicycle_path -hold  1 -from [get_registers {*u_auto_zoom|* *u_input|*}] -to [get_registers {*u_arcade_video|* *u_color_mapper|* *|dvid_*}]
+# ---- 100 MHz video-domain move (docs/480P_DESIGN.md) ----
+# The display path (video_timing, fb read, color_mapper, text_overlay,
+# arcade_video, dvid) now lives in clk_iter's clock group.  The former
+# quasi-static multicycles from clk_sys sources became CROSS-DOMAIN
+# paths, cut entirely by the async clock groups above — so they get
+# net-delay routing bounds instead (same CDC contract as the iter
+# buses: values change on keypress/vblank/frame events; a torn sample
+# repaints one frame and is invisible).
+set_net_delay -max 20 -from [get_registers {*u_fractal_top|benchmark_* *u_fractal_top|bench_* *u_fractal_top|last_bench_window_frames[*] *u_fractal_top|sym_overflow_sticky *u_fractal_top|overlay_visible *u_fractal_top|blank_text_override[*] *u_fractal_top|bg_dim_override[*] *u_fractal_top|fps_value[*] *u_fractal_top|boot_grace_cnt[*] *u_fractal_top|res_override*}]
+set_net_delay -max 20 -from [get_registers {*u_auto_zoom|* *u_input|*}]
+set_net_delay -max 20 -from [get_registers {*hps_io*|status[*]*}]
+# 1-bit synchronizer feeds and the line_row quasi-static bus: bank swap
+# / buffer mode / ddr mode into clk_vid, line_req toggle + row into the
+# fb_ddr3 engine, vblank back into clk_sys (source is a video_timing
+# output register inside u_video_timing).
+set_net_delay -max 10 -from [get_registers {*u_fractal_top|bank_sel *u_fb_ddr3|req_tgl_v *u_video_timing|vblank}]
+set_net_delay -max 20 -from [get_registers {*u_fb_ddr3|line_row_hold[*]}]
+
+# Cycling/crossfade phase regs are clk_vid-local now (color_mapper
+# moved wholesale): keep their relaxation into the vid compositing
+# cone, same one-tick-late-settle argument as before.
 set_multicycle_path -setup 2 -from [get_registers {*u_color_mapper|cycle_phase* *u_color_mapper|pal_* *u_color_mapper|fade_* *u_color_mapper|ping_dir}] -to [get_registers {*u_arcade_video|* *u_color_mapper|* *|dvid_*}]
 set_multicycle_path -hold  1 -from [get_registers {*u_color_mapper|cycle_phase* *u_color_mapper|pal_* *u_color_mapper|fade_* *u_color_mapper|ping_dir}] -to [get_registers {*u_arcade_video|* *u_color_mapper|* *|dvid_*}]
-set_multicycle_path -setup 2 -from [get_registers {*hps_io*|status[*]*}] -to [get_registers {*u_arcade_video|* *u_color_mapper|* *|dvid_*}]
-set_multicycle_path -hold  1 -from [get_registers {*hps_io*|status[*]*}] -to [get_registers {*u_arcade_video|* *u_color_mapper|* *|dvid_*}]
 
 # auto_zoom's step register roots a deep combinational cone (step_msb
 # priority tree -> zoom_exp -> zoom_level_x10 -> pacing -> step_delta)

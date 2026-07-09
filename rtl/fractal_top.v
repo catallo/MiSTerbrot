@@ -27,8 +27,11 @@ module fractal_top #(
     // so TBs can shorten it; synthesis always uses the default.
     parameter [5:0] BOOT_GRACE_VBLANKS = 6'd60
 )(
-    input  wire        clk,       // 50 MHz (clk_sys: video, framebuffer, control)
+    input  wire        clk,       // 50 MHz (clk_sys: render, framebuffer write, control)
     input  wire        clk_iter,  // 100 MHz (iter_quad math)
+    input  wire        clk_vid,   // 100 MHz video domain (physically = clk_iter;
+                                  // display path: timing, fb read, color, overlay).
+                                  // See docs/480P_DESIGN.md for the domain split.
     input  wire        rst_n,
 
     // MiSTer interface
@@ -125,17 +128,18 @@ wire effective_mode_640 = benchmark_active ? bench_mode_640
 // 320x240.
 wire ddr_fb_mode = (eff_res == 2'd3) && interlace_mode;
 
-// ---- Pixel clock ----
-//   320 mode: 50 MHz / 8 = 6.25 MHz dot clock (15.625 kHz line rate)
-//   640 mode: 50 MHz / 4 = 12.5 MHz dot clock (15.625 kHz line rate at 800 H_TOTAL)
-// Both modes hold 15 kHz line rate / native 240p / 60 Hz.
-reg [2:0] ce_pix_cnt;
-always @(posedge clk or negedge rst_n) begin
-    if (!rst_n) ce_pix_cnt <= 3'd0;
-    else        ce_pix_cnt <= ce_pix_cnt + 3'd1;
+// ---- Pixel clock (video domain, 100 MHz base) ----
+//   320 mode: 100 MHz / 16 = 6.25 MHz dot clock (15.625 kHz line rate)
+//   640 mode: 100 MHz / 8  = 12.5 MHz dot clock (15.625 kHz at 800 H_TOTAL)
+// Same absolute rates as the former 50 MHz dividers; the 100 MHz base
+// exists so a future 480p can run 25 MHz at the proven 4-clk cadence.
+reg [3:0] ce_pix_cnt;
+always @(posedge clk_vid or negedge rst_n) begin
+    if (!rst_n) ce_pix_cnt <= 4'd0;
+    else        ce_pix_cnt <= ce_pix_cnt + 4'd1;
 end
-assign ce_pix = effective_mode_640 ? (ce_pix_cnt[1:0] == 2'd0)
-                                   : (ce_pix_cnt       == 3'd0);
+assign ce_pix = effective_mode_640 ? (ce_pix_cnt[2:0] == 3'd0)
+                                   : (ce_pix_cnt       == 4'd0);
 
 // ---- OSD Parameter Decoding ----
 wire [6:0] osd_palette_sel;
@@ -395,7 +399,7 @@ auto_zoom #(
     .skip_next(auto_zoom_skip_next),
     .snap_next(auto_zoom_snap_next),
     .frame_done(vblank_rise),
-    .vblank(vblank),
+    .vblank(vblank_sync_s[1]),
     .entropy_seed(entropy_seed),
     .attract_zoom_in_enable(attract_zoom_in_enable),
     .attract_zoom_out_enable(attract_zoom_out_enable),
@@ -505,15 +509,23 @@ reg [6:0]  fps_value;
 wire [6:0] fps_sample_count = fps_halfsec_count + {6'd0, frame_done_rise};
 wire [6:0] fps_sample_value = {fps_sample_count[5:0], 1'b0};
 
-// VBLANK rising edge detector
+// VBLANK crossing into the render/control domain (vblank is generated
+// in clk_vid since the video-domain move): 2FF sync + edge detect.
+// All clk-domain consumers (bank swap, boot grace, attract pacing,
+// benchmark windows) use this synced copy; the 2-3 clock latency is
+// nothing against 22+ blank lines.
+reg [1:0] vblank_sync_s;
 reg vblank_prev;
 always @(posedge clk or negedge rst_n) begin
-    if (!rst_n)
-        vblank_prev <= 1'b0;
-    else
-        vblank_prev <= vblank;
+    if (!rst_n) begin
+        vblank_sync_s <= 2'b00;
+        vblank_prev   <= 1'b0;
+    end else begin
+        vblank_sync_s <= {vblank_sync_s[0], vblank};
+        vblank_prev   <= vblank_sync_s[1];
+    end
 end
-wire vblank_rise = vblank & ~vblank_prev;
+wire vblank_rise = vblank_sync_s[1] & ~vblank_prev;
 assign frame_done_rise = frame_done & ~frame_done_prev;
 
 // Mirror-write FIFO empty flag (driven in the A2 symmetry block below).
@@ -983,18 +995,47 @@ wire [FB_ADDR_WIDTH-1:0] vid_rd_addr = vid_in_range ? vid_rd_addr_raw
 // Mux read address: auto_zoom sampling during VBLANK, video display otherwise
 wire [FB_ADDR_WIDTH-1:0] rd_addr = az_fb_sampling ? az_fb_rd_addr : vid_rd_addr;
 
+// ---- Video-domain synchronizers ----
+// Quasi-static controls crossing into clk_vid (see 480P_DESIGN.md).
+// bank_sel toggles deep inside vblank, so the 2FF latency can never
+// race an active-area read; the others change on OSD/key events.
+reg [1:0] bank_sel_vs, single_buf_vs, ddr_mode_vs;
+always @(posedge clk_vid or negedge rst_n) begin
+    if (!rst_n) begin
+        bank_sel_vs   <= 2'b00;
+        single_buf_vs <= 2'b00;
+        ddr_mode_vs   <= 2'b00;
+    end else begin
+        bank_sel_vs   <= {bank_sel_vs[0], bank_sel};
+        single_buf_vs <= {single_buf_vs[0], single_buffer};
+        ddr_mode_vs   <= {ddr_mode_vs[0], ddr_fb_mode};
+    end
+end
+wire bank_sel_v    = bank_sel_vs[1];
+wire ddr_fb_mode_v = ddr_mode_vs[1];
+wire display_bank_sel_v = single_buf_vs[1] ? ~bank_sel_v : bank_sel_v;
+
+// vblank edge, video-domain native (for color_mapper's cycling state)
+reg vblank_prev_v;
+always @(posedge clk_vid or negedge rst_n) begin
+    if (!rst_n) vblank_prev_v <= 1'b0;
+    else        vblank_prev_v <= vblank;
+end
+wire vblank_rise_v = vblank & ~vblank_prev_v;
+
 framebuffer #(
     .DATA_WIDTH(FB_DATA_WIDTH),
     .ADDR_WIDTH(FB_ADDR_WIDTH)
 ) u_framebuffer (
     .clk(clk),
+    .rd_clk(clk_vid),
     .wr_en(fb_wr_en & ~ddr_fb_mode),
     .wr_addr(wr_addr),
     .wr_data(wr_data),
     .rd_addr(rd_addr),
     .rd_data(rd_data),
     .bank_sel(bank_sel),
-    .display_bank_sel(single_buffer ? ~bank_sel : bank_sel)
+    .display_bank_sel(display_bank_sel_v)
 );
 
 // ---- DDR3 framebuffer (Track B): serves 640x480i only ----
@@ -1011,6 +1052,7 @@ wire [9:0]  vt_prefetch_row;
 
 fb_ddr3 u_fb_ddr3 (
     .clk(clk),
+    .clk_vid(clk_vid),
     .rst_n(rst_n),
     .wr_en(fb_wr_en & ddr_fb_mode),
     .wr_x(fb_wr_pixel_x),
@@ -1019,7 +1061,7 @@ fb_ddr3 u_fb_ddr3 (
     .render_bank(bank_sel),
     .wr_ready(ddr_wr_ready),
     .wr_idle(ddr_wr_idle),
-    .line_req(vt_prefetch_req & ddr_fb_mode),
+    .line_req(vt_prefetch_req & ddr_fb_mode_v),
     .line_row(vt_prefetch_row),
     .line_busy(ddr_line_busy),
     .rd_x(vid_in_range ? vid_pixel_x[9:0] : 10'd0),
@@ -1045,7 +1087,7 @@ reg [9:0]  vid_pixel_y_d;
 
 wire vid_field;
 video_timing u_video_timing (
-    .clk(clk),
+    .clk(clk_vid),
     .rst_n(rst_n),
     .ce_pix(ce_pix),
     .mode_640(effective_mode_640),
@@ -1068,7 +1110,7 @@ assign vga_f1 = interlace_mode & vid_field & (osd_deint_mode != 2'd2);
 assign vga_interlaced = interlace_mode;
 assign bob_deint = (osd_deint_mode == 2'd1);
 
-always @(posedge clk or negedge rst_n) begin
+always @(posedge clk_vid or negedge rst_n) begin
     if (!rst_n) begin
         vid_active_d  <= 1'b0;
         vid_pixel_x_d <= 11'd0;
@@ -1084,9 +1126,9 @@ end
 // Pixel source mux: BRAM banks for 240p/320x480i, DDR3 line buffer for
 // 640x480i.  Both have 1-cycle read latency, so downstream timing is
 // identical.
-wire        fb_escaped = ddr_fb_mode ? ddr_rd_data[8]   : rd_data[8];
-wire [11:0] fb_iter    = {4'd0, ddr_fb_mode ? ddr_rd_data[7:0]
-                                            : rd_data[7:0]};
+wire        fb_escaped = ddr_fb_mode_v ? ddr_rd_data[8]   : rd_data[8];
+wire [11:0] fb_iter    = {4'd0, ddr_fb_mode_v ? ddr_rd_data[7:0]
+                                              : rd_data[7:0]};
 
 wire [7:0] disp_r, disp_g, disp_b;
 wire [7:0] overlay_r, overlay_g, overlay_b;
@@ -1105,9 +1147,9 @@ wire       effective_color_cycle_enable = osd_color_cycle_enable
                                         & ~benchmark_active;
 
 color_mapper u_color_mapper (
-    .clk(clk),
+    .clk(clk_vid),
     .rst_n(rst_n),
-    .vblank_rise(vblank_rise),
+    .vblank_rise(vblank_rise_v),
     // Keep the RGB pipeline warm through blanking. During blanking the read
     // address is clamped to pixel 0, so the first visible clocks of the next
     // line no longer expose the previous line's held color.
@@ -1131,7 +1173,7 @@ text_overlay #(
     .WIDTH(WIDTH),
     .FRAC_BITS(FRAC_BITS)
 ) u_text_overlay (
-    .clk(clk),
+    .clk(clk_vid),
     .mode_640(effective_mode_640),
     .overlay_enable(overlay_enable),
     .overlay_visible(overlay_visible),

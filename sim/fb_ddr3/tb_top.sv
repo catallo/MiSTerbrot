@@ -14,6 +14,8 @@ module tb_top;
 
 reg clk = 0;
 always #10 clk = ~clk;
+reg clk_vid = 0;      // 100 MHz video domain
+always #5 clk_vid = ~clk_vid;
 
 reg rst_n = 0;
 initial begin
@@ -48,7 +50,7 @@ reg  [63:0] dout = 0;
 reg         dout_ready = 0;
 
 fb_ddr3 dut (
-    .clk(clk), .rst_n(rst_n),
+    .clk(clk), .clk_vid(clk_vid), .rst_n(rst_n),
     .wr_en(wr_en), .wr_x(wr_x), .wr_y(wr_y), .wr_data(wr_data),
     .render_bank(render_bank), .wr_ready(wr_ready), .wr_idle(wr_idle),
     .line_req(line_req), .line_row(line_row), .line_busy(line_busy),
@@ -149,11 +151,13 @@ integer errors = 0;
 task verify_line(input [9:0] row, input frameB);
     reg [8:0] exp;
     begin
-        // sequential display read, 1 px / 2 cycles
+        // sequential display read, 1 px / 4 video clocks (25 MHz pace)
         for (int x = 0; x < 640; x++) begin
             rd_x <= 10'(x);
-            @(posedge clk);
-            @(posedge clk);
+            @(posedge clk_vid);
+            @(posedge clk_vid);
+            @(posedge clk_vid);
+            @(posedge clk_vid);
             // rd_data now valid for x (1-cycle sync read)
             exp = frameB ? pxB(11'(x), row) : pxA(11'(x), row);
             if (rd_data !== exp) begin
@@ -172,8 +176,9 @@ task fetch_line(input [9:0] row);
     begin
         if (dbg) $display("[%0t] req row=%0d fetch_buf(pre)=%0d busy=%0d",
                           $time, row, dut.fetch_buf, line_busy);
+        @(posedge clk_vid);
         line_req <= 1; line_row <= row;
-        @(posedge clk);
+        @(posedge clk_vid);
         line_req <= 0;
     end
 endtask
@@ -185,6 +190,13 @@ always @(negedge dut.line_busy)
 task wait_fetch_done;
     integer guard;
     begin
+        // the req crosses a toggle synchronizer into clk — wait for the
+        // fetch to actually START (busy rise) before waiting for done
+        guard = 0;
+        while (!line_busy && guard < 32) begin
+            @(posedge clk);
+            guard = guard + 1;
+        end
         guard = 0;
         while (line_busy) begin
             @(posedge clk);
