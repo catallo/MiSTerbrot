@@ -173,7 +173,19 @@ default.
    measurement on silicon under ascal load.  DONE 2026-07-09 — see
    stage 1 results below.
 2. **`fb_ddr3.v` adapter**: write FIFO + line prefetch + Avalon
-   master, TB-verified against the randomized model.  ~2-3 days.
+   master, TB-verified against the randomized model.  DONE 2026-07-09:
+   `rtl/fb_ddr3.v` + `sim/fb_ddr3/tb_top.sv`.  TB drives a
+   memory-backed Avalon model (randomized waitrequest, 10-41 cycle
+   read latency, beat stalls) through the real usage pattern — frame A
+   written in scan order, scanned out with pipelined line_reqs WHILE
+   frame B writes to the other bank in reverse order, then swap and
+   scan B; all 614,400 pixels of both frames compare exactly,
+   underrun_sticky stays 0.  A stress variant (62% waitrequest,
+   latency to 73, 75% beat rate — drain slower than push, so the
+   wr_ready backpressure path genuinely engages) also passes.
+   Interface note: the display view rotates on line_req — exactly one
+   req per displayed line, one line ahead, including the wrap req at
+   the last line (see the header comment in fb_ddr3.v).
 3. **Integration**: backend mux in fractal_top (BRAM | DDR3 by mode),
    640×480i wiring (coord modes, scanout addressing, OSD value 3,
    new_vmode/boot-grace).  ~2-3 days.
