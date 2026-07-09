@@ -87,6 +87,13 @@ muxes 239−y / 479−y.
     15.7 kHz 480i; the PSX comparison worked because that setup runs
     `vga_scaler=1` (scaler output on the VGA port).  Same ini section
     added for MiSTerbrot; native 480i remains for 15 kHz displays.
+  - **Native 15 kHz 480i is UNVERIFIED on real 15 kHz hardware** — no
+    SCART TV / arcade monitor available locally.  Signal structure is
+    TB-verified (classic 262/263 half-line scheme) and the ascal locks
+    and weaves it correctly, but composite-sync quality and field
+    pairing on a real tube await community feedback — the same policy
+    PROJECT.md has always applied to 15 kHz 240p.  Flag in release
+    notes when this ships.
   - Weave combing on motion is inherent to deinterlacing a zooming
     fractal; `O[56]` exposes Bob as the remedy.
   - Tooling: poi_walkthrough/poi_ocr assume 240p capture geometry —
