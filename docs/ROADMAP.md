@@ -189,6 +189,13 @@ elsewhere.
 
 ## Track B — SDRAM-backed framebuffer + 480i then 480p
 
+> **SUPERSEDED (2026-07-09): see `docs/TRACKB_DESIGN.md`.**  320×480i
+> shipped BRAM-only (see `docs/480I_DESIGN.md`); Track B is now scoped
+> as 640×480i via DDR3.  The B1-B8 sections below predate the memory
+> decision and are kept for the record — the bandwidth math and the
+> line-prefetch architecture carried over, the SDRAM controller
+> selection did not.
+
 **Memory decision (2026-07-09): DDR3 via f2sdram, not the SDRAM addon.**
 User has a 128 MB SDRAM module (as most MiSTer setups do), but DDR3 wins
 on integration and strategy: (1) the f2sdram bridge + sysmem_lite +
