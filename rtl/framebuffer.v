@@ -9,14 +9,14 @@
 // bank_sel=0: front=A (display), back=B (render)
 // bank_sel=1: front=B (display), back=A (render)
 //
-// 640x240 @ 13-bit: 153,600 entries per bank (sized for max resolution)
+// 640x240 @ 9-bit: 153,600 entries per bank (sized for max resolution)
 // ~184 M9K blocks per bank, ~368 total. In 320×240 mode only the lower
 // half (76,800 entries) is addressed; upper half stays unused but the
 // allocation is the same since BRAM cost is at the bank-config level.
 //============================================================================
 
 module framebuffer #(
-    parameter DATA_WIDTH = 13,      // 12-bit iteration + 1-bit escaped
+    parameter DATA_WIDTH = 9,       // 8-bit iteration + 1-bit escaped
     parameter ADDR_WIDTH = 18       // ceil(log2(640*240)) = 18
 )(
     input  wire                    clk,

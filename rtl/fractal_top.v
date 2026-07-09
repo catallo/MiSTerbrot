@@ -260,7 +260,12 @@ input_handler #(
 
 // ---- Framebuffer parameters (needed by auto_zoom and framebuffer) ----
 localparam FB_ADDR_WIDTH = 18;  // ceil(log2(640*240))
-localparam FB_DATA_WIDTH = 13;  // 12-bit iter + 1-bit escaped
+// 9-bit pixels (480i prep, 2026-07-09): the display path only ever
+// consumes {escaped, iter[7:0]} — the palette index wraps at 256 and
+// the band-select bit is iter[7].  Storing the upper iter bits was
+// legacy; dropping them frees ~120 M10K blocks (room for the third
+// field bank the 480i scheme needs).
+localparam FB_DATA_WIDTH = 9;   // 8-bit iter + 1-bit escaped
 
 // ---- Auto-Zoom Screensaver ----
 
@@ -324,7 +329,7 @@ auto_zoom #(
     .zoom_pacing_mode(zoom_pacing_mode),
     .zoom_speed_sel(zoom_speed_sel),
     .randomize_enable(attract_randomize),
-    .fb_rd_data(rd_data),
+    .fb_rd_data({4'd0, rd_data}),
     .fb_rd_addr(az_fb_rd_addr),
     .fb_sampling(az_fb_sampling),
     .center_x(az_center_x),
@@ -867,7 +872,7 @@ wire [FB_ADDR_WIDTH-1:0] wr_x = {7'd0, fb_wr_pixel_x[10:0]};
 wire [FB_ADDR_WIDTH-1:0] wr_addr = effective_mode_640
                                    ? ((wr_y << 9) + (wr_y << 7) + wr_x)
                                    : ((wr_y << 8) + (wr_y << 6) + wr_x);
-wire [FB_DATA_WIDTH-1:0] wr_data = {fb_wr_escaped, fb_wr_iter};
+wire [FB_DATA_WIDTH-1:0] wr_data = {fb_wr_escaped, fb_wr_iter[7:0]};
 
 // Read address: same formula
 wire [10:0] vid_pixel_x;
@@ -936,8 +941,8 @@ always @(posedge clk or negedge rst_n) begin
 end
 
 // ---- Color Mapping (display path) ----
-wire        fb_escaped = rd_data[12];
-wire [11:0] fb_iter   = rd_data[11:0];
+wire        fb_escaped = rd_data[8];
+wire [11:0] fb_iter   = {4'd0, rd_data[7:0]};
 
 wire [7:0] disp_r, disp_g, disp_b;
 wire [7:0] overlay_r, overlay_g, overlay_b;
