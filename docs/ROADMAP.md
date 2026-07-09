@@ -337,24 +337,32 @@ Both modes via new OSD bits or by extending `O[22]`.
 - Does `auto_zoom.v`'s framebuffer sampling (`fb_rd_data`, `fb_rd_addr`) still work transparently? Yes — it just reads via the same line-cache path the display uses.
 - What's the visible behaviour at SDRAM module absent? Either: graceful fallback to 240p BRAM, or boot-time failure with a clear OSD message. Decide before integration.
 
-### Field-sequential rendering (idea, low priority — behind 480p)
+### Field-sequential rendering (planned WITH 480p)
 
-User-suggested option (2026-07-09): in the interlaced modes, render
-only the 240 lines of the CURRENT field per pass instead of the full
-progressive frame — the classic TV approach.  Roughly doubles the
-effective temporal rate (a 640-wide field costs ~640×240, not
-640×480).  Trade-offs that keep it low priority:
+User-suggested (2026-07-09), and the plan firmed up with the 480p
+decision: **once 480p exists, 480i stops duplicating the full-quality
+role and becomes the mode that actually saves compute** — render only
+the 240 lines of the CURRENT field per pass, the classic TV approach.
+Roughly doubles the effective temporal rate (a 640-wide field costs
+~640×240, not 640×480).
 
-- Only benefits NATIVE 15 kHz displays, where temporally offset
-  fields are the normal look.  Through any scaler (the user's own
-  setup: `vga_scaler` CRT + HDMI OLED) the deinterlacer weaves two
-  time-different fields → permanent combing (or bob shimmer).  Native
-  15 kHz 480i is itself still unverified on real hardware.
-- A2 symmetry must be disabled in this mode: the mirror row 479−y
-  always has opposite parity, i.e. lands in the other field — so the
-  scenes that are fastest today lose their halving.
-- Would ship as an extra OSD toggle (e.g. "Field Render") applying
-  only to 480i modes, default off; Weave deinterlace should probably
+Role split after 480p lands:
+
+- **480p (31 kHz)**: full-quality progressive 480 lines — the right
+  choice for every scaler/31 kHz display (including the user's own
+  `vga_scaler` CRT + HDMI OLED).
+- **480i, field-rendered**: the performance variant.  On native
+  15 kHz displays temporally offset fields are the normal TV look;
+  scaler users who dislike the deinterlacing artifacts (weave combing
+  / bob shimmer on time-different fields) simply pick 480p instead.
+
+Implementation notes:
+
+- A2 symmetry must be disabled while field-rendering: the mirror row
+  479−y always has opposite parity, i.e. lands in the other field.
+- Ship as an OSD toggle first (e.g. "Field Render", 480i modes only)
+  to preserve the current verified whole-frame behavior; decide the
+  default after comparing both on hardware.  Weave deinterlace should
   be discouraged while it is on.
 
 ## Variety enhancements (secondary track)
