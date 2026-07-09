@@ -189,6 +189,20 @@ elsewhere.
 
 ## Track B — SDRAM-backed framebuffer + 480i then 480p
 
+**Memory decision (2026-07-09): DDR3 via f2sdram, not the SDRAM addon.**
+User has a 128 MB SDRAM module (as most MiSTer setups do), but DDR3 wins
+on integration and strategy: (1) the f2sdram bridge + sysmem_lite +
+safe_terminator already live in sys/ and serve the ascal today — no
+custom SDRAM controller, no external-pin IO timing; (2) our bandwidth
+need (~37 MB/s display reads + modest render writes) is trivial against
+DDR3's >1 GB/s, and the variable shared-bus latency is absorbed by line
+FIFOs we need anyway (we are a framebuffer, not a cycle-accurate memory
+model — the classic pro-SDRAM determinism argument does not apply);
+(3) DDR3 is shared ARM<->FPGA memory, which is exactly the Track C
+perturbation scenario: the ARM computes high-precision reference orbits
+in software and the core reads them directly.
+
+
 Once Track A is in, resolution becomes the next gate. SDRAM unlocks 640×480 (single-buffer was rejected — tearing during the slow zoom is unacceptable).
 
 ### B1. Hardware choice

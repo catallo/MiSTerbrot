@@ -68,10 +68,10 @@ set_multicycle_path -hold  1 -from [get_registers {*u_color_mapper|color_a_* *u_
 # are ce_pix-enabled, and arcade_video's RGB_fix/HS/HBL capture only on
 # the ce_pix rising edge (sys/arcade_video.v).  Launch and capture sit on
 # the same tick grid >=4 clk_sys cycles apart.
-set_multicycle_path -setup 2 -from [get_registers {*u_fractal_top|vid_pixel_x_d[*] *u_fractal_top|vid_pixel_y_d[*] *u_fractal_top|vid_active_d}] -to [get_registers {*u_arcade_video|*}]
-set_multicycle_path -hold  1 -from [get_registers {*u_fractal_top|vid_pixel_x_d[*] *u_fractal_top|vid_pixel_y_d[*] *u_fractal_top|vid_active_d}] -to [get_registers {*u_arcade_video|*}]
-set_multicycle_path -setup 2 -from [get_registers {*u_color_mapper|color_*}] -to [get_registers {*u_arcade_video|*}]
-set_multicycle_path -hold  1 -from [get_registers {*u_color_mapper|color_*}] -to [get_registers {*u_arcade_video|*}]
+set_multicycle_path -setup 2 -from [get_registers {*u_fractal_top|vid_pixel_x_d[*] *u_fractal_top|vid_pixel_y_d[*] *u_fractal_top|vid_active_d}] -to [get_registers {*u_arcade_video|* *|dvid_*}]
+set_multicycle_path -hold  1 -from [get_registers {*u_fractal_top|vid_pixel_x_d[*] *u_fractal_top|vid_pixel_y_d[*] *u_fractal_top|vid_active_d}] -to [get_registers {*u_arcade_video|* *|dvid_*}]
+set_multicycle_path -setup 2 -from [get_registers {*u_color_mapper|color_*}] -to [get_registers {*u_arcade_video|* *|dvid_*}]
+set_multicycle_path -hold  1 -from [get_registers {*u_color_mapper|color_*}] -to [get_registers {*u_arcade_video|* *|dvid_*}]
 
 # Quasi-static control registers feeding the same compositing cone:
 # benchmark mode/scene/telemetry (change on keypress or 10 s window),
@@ -81,14 +81,14 @@ set_multicycle_path -hold  1 -from [get_registers {*u_color_mapper|color_*}] -to
 # late settle of any of these into a ce_pix-sampled capture is invisible;
 # none of these groups contain the ce_pix counter, so register enables
 # stay single-cycle.
-set_multicycle_path -setup 2 -from [get_registers {*u_fractal_top|benchmark_* *u_fractal_top|bench_* *u_fractal_top|last_bench_window_frames[*] *u_fractal_top|sym_overflow_sticky *u_fractal_top|overlay_visible *u_fractal_top|blank_text_override[*] *u_fractal_top|bg_dim_override[*] *u_fractal_top|fps_value[*] *u_fractal_top|bank_sel}] -to [get_registers {*u_arcade_video|* *u_color_mapper|*}]
-set_multicycle_path -hold  1 -from [get_registers {*u_fractal_top|benchmark_* *u_fractal_top|bench_* *u_fractal_top|last_bench_window_frames[*] *u_fractal_top|sym_overflow_sticky *u_fractal_top|overlay_visible *u_fractal_top|blank_text_override[*] *u_fractal_top|bg_dim_override[*] *u_fractal_top|fps_value[*] *u_fractal_top|bank_sel}] -to [get_registers {*u_arcade_video|* *u_color_mapper|*}]
-set_multicycle_path -setup 2 -from [get_registers {*u_auto_zoom|* *u_input|*}] -to [get_registers {*u_arcade_video|* *u_color_mapper|*}]
-set_multicycle_path -hold  1 -from [get_registers {*u_auto_zoom|* *u_input|*}] -to [get_registers {*u_arcade_video|* *u_color_mapper|*}]
-set_multicycle_path -setup 2 -from [get_registers {*u_color_mapper|cycle_phase* *u_color_mapper|pal_* *u_color_mapper|fade_* *u_color_mapper|ping_dir}] -to [get_registers {*u_arcade_video|* *u_color_mapper|*}]
-set_multicycle_path -hold  1 -from [get_registers {*u_color_mapper|cycle_phase* *u_color_mapper|pal_* *u_color_mapper|fade_* *u_color_mapper|ping_dir}] -to [get_registers {*u_arcade_video|* *u_color_mapper|*}]
-set_multicycle_path -setup 2 -from [get_registers {*hps_io*|status[*]*}] -to [get_registers {*u_arcade_video|* *u_color_mapper|*}]
-set_multicycle_path -hold  1 -from [get_registers {*hps_io*|status[*]*}] -to [get_registers {*u_arcade_video|* *u_color_mapper|*}]
+set_multicycle_path -setup 2 -from [get_registers {*u_fractal_top|benchmark_* *u_fractal_top|bench_* *u_fractal_top|last_bench_window_frames[*] *u_fractal_top|sym_overflow_sticky *u_fractal_top|overlay_visible *u_fractal_top|blank_text_override[*] *u_fractal_top|bg_dim_override[*] *u_fractal_top|fps_value[*] *u_fractal_top|bank_sel}] -to [get_registers {*u_arcade_video|* *u_color_mapper|* *|dvid_*}]
+set_multicycle_path -hold  1 -from [get_registers {*u_fractal_top|benchmark_* *u_fractal_top|bench_* *u_fractal_top|last_bench_window_frames[*] *u_fractal_top|sym_overflow_sticky *u_fractal_top|overlay_visible *u_fractal_top|blank_text_override[*] *u_fractal_top|bg_dim_override[*] *u_fractal_top|fps_value[*] *u_fractal_top|bank_sel}] -to [get_registers {*u_arcade_video|* *u_color_mapper|* *|dvid_*}]
+set_multicycle_path -setup 2 -from [get_registers {*u_auto_zoom|* *u_input|*}] -to [get_registers {*u_arcade_video|* *u_color_mapper|* *|dvid_*}]
+set_multicycle_path -hold  1 -from [get_registers {*u_auto_zoom|* *u_input|*}] -to [get_registers {*u_arcade_video|* *u_color_mapper|* *|dvid_*}]
+set_multicycle_path -setup 2 -from [get_registers {*u_color_mapper|cycle_phase* *u_color_mapper|pal_* *u_color_mapper|fade_* *u_color_mapper|ping_dir}] -to [get_registers {*u_arcade_video|* *u_color_mapper|* *|dvid_*}]
+set_multicycle_path -hold  1 -from [get_registers {*u_color_mapper|cycle_phase* *u_color_mapper|pal_* *u_color_mapper|fade_* *u_color_mapper|ping_dir}] -to [get_registers {*u_arcade_video|* *u_color_mapper|* *|dvid_*}]
+set_multicycle_path -setup 2 -from [get_registers {*hps_io*|status[*]*}] -to [get_registers {*u_arcade_video|* *u_color_mapper|* *|dvid_*}]
+set_multicycle_path -hold  1 -from [get_registers {*hps_io*|status[*]*}] -to [get_registers {*u_arcade_video|* *u_color_mapper|* *|dvid_*}]
 
 # auto_zoom's step register roots a deep combinational cone (step_msb
 # priority tree -> zoom_exp -> zoom_level_x10 -> pacing -> step_delta)

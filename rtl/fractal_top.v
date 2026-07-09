@@ -26,7 +26,6 @@ module fractal_top #(
     input  wire        clk,       // 50 MHz (clk_sys: video, framebuffer, control)
     input  wire        clk_iter,  // 100 MHz (iter_quad math)
     input  wire        rst_n,
-    input  wire        mode_640,  // 0 = 320×240, 1 = 640×240 (runtime selectable)
 
     // MiSTer interface
     input  wire [15:0] joystick,
@@ -40,6 +39,10 @@ module fractal_top #(
     output wire        vsync,
     output wire        hblank,
     output wire        vblank,
+    output wire        vga_f1,     // interlace field flag (0 when progressive)
+    output wire        vga_interlaced,  // level: 480i mode active
+    output reg         new_vmode,  // toggles on any resolution change (hps_io)
+    output wire        bob_deint,  // HDMI deinterlace mode for the framework
     output wire [7:0]  vga_r,
     output wire [7:0]  vga_g,
     output wire [7:0]  vga_b,
@@ -77,7 +80,28 @@ always @(*) begin
     endcase
 end
 
-wire effective_mode_640 = benchmark_active ? bench_mode_640 : mode_640;
+// ---- Unified resolution: 320x240 / 640x240 / 320x480i (2026-07-09) ----
+// One OSD selector (O[55:54]); the J key cycles through the three modes
+// (sticky override, same convention as the G/H/K/L keys).  Benchmark
+// mode forces the per-scene 240p geometry.
+// J-key override releases as soon as the OSD selection changes — the
+// most recently used source wins (a sticky override made the OSD
+// selector appear dead after the first keypress; found on hardware).
+reg  [1:0] res_override;
+reg        res_override_en;
+reg  [1:0] osd_res_prev;
+reg  [1:0] eff_res_prev_nv;
+wire [1:0] eff_res = res_override_en ? res_override : osd_res_mode;
+// Boot grace: the framework's very first mode lock after a core load
+// cannot cope with an interlaced signal (PSX never boots interlaced —
+// its BIOS runs 240p; found the hard way with a saved 480i setting).
+// Hold 480i off for the first ~1 s so the ARM locks progressive first,
+// then switch — a transition it demonstrably handles (new_vmode fires).
+reg [5:0] boot_grace_cnt;
+wire      boot_grace_done = (boot_grace_cnt >= 6'd60);
+wire interlace_mode = (eff_res == 2'd2) && boot_grace_done && !benchmark_active;
+wire effective_mode_640 = benchmark_active ? bench_mode_640
+                        : (eff_res == 2'd1);
 
 // ---- Pixel clock ----
 //   320 mode: 50 MHz / 8 = 6.25 MHz dot clock (15.625 kHz line rate)
@@ -104,11 +128,14 @@ wire       always_show_poi;
 wire       osd_overlay_bg_dim;
 wire       key_bg_dim_on, key_bg_dim_off;
 wire       key_blank_text_on, key_blank_text_off;
+wire       key_vmode_toggle;
 // A3 OSD mode: 2'd0 = Auto (use per-POI flag), 2'd1 = On (force-enable),
 // 2'd2 = Off (force-disable).  Decoded from status[26:25] in fractal_osd.v.
 wire [1:0] osd_p3_mode;
 wire       osd_periodicity_enable;
 wire       attract_randomize;
+wire [1:0] osd_res_mode;
+wire       osd_bob_deint;
 wire       color_depth_mode;
 wire [3:0] cycle_speed_sel;
 wire [1:0] cycle_direction;
@@ -142,6 +169,8 @@ fractal_osd #(
     .p3_mode(osd_p3_mode),
     .periodicity_enable(osd_periodicity_enable),
     .attract_randomize(attract_randomize),
+    .res_mode(osd_res_mode),
+    .bob_deint(osd_bob_deint),
     .color_depth_mode(color_depth_mode),
     .cycle_speed_sel(cycle_speed_sel),
     .cycle_direction(cycle_direction),
@@ -164,11 +193,33 @@ always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         blank_text_override <= 2'b00;
         bg_dim_override     <= 2'b00;
+        res_override        <= 2'd0;
+        res_override_en     <= 1'b0;
+        osd_res_prev        <= 2'd0;
+        eff_res_prev_nv     <= 2'd0;
+        new_vmode           <= 1'b0;
+        boot_grace_cnt      <= 6'd0;
     end else begin
         if (key_blank_text_on)  blank_text_override <= 2'b10;
         if (key_blank_text_off) blank_text_override <= 2'b01;
         if (key_bg_dim_on)      bg_dim_override     <= 2'b10;
         if (key_bg_dim_off)     bg_dim_override     <= 2'b01;
+        osd_res_prev <= osd_res_mode;
+        if (vblank_rise && !boot_grace_done)
+            boot_grace_cnt <= boot_grace_cnt + 6'd1;
+        // Signal every effective-resolution change to the ARM (hps_io
+        // new_vmode) so the scaler re-measures immediately — without it
+        // the boot-time 240p->480i transition (saved OSD setting arrives
+        // a moment after core start) leaves the scaler unlocked until
+        // the user manually switches modes.  Same mechanism as PSX.
+        eff_res_prev_nv <= eff_res;
+        if (eff_res != eff_res_prev_nv) new_vmode <= ~new_vmode;
+        if (key_vmode_toggle) begin
+            res_override_en <= 1'b1;
+            res_override    <= (eff_res == 2'd2) ? 2'd0 : (eff_res + 2'd1);
+        end else if (osd_res_mode != osd_res_prev) begin
+            res_override_en <= 1'b0;
+        end
     end
 end
 wire blank_text_enable = (blank_text_override == 2'b10) ? 1'b1 :
@@ -250,6 +301,7 @@ input_handler #(
     .key_bg_dim_off(key_bg_dim_off),
     .key_blank_text_on(key_blank_text_on),
     .key_blank_text_off(key_blank_text_off),
+    .key_vmode_toggle(key_vmode_toggle),
     .auto_zoom_active(auto_zoom_active),
     .sync_from_auto_zoom(auto_zoom_handoff),
     .sync_center_x(az_center_x),
@@ -376,9 +428,11 @@ wire [11:0] max_iter = (benchmark_active && input_iter_sel == 3'd5)
 reg  [6:0] palette_sel_prev;
 reg  [11:0] max_iter_prev;
 reg         mode_640_prev;
+reg         interlace_prev;
 wire settings_changed = (palette_sel != palette_sel_prev) ||
                         (max_iter != max_iter_prev) ||
-                        (effective_mode_640 != mode_640_prev);
+                        (effective_mode_640 != mode_640_prev) ||
+                        (interlace_mode != interlace_prev);
 
 // Auto-iter: scale max_iter with zoom depth so deep zooms don't render solid
 // black for lack of iterations. Tiers match tools/poi_render.max_iter_for_zoom.
@@ -519,12 +573,14 @@ always @(posedge clk or negedge rst_n) begin
         palette_sel_prev  <= 7'd0;
         max_iter_prev     <= 12'd512;
         mode_640_prev     <= 1'b0;
+        interlace_prev    <= 1'b0;
     end else begin
         start_render <= 1'b0;
         az_target_idx_prev <= az_target_idx;
         palette_sel_prev  <= palette_sel;
         max_iter_prev     <= max_iter;
         mode_640_prev     <= effective_mode_640;
+        interlace_prev    <= interlace_mode;
 
         // Latch view changes during render or wait
         if ((view_changed || settings_changed) && render_state != RS_IDLE)
@@ -635,6 +691,7 @@ coord_generator #(
 ) u_coord_gen (
     .clk(clk), .rst_n(rst_n),
     .mode_640(effective_mode_640),
+    .mode_480(interlace_mode),
     .start_frame(start_render),
     // Raw cy_is_zero, NOT sym_active_frame: coord_generator latches its
     // own copy at start_frame — the same edge sym_active_frame latches.
@@ -804,7 +861,7 @@ assign symq_backpressure = sym_active_frame &&
                            (symq_count >= (SYMQ_DEPTH - N_ITERATORS));
 
 wire need_mirror_now = sym_active_frame &&
-                       (pipe_result_y <= 10'd119);
+                       (pipe_result_y <= (interlace_mode ? 10'd239 : 10'd119));
 wire mirror_drain    = !pipe_result_valid && !symq_empty;
 
 wire [10:0] mirror_x    = symq_x   [symq_rd_ptr[SYMQ_AW-1:0]];
@@ -843,7 +900,8 @@ always @(posedge clk or negedge rst_n) begin
     end else begin
         if (pipe_result_valid && need_mirror_now && !symq_full) begin
             symq_x   [symq_wr_ptr[SYMQ_AW-1:0]] <= pipe_result_x;
-            symq_y   [symq_wr_ptr[SYMQ_AW-1:0]] <= 10'd239 - pipe_result_y;
+            symq_y   [symq_wr_ptr[SYMQ_AW-1:0]] <= (interlace_mode ? 10'd479 : 10'd239)
+                                                   - pipe_result_y;
             symq_iter[symq_wr_ptr[SYMQ_AW-1:0]] <= pipe_result_iter;
             symq_esc [symq_wr_ptr[SYMQ_AW-1:0]] <= pipe_result_escaped;
             symq_wr_ptr <= symq_wr_ptr + 1'b1;
@@ -883,7 +941,11 @@ wire [9:0]  vid_pixel_y;
 // the 1-cycle BRAM-read latency into the next active pixel.
 wire vid_in_range = (vid_pixel_y < 10'd240) &&
                     (vid_pixel_x < (effective_mode_640 ? 11'd640 : 11'd320));
-wire [FB_ADDR_WIDTH-1:0] rd_y = {9'd0, vid_pixel_y[8:0]};
+// 480i scanout: display row r of field f shows logical row 2r+f of the
+// progressive 320x480 frame in the bank.
+wire [9:0] scan_row = interlace_mode ? {vid_pixel_y[8:0], vid_field}
+                                     : vid_pixel_y;
+wire [FB_ADDR_WIDTH-1:0] rd_y = {8'd0, scan_row};
 wire [FB_ADDR_WIDTH-1:0] rd_x = {7'd0, vid_pixel_x[10:0]};
 wire [FB_ADDR_WIDTH-1:0] vid_rd_addr_raw = effective_mode_640
                                        ? ((rd_y << 9) + (rd_y << 7) + rd_x)
@@ -914,19 +976,25 @@ reg  vid_active_d;
 reg [10:0] vid_pixel_x_d;
 reg [9:0]  vid_pixel_y_d;
 
+wire vid_field;
 video_timing u_video_timing (
     .clk(clk),
     .rst_n(rst_n),
     .ce_pix(ce_pix),
     .mode_640(effective_mode_640),
+    .interlace(interlace_mode),
     .hsync(hsync),
     .vsync(vsync),
     .hblank(hblank),
     .vblank(vblank),
     .active(vid_active),
     .pixel_x(vid_pixel_x),
-    .pixel_y(vid_pixel_y)
+    .pixel_y(vid_pixel_y),
+    .field(vid_field)
 );
+assign vga_f1 = interlace_mode & vid_field;
+assign vga_interlaced = interlace_mode;
+assign bob_deint = osd_bob_deint;
 
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin

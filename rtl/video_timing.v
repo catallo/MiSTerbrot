@@ -15,6 +15,14 @@ module video_timing (
     input  wire        rst_n,
     input  wire        ce_pix,
     input  wire        mode_640,    // 0 = 320×240, 1 = 640×240
+    // 480i (2026-07-09): when 1, output a 525-line interlaced frame at
+    // the same 15.625 kHz line rate — field 0 = 262 lines, field 1 =
+    // 263 lines, with field 1's vsync offset by half a line (the
+    // classic CRT interlace trigger).  When 0 this module is
+    // BIT-IDENTICAL to the pre-480i progressive timing (15 kHz hard
+    // requirement) — verified by a cycle-compare TB against the old
+    // module.
+    input  wire        interlace,
 
     output reg         hsync,
     output reg         vsync,
@@ -22,7 +30,8 @@ module video_timing (
     output reg         vblank,
     output wire        active,
     output reg  [10:0] pixel_x,
-    output reg  [9:0]  pixel_y
+    output reg  [9:0]  pixel_y,
+    output reg         field        // 0 = even field, 1 = odd field
 );
 
 // 320 mode horizontal constants
@@ -64,6 +73,23 @@ reg [9:0]  vc;
 
 assign active = ~hblank & ~vblank;
 
+// Interlace: field 1 runs one extra line (263 vs 262) and its vsync is
+// offset by half a line.  With interlace=0, v_total_eff == V_TOTAL and
+// the vsync expression reduces exactly to the progressive one.
+wire [9:0]  v_total_eff = (interlace && field) ? (V_TOTAL + 10'd1) : V_TOTAL;
+wire [10:0] h_half      = {1'b0, h_total[10:1]};   // h_total/2 (h_total is even)
+
+wire vsync_line_first = (vc == V_ACTIVE + V_FP);              // 250
+wire vsync_line_mid   = (vc >  V_ACTIVE + V_FP) &&
+                        (vc <  V_ACTIVE + V_FP + V_SYNC);     // 251..252
+wire vsync_line_last  = (vc == V_ACTIVE + V_FP + V_SYNC);     // 253
+wire vsync_prog = vsync_line_first || vsync_line_mid;
+// Field-1 vsync: starts mid-line on 250, ends mid-line on 253.
+wire vsync_ilace_odd = (vsync_line_first && (hc >= h_half)) ||
+                       vsync_line_mid ||
+                       (vsync_line_last && (hc < h_half));
+wire vsync_next = (interlace && field) ? vsync_ilace_odd : vsync_prog;
+
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         hc      <= 11'd0;
@@ -74,14 +100,16 @@ always @(posedge clk or negedge rst_n) begin
         vblank  <= 1'b1;
         pixel_x <= 11'd0;
         pixel_y <= 10'd0;
+        field   <= 1'b0;
     end else if (ce_pix) begin
         // Horizontal counter
         if (hc == h_total - 11'd1) begin
             hc <= 11'd0;
             // Vertical counter
-            if (vc == V_TOTAL - 10'd1)
+            if (vc == v_total_eff - 10'd1) begin
                 vc <= 10'd0;
-            else
+                field <= interlace ? ~field : 1'b0;
+            end else
                 vc <= vc + 10'd1;
         end else begin
             hc <= hc + 11'd1;
@@ -93,7 +121,7 @@ always @(posedge clk or negedge rst_n) begin
 
         // Vertical signals
         vblank <= (vc >= V_ACTIVE);
-        vsync  <= (vc >= V_ACTIVE + V_FP) && (vc < V_ACTIVE + V_FP + V_SYNC);
+        vsync  <= vsync_next;
 
         // Pixel coordinates (in active region)
         pixel_x <= hc;

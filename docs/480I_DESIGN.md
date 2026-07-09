@@ -72,11 +72,25 @@ muxes 239−y / 479−y.
 
 ## Stage 2d — OSD + emu plumbing, hardware bring-up
 
-- OSD `O[53]` "V-Mode: 240p / 480i" (default 240p).  480i forces
-  320-wide internally regardless of O[22].
+- Unified OSD Resolution selector `O[55:54]`: 320x240 / 640x240 /
+  320x480i (single menu entry; the former O[22]+O[53] pair is retired).
+  The J key cycles the three modes (sticky override).
 - emu: `VGA_F1` = field when interlaced; `HDMI_BOB_DEINT` stays 0.
 - Bring-up: scaler screenshots for structure; the CRT judges the
   half-line sync quality (analog territory).
+- **Bring-up findings (2026-07-09):**
+  - `new_vmode` (hps_io) must toggle on every resolution change, and the
+    core must NEVER boot straight into 480i: the framework's first mode
+    lock after core load fails on an interlaced signal.  Boot grace of
+    ~60 vblanks in progressive, then switch to the saved setting.
+  - Analog 31 kHz-only VGA monitors (user's IBM C170) cannot sync native
+    15.7 kHz 480i; the PSX comparison worked because that setup runs
+    `vga_scaler=1` (scaler output on the VGA port).  Same ini section
+    added for MiSTerbrot; native 480i remains for 15 kHz displays.
+  - Weave combing on motion is inherent to deinterlacing a zooming
+    fractal; `O[56]` exposes Bob as the remedy.
+  - Tooling: poi_walkthrough/poi_ocr assume 240p capture geometry —
+    480i captures (320x480) silently match nothing.  Stage 3 item.
 
 ## Stage 3 — tooling
 

@@ -40,8 +40,9 @@ MiSTerbrot is a MiSTer FPGA core for real-time Mandelbrot set rendering on the D
   - 320 mode: pulses every 8 sysclks → `6.25 MHz` dot clock, H_TOTAL=400.
   - 640 mode: pulses every 4 sysclks → `12.5 MHz` dot clock, H_TOTAL=800.
 - Both modes hold a 15.625 kHz line rate, V_TOTAL=262 (V_ACTIVE=240, V_FP=10, V_SYNC=3, V_BP=9), ~59.7 Hz refresh.
+- **320×480i mode** (2026-07-09, Resolution selector `O[55:54]` / `J` key): 525-line interlaced frame at the same 15.625 kHz — field 0 = 262 lines, field 1 = 263 with vsync offset by half a line; `VGA_F1` carries the field flag.  The render path draws a plain progressive 320×480 frame (one bank = 153,600 entries = exactly 320×480); only the scanout is field-aware (`logical_row = 2·row + field`).  Bank swap stays whole-frame → no interfield shimmer; A2 symmetry keeps working (mirror 479−y).  Progressive timing is bit-identical with interlace off (cycle-compare TB) — the 15 kHz hard requirement is untouched.  Benchmark mode forces 240p.  Render cost of a 480-row frame is 2× a 320×240 frame.  **Analog output**: interlaced video bypasses arcade_video/video_mixer entirely (PSX-style direct path) — the mixer's freezer/sync_lock stage regenerates vsync edges on a learned period and destroys the half-line cadence, which kept the CRT from locking; scandoubler fx applies to the 240p modes only.  See `docs/480I_DESIGN.md`.
 - `rtl/video_timing.v` muxes the horizontal constants on `mode_640`. V_FP was widened from 3 to 10 lines as part of debugging the 640-mode display artifact (see Known Issues).
-- Resolution is selected at runtime via OSD bit `status[22]` and threaded through the core as `mode_640`.
+- Resolution is selected at runtime via the unified OSD selector `status[55:54]` (320×240 / 640×240 / 320×480i); `mode_640`/`interlace_mode` derive from it in `fractal_top`.  The J key cycles the three modes; an OSD change releases the key override (most recently used source wins).  **Boot grace**: the core always starts progressive and switches to a saved 480i setting after ~60 vblanks — the framework's very first mode lock after core load cannot cope with an interlaced signal (PSX never boots interlaced; found the hard way).  Every resolution change toggles `new_vmode` toward hps_io so the ARM re-measures immediately.
 
 ### Numeric format
 
@@ -198,7 +199,8 @@ Main page:
 | `O[19]`   | Blank Text                    |
 | `O[20]`   | Always Show FPS               |
 | `O[21]`   | Always Show POI/Palette       |
-| `O[22]`   | Resolution (320×240 / 640×240)|
+| `O[55:54]`| Resolution (320×240 / 640×240 / 320×480i) — unified selector; replaces the former O[22]+O[53] pair |
+| `O[56]`   | Deinterlace (HDMI): Weave (sharp, combs on motion) / Bob (no combing, softer) — drives `HDMI_BOB_DEINT` |
 | `O[23]`   | Overlay BG (Transparent/Dimmed) |
 | `O[26:25]`| P3 Bulb Precheck (Auto/On/Off) — Auto uses per-POI flag in bench mode |
 | `O[51]`   | Periodicity Check (On/Off) — Brent cycle detection for interior pixels (P2) |
@@ -231,6 +233,7 @@ last-key-wins):
 | `H` | Force Overlay BG = Transparent (OSD default) |
 | `K` | Force overlay blanking timer ON (text auto-hides after 10s) |
 | `L` | Force overlay blanking timer OFF (text always visible) |
+| `J` | Cycle Resolution 320×240 → 640×240 → 320×480i (sticky override; verification helper) |
 | `M` | Snap to next POI's canonical zoom (auto-zoom hold) |
 | `N` | Skip to next POI in playlist (normal slow-zoom) |
 | `V` | Advance to the next deterministic benchmark scene. |

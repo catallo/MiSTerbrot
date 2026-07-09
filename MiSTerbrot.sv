@@ -121,12 +121,16 @@ assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 assign {SDRAM_DQ, SDRAM_A, SDRAM_BA, SDRAM_CLK, SDRAM_CKE, SDRAM_DQML, SDRAM_DQMH, SDRAM_nWE, SDRAM_nCAS, SDRAM_nRAS, SDRAM_nCS} = 'Z;
 assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = '0;
 
-assign VGA_F1 = 0;
+wire core_f1;
+wire core_interlaced;
+wire core_new_vmode;
+wire core_bob_deint;
+assign VGA_F1 = core_f1;
 assign VGA_SCALER  = 0;
 assign VGA_DISABLE = 0;
 assign HDMI_FREEZE = core_rendering;
 assign HDMI_BLACKOUT = 0;
-assign HDMI_BOB_DEINT = 0;
+assign HDMI_BOB_DEINT = core_bob_deint;
 assign AUDIO_S = 0;
 assign AUDIO_L = 0;
 assign AUDIO_R = 0;
@@ -149,7 +153,8 @@ localparam CONF_STR = {
 	"O[19],Blank Text,On,Off;",
 	"O[20],Always Show FPS,Off,On;",
 	"O[21],Always Show POI/Palette,On,Off;",
-	"O[22],Resolution,320x240,640x240;",
+	"O[55:54],Resolution,320x240,640x240,320x480i;",
+	"O[56],Deinterlace (HDMI),Weave,Bob;",
 	"O[23],Overlay BG,Transparent,Dimmed;",
 	"O[17:15],Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
 	// Mariani-Silver was on the Optimisations page but had an intermittent
@@ -213,6 +218,7 @@ hps_io #(.CONF_STR(CONF_STR)) hps_io
 	.buttons(buttons),
 	.status(status),
 	.status_menumask(1'b0),
+	.new_vmode(core_new_vmode),
 	.TIMESTAMP(TIMESTAMP),
 	.ps2_key(ps2_key),
 	.joystick_0(joystick_0)
@@ -235,6 +241,10 @@ wire       ce_pix;
 wire       core_hsync, core_vsync, core_hblank, core_vblank;
 wire [7:0] core_r, core_g, core_b;
 wire       core_rendering;
+wire       av_ce;
+wire [7:0] av_r, av_g, av_b;
+wire       av_hs, av_vs, av_de;
+wire [1:0] av_sl;
 
 fractal_top #(
 	.H_RES(320),
@@ -246,7 +256,6 @@ fractal_top #(
 	.clk(clk_sys),
 	.clk_iter(clk_iter),
 	.rst_n(rst_n),
-	.mode_640(status[22]),
 	.joystick(joystick_0),
 	.ps2_key(ps2_key),
 	.status(status),
@@ -256,6 +265,10 @@ fractal_top #(
 	.vsync(core_vsync),
 	.hblank(core_hblank),
 	.vblank(core_vblank),
+	.vga_f1(core_f1),
+	.vga_interlaced(core_interlaced),
+	.new_vmode(core_new_vmode),
+	.bob_deint(core_bob_deint),
 	.vga_r(core_r),
 	.vga_g(core_g),
 	.vga_b(core_b),
@@ -274,19 +287,53 @@ arcade_video #(.WIDTH(640), .DW(24)) u_arcade_video
 	.VSync(core_vsync),
 
 	.CLK_VIDEO(CLK_VIDEO),
-	.CE_PIXEL(CE_PIXEL),
-	.VGA_R(VGA_R),
-	.VGA_G(VGA_G),
-	.VGA_B(VGA_B),
-	.VGA_HS(VGA_HS),
-	.VGA_VS(VGA_VS),
-	.VGA_DE(VGA_DE),
-	.VGA_SL(VGA_SL),
+	.CE_PIXEL(av_ce),
+	.VGA_R(av_r),
+	.VGA_G(av_g),
+	.VGA_B(av_b),
+	.VGA_HS(av_hs),
+	.VGA_VS(av_vs),
+	.VGA_DE(av_de),
+	.VGA_SL(av_sl),
 
-	.fx(status[17:15]),
-	.forced_scandoubler(forced_scandoubler),
+	.fx(core_interlaced ? 3'b000 : status[17:15]),
+	.forced_scandoubler(forced_scandoubler & ~core_interlaced),
 	.gamma_bus(gamma_bus)
 );
+
+// ---- 480i direct video path (PSX-style, 2026-07-09) ----
+// video_mixer's freezer/sync_lock stage regenerates vsync edges on a
+// learned period — that destroys the 262/263-line half-line interlace
+// cadence, so the analog CRT cannot lock (HDMI survived because the
+// ascal only needs the F1 toggle).  Interlaced video therefore bypasses
+// arcade_video entirely, exactly like the PSX core: raw core timing to
+// the framework, which handles polarity (sync_fix) itself.  The 240p
+// paths keep the arcade_video chain (scandoubler fx etc.) unchanged.
+reg        dvid_ce;
+reg [7:0]  dvid_r, dvid_g, dvid_b;
+reg        dvid_hs, dvid_vs, dvid_de;
+reg        d_oldvid_ce;
+always @(posedge clk_sys) begin
+	d_oldvid_ce <= ce_pix;
+	dvid_ce     <= ce_pix & ~d_oldvid_ce;
+	if (ce_pix) begin
+		dvid_r  <= core_r;
+		dvid_g  <= core_g;
+		dvid_b  <= core_b;
+		dvid_hs <= core_hsync;
+		dvid_vs <= core_vsync;
+		dvid_de <= ~(core_hblank | core_vblank);
+	end
+end
+
+assign CE_PIXEL = core_interlaced ? dvid_ce : av_ce;
+assign VGA_R    = core_interlaced ? dvid_r  : av_r;
+assign VGA_G    = core_interlaced ? dvid_g  : av_g;
+assign VGA_B    = core_interlaced ? dvid_b  : av_b;
+assign VGA_HS   = core_interlaced ? dvid_hs : av_hs;
+assign VGA_VS   = core_interlaced ? dvid_vs : av_vs;
+assign VGA_DE   = core_interlaced ? dvid_de : av_de;
+assign VGA_SL   = core_interlaced ? 2'd0 : av_sl;
 
 assign LED_USER = core_rendering;
 

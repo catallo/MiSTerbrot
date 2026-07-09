@@ -23,6 +23,11 @@ module coord_generator #(
     input  wire                    rst_n,
 
     input  wire                    mode_640,
+    // 480i (2026-07-09): scan 480 progressive rows over the SAME complex
+    // extent (240*step) — row pitch halves to step/2, mirroring what
+    // mode_640 does horizontally.  The frame is written progressively;
+    // only the display scanout is field-aware (see fractal_top).
+    input  wire                    mode_480,
 
     // Control
     input  wire                    start_frame,
@@ -54,6 +59,8 @@ localparam [9:0]  V_PIXELS = 10'd240;
 // 120 instead of on row 120 itself, so we iterate exactly 120 rows
 // (0..119) and the caller mirrors them to rows 239..120.  Result:
 // clean 2.00× speedup, no center-axis row to special-case.
+// In 480 mode the same logic applies one octave down: axis between
+// rows 239 and 240, scan 0..239, mirror to 479..240.
 localparam [9:0]  V_PIXELS_SYM_LAST = 10'd119;
 
 // Per-frame latched copies of step and mode_640.  Without these
@@ -66,11 +73,16 @@ localparam [9:0]  V_PIXELS_SYM_LAST = 10'd119;
 // `sym_frame` below.
 reg signed [WIDTH-1:0] step_frame;
 reg                    mode_640_frame;
+reg                    mode_480_frame;
 
 wire [10:0]             H_PIXELS_frame = mode_640_frame ? 11'd640 : 11'd320;
 // step_x: in 640 mode, halve step so 640 pixels cover same complex-plane
 // horizontal extent as 320 pixels did.  Uses the latched step.
 wire signed [WIDTH-1:0] step_x_frame   = mode_640_frame ? (step_frame >>> 1)
+                                                        : step_frame;
+// step_y: in 480 mode, halve step so 480 rows cover the same vertical
+// extent as 240 rows did.
+wire signed [WIDTH-1:0] step_y_frame   = mode_480_frame ? (step_frame >>> 1)
                                                         : step_frame;
 
 // Internal pixel counters
@@ -100,7 +112,10 @@ wire signed [WIDTH-1:0] cr_start = center_x - half_h_offset;
 // of this artifact.  Cost: 0 (just a different constant); side
 // effect: image samples shifted by half a pixel in the imaginary
 // direction (sub-pixel — visually imperceptible).
-wire signed [WIDTH-1:0] ci_start = center_y - half_v_offset + (step >>> 1);
+// Grid shift is half the ROW PITCH (step/2 in 240 mode, step/4 in 480
+// mode) so no row lands on ci=0 in either mode.
+wire signed [WIDTH-1:0] ci_start = center_y - half_v_offset
+                                   + (mode_480 ? (step >>> 2) : (step >>> 1));
 
 // States
 localparam [1:0] S_IDLE  = 2'd0,
@@ -113,7 +128,9 @@ reg [1:0] state;
 // change between IDLE and DONE even if the caller toggles the input
 // while a frame is in flight.
 reg sym_frame;
-wire [9:0] py_last = sym_frame ? V_PIXELS_SYM_LAST : (V_PIXELS - 10'd1);
+wire [9:0] v_last_full = mode_480_frame ? 10'd479 : (V_PIXELS - 10'd1);
+wire [9:0] v_last_sym  = mode_480_frame ? 10'd239 : V_PIXELS_SYM_LAST;
+wire [9:0] py_last = sym_frame ? v_last_sym : v_last_full;
 
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
@@ -132,6 +149,7 @@ always @(posedge clk or negedge rst_n) begin
         sym_frame      <= 1'b0;
         step_frame     <= {WIDTH{1'b0}};
         mode_640_frame <= 1'b0;
+        mode_480_frame <= 1'b0;
     end else begin
         case (state)
         S_IDLE: begin
@@ -146,6 +164,7 @@ always @(posedge clk or negedge rst_n) begin
                 sym_frame      <= symmetry_active;
                 step_frame     <= step;
                 mode_640_frame <= mode_640;
+                mode_480_frame <= mode_480;
                 state          <= S_SCAN;
             end
         end
@@ -169,7 +188,7 @@ always @(posedge clk or negedge rst_n) begin
                         px           <= 11'd0;
                         py           <= py + 10'd1;
                         cr_accum     <= cr_row_start;
-                        ci_accum     <= ci_accum + step_frame;
+                        ci_accum     <= ci_accum + step_y_frame;
                     end
                 end else begin
                     // Next pixel in row
@@ -201,6 +220,7 @@ always @(posedge clk or negedge rst_n) begin
                 sym_frame      <= symmetry_active;
                 step_frame     <= step;
                 mode_640_frame <= mode_640;
+                mode_480_frame <= mode_480;
                 frame_done     <= 1'b0;
                 state          <= S_SCAN;
             end

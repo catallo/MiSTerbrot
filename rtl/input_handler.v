@@ -54,6 +54,7 @@ module input_handler #(
     output reg                     key_bg_dim_off,       // H key: force overlay BG to Transparent
     output reg                     key_blank_text_on,    // K key: force overlay blanking timer ON
     output reg                     key_blank_text_off,   // L key: force overlay blanking timer OFF
+    output reg                     key_vmode_toggle,     // J key: toggle V-Mode 240p/480i (verification)
     input  wire                    auto_zoom_active,
     input  wire                    sync_from_auto_zoom,
     input  wire signed [WIDTH-1:0] sync_center_x,
@@ -132,6 +133,7 @@ always @(posedge clk or negedge rst_n) begin
         key_bg_dim_off       <= 1'b0;
         key_blank_text_on    <= 1'b0;
         key_blank_text_off   <= 1'b0;
+        key_vmode_toggle     <= 1'b0;
     end else begin
         auto_zoom_toggle     <= 1'b0;
         auto_zoom_deactivate <= 1'b0;
@@ -143,6 +145,7 @@ always @(posedge clk or negedge rst_n) begin
         key_bg_dim_off       <= 1'b0;
         key_blank_text_on    <= 1'b0;
         key_blank_text_off   <= 1'b0;
+        key_vmode_toggle     <= 1'b0;
         joy_prev        <= joystick;
         ps2_strobe_prev <= ps2_key[10];
         view_changed    <= 1'b0;
@@ -260,6 +263,9 @@ always @(posedge clk or negedge rst_n) begin
                         end
                         8'h4B: begin // L = Force overlay blanking timer OFF (always visible)
                             key_blank_text_off <= 1'b1;
+                        end
+                        8'h3B: begin // J = Toggle V-Mode 240p/480i (verification)
+                            key_vmode_toggle <= 1'b1;
                         end
                         // S/A keys used to toggle Mariani-Silver, and
                         // 1/2/3/4 used to set MIN_REGION_DIM. Both dropped
