@@ -119,7 +119,9 @@ assign USER_OUT = '1;
 assign {UART_RTS, UART_TXD, UART_DTR} = 0;
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 assign {SDRAM_DQ, SDRAM_A, SDRAM_BA, SDRAM_CLK, SDRAM_CKE, SDRAM_DQML, SDRAM_DQMH, SDRAM_nWE, SDRAM_nCAS, SDRAM_nRAS, SDRAM_nCS} = 'Z;
-assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = '0;
+// DDRAM_* driven by fractal_top's fb_ddr3 (Track B 640x480i framebuffer)
+assign DDRAM_CLK = clk_sys;
+wire core_ddram_underrun;
 
 wire core_f1;
 wire core_interlaced;
@@ -153,7 +155,7 @@ localparam CONF_STR = {
 	"O[19],Blank Text,On,Off;",
 	"O[20],Always Show FPS,Off,On;",
 	"O[21],Always Show POI/Palette,On,Off;",
-	"O[55:54],Resolution,320x240,640x240,320x480i;",
+	"O[55:54],Resolution,320x240,640x240,320x480i,640x480i;",
 	"O[58:57],Deinterlace (HDMI),Weave,Bob,Off;",
 	"O[23],Overlay BG,Transparent,Dimmed;",
 	"O[17:15],Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
@@ -272,6 +274,16 @@ fractal_top #(
 	.vga_r(core_r),
 	.vga_g(core_g),
 	.vga_b(core_b),
+	.ddram_addr(DDRAM_ADDR),
+	.ddram_burstcnt(DDRAM_BURSTCNT),
+	.ddram_busy(DDRAM_BUSY),
+	.ddram_dout(DDRAM_DOUT),
+	.ddram_dout_ready(DDRAM_DOUT_READY),
+	.ddram_rd(DDRAM_RD),
+	.ddram_din(DDRAM_DIN),
+	.ddram_be(DDRAM_BE),
+	.ddram_we(DDRAM_WE),
+	.ddram_underrun(core_ddram_underrun),
 	.rendering(core_rendering)
 );
 
@@ -335,6 +347,9 @@ assign VGA_VS   = core_interlaced ? dvid_vs : av_vs;
 assign VGA_DE   = core_interlaced ? dvid_de : av_de;
 assign VGA_SL   = core_interlaced ? 2'd0 : av_sl;
 
-assign LED_USER = core_rendering;
+// User LED doubles as the DDR3 line-fetch underrun alarm during Track B
+// bring-up: solid ON = sticky underrun (must never happen, 16x budget
+// margin); otherwise it shows render activity as before.
+assign LED_USER = core_ddram_underrun | core_rendering;
 
 endmodule

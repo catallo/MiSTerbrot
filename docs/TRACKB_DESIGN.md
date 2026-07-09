@@ -186,7 +186,7 @@ default.
    Interface note: the display view rotates on line_req — exactly one
    req per displayed line, one line ahead, including the wrap req at
    the last line (see the header comment in fb_ddr3.v).
-3. **Integration**: backend mux in fractal_top (BRAM | DDR3 by mode),
+3. **Integration** — DONE 2026-07-09: backend mux in fractal_top (BRAM | DDR3 by mode),
    640×480i wiring (coord modes, scanout addressing, OSD value 3,
    new_vmode/boot-grace).  ~2-3 days.
 4. **Bring-up + closure**: deploy, verify, SDC additions if the

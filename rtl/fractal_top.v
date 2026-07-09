@@ -21,7 +21,11 @@ module fractal_top #(
     parameter V_RES       = 240,
     parameter N_ITERATORS = 24,  // 4 quads x 6 contexts/quad
     parameter WIDTH       = 64,
-    parameter FRAC_BITS   = 56
+    parameter FRAC_BITS   = 56,
+    // ~1 s of progressive output before honoring a saved interlaced
+    // resolution (the ARM's first mode lock fails on 480i).  Parameter
+    // so TBs can shorten it; synthesis always uses the default.
+    parameter [5:0] BOOT_GRACE_VBLANKS = 6'd60
 )(
     input  wire        clk,       // 50 MHz (clk_sys: video, framebuffer, control)
     input  wire        clk_iter,  // 100 MHz (iter_quad math)
@@ -46,6 +50,19 @@ module fractal_top #(
     output wire [7:0]  vga_r,
     output wire [7:0]  vga_g,
     output wire [7:0]  vga_b,
+
+    // DDR3 framebuffer (Track B, 640x480i): emu DDRAM_* passthrough,
+    // driven by fb_ddr3.  Idle (never issues commands) outside that mode.
+    output wire [28:0] ddram_addr,
+    output wire [7:0]  ddram_burstcnt,
+    input  wire        ddram_busy,
+    input  wire [63:0] ddram_dout,
+    input  wire        ddram_dout_ready,
+    output wire        ddram_rd,
+    output wire [63:0] ddram_din,
+    output wire [7:0]  ddram_be,
+    output wire        ddram_we,
+    output wire        ddram_underrun,  // sticky line-fetch budget violation
 
     // Status
     output wire        rendering
@@ -80,7 +97,7 @@ always @(*) begin
     endcase
 end
 
-// ---- Unified resolution: 320x240 / 640x240 / 320x480i (2026-07-09) ----
+// ---- Unified resolution: 320x240 / 640x240 / 320x480i / 640x480i ----
 // One OSD selector (O[55:54]); the J key cycles through the three modes
 // (sticky override, same convention as the G/H/K/L keys).  Benchmark
 // mode forces the per-scene 240p geometry.
@@ -98,10 +115,15 @@ wire [1:0] eff_res = res_override_en ? res_override : osd_res_mode;
 // Hold 480i off for the first ~1 s so the ARM locks progressive first,
 // then switch — a transition it demonstrably handles (new_vmode fires).
 reg [5:0] boot_grace_cnt;
-wire      boot_grace_done = (boot_grace_cnt >= 6'd60);
-wire interlace_mode = (eff_res == 2'd2) && boot_grace_done && !benchmark_active;
+wire      boot_grace_done = (boot_grace_cnt >= BOOT_GRACE_VBLANKS);
+wire interlace_mode = eff_res[1] && boot_grace_done && !benchmark_active;
 wire effective_mode_640 = benchmark_active ? bench_mode_640
-                        : (eff_res == 2'd1);
+                        : (eff_res == 2'd1 || eff_res == 2'd3);
+// 640x480i (eff_res 3) = 307,200 px = 2x one BRAM bank: the framebuffer
+// moves to DDR3 (fb_ddr3).  During boot grace / benchmark the mode falls
+// back to progressive 640x240 in BRAM, same as 320x480i falls back to
+// 320x240.
+wire ddr_fb_mode = (eff_res == 2'd3) && interlace_mode;
 
 // ---- Pixel clock ----
 //   320 mode: 50 MHz / 8 = 6.25 MHz dot clock (15.625 kHz line rate)
@@ -216,7 +238,7 @@ always @(posedge clk or negedge rst_n) begin
         if (eff_res != eff_res_prev_nv) new_vmode <= ~new_vmode;
         if (key_vmode_toggle) begin
             res_override_en <= 1'b1;
-            res_override    <= (eff_res == 2'd2) ? 2'd0 : (eff_res + 2'd1);
+            res_override    <= (eff_res == 2'd3) ? 2'd0 : (eff_res + 2'd1);
         end else if (osd_res_mode != osd_res_prev) begin
             res_override_en <= 1'b0;
         end
@@ -737,7 +759,11 @@ wire [RID_W-1:0]        pipe_coord_region_id   = {RID_W{1'b0}};
 wire                    pipe_coord_frame_done  = cg_frame_done;
 wire                    pipe_coord_ready;
 wire [RID_W-1:0]        pipe_result_region_id;
-assign cg_ready = pipe_coord_ready && !symq_backpressure;
+// In DDR3 mode the write FIFO adds a third backpressure source; its
+// wr_ready threshold leaves headroom for the ~24 in-flight slot results
+// that keep completing after dispatch stalls.
+assign cg_ready = pipe_coord_ready && !symq_backpressure
+                && (ddr_wr_ready || !ddr_fb_mode);
 
 // A3 (period-3 bulb precheck) per-frame enable.  Three sources, OSD wins:
 //   osd_p3_mode = 2'd0 (Auto) → use the per-POI bench flag in benchmark
@@ -862,7 +888,8 @@ assign symq_backpressure = sym_active_frame &&
 
 wire need_mirror_now = sym_active_frame &&
                        (pipe_result_y <= (interlace_mode ? 10'd239 : 10'd119));
-wire mirror_drain    = !pipe_result_valid && !symq_empty;
+wire mirror_drain    = !pipe_result_valid && !symq_empty
+                     && (ddr_wr_ready || !ddr_fb_mode);
 
 wire [10:0] mirror_x    = symq_x   [symq_rd_ptr[SYMQ_AW-1:0]];
 wire [9:0]  mirror_y    = symq_y   [symq_rd_ptr[SYMQ_AW-1:0]];
@@ -961,7 +988,7 @@ framebuffer #(
     .ADDR_WIDTH(FB_ADDR_WIDTH)
 ) u_framebuffer (
     .clk(clk),
-    .wr_en(fb_wr_en),
+    .wr_en(fb_wr_en & ~ddr_fb_mode),
     .wr_addr(wr_addr),
     .wr_data(wr_data),
     .rd_addr(rd_addr),
@@ -969,6 +996,46 @@ framebuffer #(
     .bank_sel(bank_sel),
     .display_bank_sel(single_buffer ? ~bank_sel : bank_sel)
 );
+
+// ---- DDR3 framebuffer (Track B): serves 640x480i only ----
+// Same 9-bit pixels, same whole-frame bank swap.  Each write FIFO entry
+// captures its target bank at push time, so the swap needs no drain
+// gating: late writes of frame N land in N's bank even after the swap,
+// and the first display fetch of that bank comes >=1 line (64 us) after
+// the swap while the FIFO drains in ~5 us.  The Buffer OSD option
+// (single) is ignored in this mode — behaves as Double.
+wire        ddr_wr_ready, ddr_wr_idle, ddr_line_busy;
+wire [8:0]  ddr_rd_data;
+wire        vt_prefetch_req;
+wire [9:0]  vt_prefetch_row;
+
+fb_ddr3 u_fb_ddr3 (
+    .clk(clk),
+    .rst_n(rst_n),
+    .wr_en(fb_wr_en & ddr_fb_mode),
+    .wr_x(fb_wr_pixel_x),
+    .wr_y(fb_wr_pixel_y),
+    .wr_data(wr_data),
+    .render_bank(bank_sel),
+    .wr_ready(ddr_wr_ready),
+    .wr_idle(ddr_wr_idle),
+    .line_req(vt_prefetch_req & ddr_fb_mode),
+    .line_row(vt_prefetch_row),
+    .line_busy(ddr_line_busy),
+    .rd_x(vid_in_range ? vid_pixel_x[9:0] : 10'd0),
+    .rd_data(ddr_rd_data),
+    .underrun_sticky(ddram_underrun),
+    .ddram_addr(ddram_addr),
+    .ddram_burstcnt(ddram_burstcnt),
+    .ddram_busy(ddram_busy),
+    .ddram_dout(ddram_dout),
+    .ddram_dout_ready(ddram_dout_ready),
+    .ddram_rd(ddram_rd),
+    .ddram_din(ddram_din),
+    .ddram_be(ddram_be),
+    .ddram_we(ddram_we)
+);
+wire unused_ddr = &{1'b0, ddr_wr_idle, ddr_line_busy};
 
 // ---- Video Timing ----
 wire vid_active;
@@ -990,7 +1057,9 @@ video_timing u_video_timing (
     .active(vid_active),
     .pixel_x(vid_pixel_x),
     .pixel_y(vid_pixel_y),
-    .field(vid_field)
+    .field(vid_field),
+    .prefetch_req(vt_prefetch_req),
+    .prefetch_row(vt_prefetch_row)
 );
 // Deinterlace Off (mode 2) suppresses the field flag: the framework
 // then treats each field as an independent progressive half-picture
@@ -1012,8 +1081,12 @@ always @(posedge clk or negedge rst_n) begin
 end
 
 // ---- Color Mapping (display path) ----
-wire        fb_escaped = rd_data[8];
-wire [11:0] fb_iter   = {4'd0, rd_data[7:0]};
+// Pixel source mux: BRAM banks for 240p/320x480i, DDR3 line buffer for
+// 640x480i.  Both have 1-cycle read latency, so downstream timing is
+// identical.
+wire        fb_escaped = ddr_fb_mode ? ddr_rd_data[8]   : rd_data[8];
+wire [11:0] fb_iter    = {4'd0, ddr_fb_mode ? ddr_rd_data[7:0]
+                                            : rd_data[7:0]};
 
 wire [7:0] disp_r, disp_g, disp_b;
 wire [7:0] overlay_r, overlay_g, overlay_b;

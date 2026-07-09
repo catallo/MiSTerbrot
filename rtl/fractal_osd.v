@@ -48,7 +48,8 @@ module fractal_osd #(
     // Attract Randomizer (status[52]): 0 = On (default), 1 = Off
     output wire         attract_randomize,
     // Unified resolution (status[55:54]): 0 = 320x240 (default),
-    // 1 = 640x240, 2 = 320x480i.  Replaces the former O[22]/O[53] pair.
+    // 1 = 640x240, 2 = 320x480i, 3 = 640x480i (DDR3 framebuffer).
+    // Replaces the former O[22]/O[53] pair.
     output wire [1:0]   res_mode,
     // Deinterlace mode for 480i (status[58:57]): 0 = Weave (default;
     // sharp, combs on motion), 1 = Bob (no combing, slightly softer),

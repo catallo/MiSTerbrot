@@ -84,7 +84,10 @@ reg [30:0] wfifo [0:(1<<FIFO_AW)-1];
 reg [FIFO_AW:0] wf_wp, wf_rp;
 wire [FIFO_AW:0] wf_count = wf_wp - wf_rp;
 wire wf_empty = (wf_count == 0);
-assign wr_ready = (wf_count < ((1 << FIFO_AW) - 8));
+// Headroom of 64: after wr_ready deasserts, up to ~24 in-flight slot
+// results plus mirror-FIFO drains can still arrive before the render
+// side actually stalls.
+assign wr_ready = (wf_count < ((1 << FIFO_AW) - 64));
 
 always @(posedge clk) begin
     if (!rst_n) begin

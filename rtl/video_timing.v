@@ -31,7 +31,16 @@ module video_timing (
     output wire        active,
     output reg  [10:0] pixel_x,
     output reg  [9:0]  pixel_y,
-    output reg         field        // 0 = even field, 1 = odd field
+    output reg         field,       // 0 = even field, 1 = odd field
+
+    // DDR3 line prefetch (Track B, additive — no effect on the above):
+    // one 1-clk pulse at the start of every line carrying the LOGICAL
+    // framebuffer row that will display on the FOLLOWING line (during
+    // blanking: row 0 of the upcoming field, repeated — harmless
+    // refetches).  Matches fb_ddr3's request protocol: the display
+    // view rotates on each req, one req per line, one line ahead.
+    output reg         prefetch_req,
+    output reg  [9:0]  prefetch_row
 );
 
 // 320 mode horizontal constants
@@ -89,6 +98,35 @@ wire vsync_ilace_odd = (vsync_line_first && (hc >= h_half)) ||
                        vsync_line_mid ||
                        (vsync_line_last && (hc < h_half));
 wire vsync_next = (interlace && field) ? vsync_ilace_odd : vsync_prog;
+
+// ---- DDR3 line-prefetch bookkeeping (Track B) ----
+// At each line wrap, look TWO lines ahead (the line that begins now is
+// vc_next; the row requested must be the one displaying on the line
+// after that) and translate to the logical progressive row: 2r+f when
+// interlaced, r otherwise.  During the blank tail the upcoming active
+// row is row 0 of the next field.
+wire        line_wrap   = (hc == h_total - 11'd1);
+wire        frame_wrap  = (vc == v_total_eff - 10'd1);
+wire [9:0]  vc_next     = frame_wrap ? 10'd0 : (vc + 10'd1);
+wire        field_next  = frame_wrap ? (interlace ? ~field : 1'b0) : field;
+wire [9:0]  vte_next    = (interlace && field_next) ? (V_TOTAL + 10'd1) : V_TOTAL;
+wire        frame_wrap2 = (vc_next == vte_next - 10'd1);
+wire [9:0]  line_after  = frame_wrap2 ? 10'd0 : (vc_next + 10'd1);
+wire        field_after = frame_wrap2 ? (interlace ? ~field_next : 1'b0) : field_next;
+wire [9:0]  pf_y = (line_after < V_ACTIVE) ? line_after : 10'd0;
+wire        pf_f = (line_after < V_ACTIVE) ? field_after
+                                           : (interlace ? ~field_next : 1'b0);
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        prefetch_req <= 1'b0;
+        prefetch_row <= 10'd0;
+    end else begin
+        prefetch_req <= ce_pix && line_wrap;
+        if (ce_pix && line_wrap)
+            prefetch_row <= interlace ? {pf_y[8:0], pf_f} : pf_y;
+    end
+end
 
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
