@@ -101,6 +101,29 @@ tight spots at 10 ns/cycle:
 3. **Field-sequential 480i toggle** (see ROADMAP) — independent of
    the domain move, scheduled after 480p.
 
+## Stage 1 closure notes (2026-07-10, running log)
+
+Round 1 (first build, worst −6.4 / TNS −856) resolved by SDC only —
+see commit "first 100 MHz closure round".  Remaining risk path after
+re-analysis on the same placement: **fb → cidx adders** (mod-90 index
+computation), a TRUE single-cycle (data at tick+1, cidx_r capture at
+ce_d2 = tick+2) measuring ~13 ns against 10 ns.  The old 20 ns regime
+left it 7 ns of slack, so the fitter never optimized it; round 2
+tests whether honest placement pressure closes it.
+
+**Fallback if it does not (color_mapper restage, +1 tick latency):**
+move every stage to a 2-clk budget by shifting captures one enable
+later — cidx_r at ce_d3, eval latch at the NEXT tick's ce_d1,
+to_blend_q at next ce_d3, final color regs at next-next ce_d1,
+consumer one tick later than today (uniform +1 tick = invisible; the
+image shifts one more pixel into the porches like the existing 2-tick
+lag).  escaped and the iter-band select then need one more pipeline
+copy each (captured at ce_d3 from live fb data, carried along).
+Bonus: the final capture returns to ce_d1, which restores a 3-clk
+color→arcade budget at /4 and retires the stage-2 NOTE in the SDC.
+Verification: same frame-content pair-TB, with the streams aligned at
+the first vsync edge and RGB compared at +1 tick offset.
+
 ## Effort / risk
 
 Stage 1 ~1-1.5 weeks including closure lottery; stage 2 ~2-4 days;
