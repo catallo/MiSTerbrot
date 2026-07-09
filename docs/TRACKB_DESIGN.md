@@ -170,7 +170,8 @@ default.
 ## Stages
 
 1. **Bandwidth probe** (throwaway): ram1 scattered-write + burst-read
-   measurement on silicon under ascal load.  ~1 day.
+   measurement on silicon under ascal load.  DONE 2026-07-09 — see
+   stage 1 results below.
 2. **`fb_ddr3.v` adapter**: write FIFO + line prefetch + Avalon
    master, TB-verified against the randomized model.  ~2-3 days.
 3. **Integration**: backend mux in fractal_top (BRAM | DDR3 by mode),
@@ -183,14 +184,37 @@ default.
 Realistic total for 640×480i: **1.5-2.5 weeks** — cheaper than the old
 SDRAM plan (no controller to build, 480i timing already exists).
 
+## Stage 1 results — bandwidth probe (2026-07-09)  [DONE]
+
+Measured on silicon (DE10-Nano, live ascal scanout, DDRAM_CLK =
+clk_sys = 50 MHz; probe RTL on branch `probe/ddr3-bw`, results decoded
+from the on-screen stripe display):
+
+| pattern | result | note |
+|---|---|---|
+| scattered 16-bit single-beat writes (2^20, LFSR addresses) | **48.2 M writes/s** (1.04 cyc/write) | port accepts posted writes essentially back-to-back |
+| sequential 8-beat burst writes | **400 MB/s** (1.00 cyc/beat) | = the 50 MHz port-clock ceiling; bus never stalled |
+| line reads (4 pipelined 40-beat bursts = 640 px) | 169 cyc/line avg (**379 MB/s**), worst line **3.84 µs**, 0 of 65536 over the 64 µs budget | 16× worst-case margin |
+| data integrity | first readback byte = 0xFE (fill-pattern low byte) | end-to-end path proven |
+
+Consequences:
+
+- **No write coalescer, ever.**  Scattered-write throughput exceeds
+  the worst-case need (~10-15 M writes/s) by >3×; a small write FIFO
+  purely for rate-smoothing is all the write path needs.
+- The line-prefetch margin argument is proven, not assumed.
+- All ceilings above are port-clock-limited (64 bit × 50 MHz); if a
+  future mode ever needs more, DDRAM_CLK = clk_iter (100 MHz) doubles
+  them.  Not needed for Track B.
+
 ## Risks / open questions
 
-- Real-world f2sdram scattered-write throughput under ascal load is
-  the only unquantified number → stage 1 measures it before anything
-  is built on top.
+- ~~Real-world f2sdram scattered-write throughput~~ → measured, see
+  stage 1 results: 48.2 M writes/s, no coalescer needed.
 - ascal contention spikes (mode changes, OSD fades) vs line prefetch:
-  the 64 µs margin should swallow them; the underrun diagnostic flag
-  proves it on silicon.
+  the 64 µs margin swallowed everything during the probe (worst line
+  3.84 µs over 65536 lines); the underrun diagnostic flag stays in the
+  real adapter as a permanent sanity check.
 - ALM cost of the adapter (~500-1000 ALMs est.) on top of 84% — fine
   on paper; the seed lottery has recovered from worse.
 - 480p PLL/timing details deliberately unscoped here.
