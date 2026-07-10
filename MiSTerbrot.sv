@@ -127,7 +127,7 @@ wire core_f1;
 wire core_interlaced;
 wire core_480p;
 wire core_new_vmode;
-wire core_bob_deint;
+
 assign VGA_F1 = core_f1;
 assign VGA_SCALER  = 0;
 assign VGA_DISABLE = 0;
@@ -137,7 +137,10 @@ reg [1:0] freeze_sync;
 always @(posedge clk_iter) freeze_sync <= {freeze_sync[0], core_rendering};
 assign HDMI_FREEZE = freeze_sync[1];
 assign HDMI_BLACKOUT = 0;
-assign HDMI_BOB_DEINT = core_bob_deint;
+// 480i ships with the field flag suppressed (former Deinterlace=Off,
+// now the only behavior): the scaler scales each field as an
+// independent progressive half-picture — no combing, no bob shimmer.
+assign HDMI_BOB_DEINT = 1'b0;
 assign AUDIO_S = 0;
 assign AUDIO_L = 0;
 assign AUDIO_R = 0;
@@ -161,7 +164,6 @@ localparam CONF_STR = {
 	"O[20],Always Show FPS,Off,On;",
 	"O[21],Always Show POI/Palette,On,Off;",
 	"O[56:54],Resolution,320x240,640x240,320x480i,640x480i,640x480p;",
-	"O[58:57],Deinterlace (HDMI),Weave,Bob,Off;",
 	"O[23],Overlay BG,Transparent,Dimmed;",
 	"O[17:15],Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
 	// Mariani-Silver was on the Optimisations page but had an intermittent
@@ -277,7 +279,6 @@ fractal_top #(
 	.vga_interlaced(core_interlaced),
 	.vga_mode_480p(core_480p),
 	.new_vmode(core_new_vmode),
-	.bob_deint(core_bob_deint),
 	.vga_r(core_r),
 	.vga_g(core_g),
 	.vga_b(core_b),

@@ -52,11 +52,6 @@ module fractal_osd #(
     // DDR3 framebuffer).  Bit 56 was free since the Deinterlace move
     // to O[58:57], so existing saved configs keep their meaning.
     output wire [2:0]   res_mode,
-    // Deinterlace mode for 480i (status[58:57]): 0 = Weave (default;
-    // sharp, combs on motion), 1 = Bob (no combing, slightly softer),
-    // 2 = Off (fields scaled as independent half-pictures: F1 is
-    // suppressed toward the framework)
-    output wire [1:0]   deint_mode,
     // Color depth (status[36]):
     //   1'b0 = 6-bit (default, recommended — matches MiSTer Analog I/O R-2R DAC)
     //   1'b1 = 8-bit full (no quantization)
@@ -110,7 +105,6 @@ assign p3_mode = status[26:25];
 assign periodicity_enable = ~status[51];
 assign attract_randomize = ~status[52];
 assign res_mode = status[56:54];
-assign deint_mode = status[58:57];
 assign color_depth_mode = status[36];
 
 // Color Cycling submenu decoding

@@ -46,11 +46,15 @@ module fractal_top #(
     output wire        vsync,
     output wire        hblank,
     output wire        vblank,
-    output wire        vga_f1,     // interlace field flag (0 when progressive)
+    output wire        vga_f1,     // ALWAYS 0: the field flag is permanently
+                                   // suppressed (the scaler scales each field
+                                   // as an independent progressive half-
+                                   // picture; real 15 kHz displays interlace
+                                   // from the half-line sync cadence, which
+                                   // the video timing carries without F1)
     output wire        vga_interlaced,  // level: 480i mode active
     output wire        vga_mode_480p,   // level: 640x480p (31 kHz) active
     output reg         new_vmode,  // toggles on any resolution change (hps_io)
-    output wire        bob_deint,  // HDMI deinterlace: 1 = Bob
     output wire [7:0]  vga_r,
     output wire [7:0]  vga_g,
     output wire [7:0]  vga_b,
@@ -171,7 +175,6 @@ wire [1:0] osd_p3_mode;
 wire       osd_periodicity_enable;
 wire       attract_randomize;
 wire [2:0] osd_res_mode;
-wire [1:0] osd_deint_mode;
 wire       color_depth_mode;
 wire [3:0] cycle_speed_sel;
 wire [1:0] cycle_direction;
@@ -206,7 +209,6 @@ fractal_osd #(
     .periodicity_enable(osd_periodicity_enable),
     .attract_randomize(attract_randomize),
     .res_mode(osd_res_mode),
-    .deint_mode(osd_deint_mode),
     .color_depth_mode(color_depth_mode),
     .cycle_speed_sel(cycle_speed_sel),
     .cycle_direction(cycle_direction),
@@ -1117,13 +1119,14 @@ video_timing u_video_timing (
     .prefetch_req(vt_prefetch_req),
     .prefetch_row(vt_prefetch_row)
 );
-// Deinterlace Off (mode 2) suppresses the field flag: the framework
-// then treats each field as an independent progressive half-picture
-// (no weave combing, no bob shimmer, softer vertical resolution).
-assign vga_f1 = interlace_mode & vid_field & (osd_deint_mode != 2'd2);
+// Field flag permanently suppressed (former Deinterlace=Off, now the
+// only mode — user call 2026-07-11): weave combs on motion and bob
+// shimmers; scaling each field independently is the clean scaler
+// behavior for this content.  Native 15 kHz interlace lives in the
+// half-line sync cadence, not in F1.  status[58:57] are free again.
+assign vga_f1 = 1'b0;
 assign vga_interlaced = interlace_mode;
 assign vga_mode_480p  = mode_480p;
-assign bob_deint = (osd_deint_mode == 2'd1);
 
 always @(posedge clk_vid or negedge rst_n) begin
     if (!rst_n) begin

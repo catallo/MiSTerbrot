@@ -54,7 +54,7 @@ fractal_top #(
     .ce_pix(ce_pix), .hsync(hsync), .vsync(vsync),
     .hblank(hblank), .vblank(vblank),
     .vga_f1(vga_f1), .vga_interlaced(vga_interlaced),
-    .new_vmode(new_vmode), .bob_deint(bob_deint),
+    .new_vmode(new_vmode),
     .vga_r(vga_r), .vga_g(vga_g), .vga_b(vga_b),
     .ddram_addr(addr), .ddram_burstcnt(burstcnt), .ddram_busy(busy),
     .ddram_dout(dout), .ddram_dout_ready(dout_ready),
@@ -211,7 +211,9 @@ initial begin
     if (hi_rows < 10)      begin $display("FAIL: no high-row (mirror) writes"); $fatal; end
     if (line_reqs < 1000)  begin $display("FAIL: too few line fetches"); $fatal; end
     if (seq_errs != 0)     begin $display("FAIL: fetch row sequence"); $fatal; end
-    if (f1_toggles < 8)    begin $display("FAIL: F1 not toggling"); $fatal; end
+    // F1 is permanently suppressed since the deinterlace removal
+    // (2026-07-11): fields are scaled as independent half-pictures.
+    if (f1_toggles != 0)    begin $display("FAIL: F1 active despite suppression"); $fatal; end
     if (underrun)          begin $display("FAIL: underrun flagged"); $fatal; end
     $display("TB PASS");
     $finish;

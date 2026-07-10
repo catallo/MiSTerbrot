@@ -30,7 +30,7 @@ initial begin
 end
 
 wire ce_pix, hsync, vsync, hblank, vblank;
-wire vga_f1, vga_interlaced, new_vmode, bob_deint, vga_480p;
+wire vga_f1, vga_interlaced, new_vmode, vga_480p;
 wire [7:0] vga_r, vga_g, vga_b;
 wire [28:0] addr;
 wire [7:0]  burstcnt;
@@ -54,7 +54,7 @@ fractal_top #(
     .ce_pix(ce_pix), .hsync(hsync), .vsync(vsync),
     .hblank(hblank), .vblank(vblank),
     .vga_f1(vga_f1), .vga_interlaced(vga_interlaced), .vga_mode_480p(vga_480p),
-    .new_vmode(new_vmode), .bob_deint(bob_deint),
+    .new_vmode(new_vmode),
     .vga_r(vga_r), .vga_g(vga_g), .vga_b(vga_b),
     .ddram_addr(addr), .ddram_burstcnt(burstcnt), .ddram_busy(busy),
     .ddram_dout(dout), .ddram_dout_ready(dout_ready),
