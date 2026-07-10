@@ -27,10 +27,11 @@ MiSTerbrot is a MiSTer FPGA core for real-time Mandelbrot set rendering on the D
 
 ## Current Architecture
 
-### Clocking (dual-clock design)
+### Clocking (dual-clock design, video in the 100 MHz group since 2026-07-10)
 
-- `clk_sys` = `50 MHz` — video timing, framebuffer, control logic, coord_generator, dispatch/collect FSMs.
-- `clk_iter` = `100 MHz` (PLL outclk_1) — iterator math (`iter_quad` instances).
+- `clk_sys` = `50 MHz` — render orchestration (coord_generator, dispatch/collect FSMs), framebuffer WRITE side, fb_ddr3 Avalon engine, input/OSD/auto_zoom, benchmark engine.
+- `clk_iter` = `100 MHz` (PLL outclk_1) — iterator math (`iter_quad` instances) **and, as `clk_vid`, the entire display path** (video_timing, framebuffer read, color_mapper, text_overlay, arcade_video, CLK_VIDEO): the domain move that enables 640×480p's 25 MHz pixel clock at the proven 4-clk/pixel cadence.  See `docs/480P_DESIGN.md` for the split, the CDC inventory, and the restaged color pipeline (2 clks/stage, +1 tick latency).
+- **Timing state (2026-07-10 ship):** clk_sys +4.2, clk_iter/vid worst **-0.176 ns** (TNS -0.471) — shipped at slightly negative slack by explicit decision after a 24-seed lottery floor at ~-0.18; rationale and the PLL-split escalation path in `docs/480P_DESIGN.md`.
 - CDC sits at the `iter_quad` boundary: per-slot `start` toggles into clk_iter via 3-FF synchronizer; `done` edges synchronized back into clk_sys. Slow-changing control buses (`max_iter`, `cr`/`ci`) are sampled when synchronized strobes fire.  (Note: a parameter change does NOT abort the in-flight frame — the render FSM completes the current frame and re-renders; a torn `max_iter` sample can therefore paint a few wrong pixels for one displayed frame, which the immediate re-render replaces.)
 - `MiSTerbrot.sdc` declares clk_sys/clk_iter as asynchronous clock groups AND bounds the CDC data-bus routing with `set_net_delay -max` constraints (added 2026-07-07).  Without the net-delay bounds the async groups cut all cross-domain timing, leaving the quasi-static buses (`iter_cr`/`iter_ci`, result buses, `max_iter`) free to route arbitrarily slowly — the CDC contract needs them settled within ~2 destination-clock cycles of the synchronized strobe.
 

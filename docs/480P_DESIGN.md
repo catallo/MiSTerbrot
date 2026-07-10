@@ -102,7 +102,29 @@ tight spots at 10 ns/cycle:
 3. **Field-sequential 480i toggle** (see ROADMAP) — independent of
    the domain move, scheduled after 480p.
 
-## Stage 2 verification (2026-07-10)  [sim PASS, awaits hardware]
+## Stage 2 hardware verification + ship decision (2026-07-10)
+
+640×480p on silicon (first native 480p from this core): J-cycle into
+mode 4 works, output measures 640×480 progressive at the scaler,
+attract animates, and the static home view scores an A2 mirror
+correlation of **1.00000 / meandiff 0.00 / zero outlier pixels** —
+write path, prefetch (32 µs budget at the doubled line rate), scanout
+and the overlay row-halving are all exact.
+
+**Timing ship decision (user, 2026-07-10):** shipped at clk_iter/vid
+worst slack **-0.176 ns** (TNS -0.471, seed 7).  The 100 MHz domain's
+video families are all structurally closed; the residue is iter_quad
+placement lottery whose floor sat at ~-0.18 across 24 seeds (best
+-0.176/-0.199; physical synthesis retiming: measurably zero effect).
+The timing model is the 85C slow corner — at living-room silicon
+temperatures the real margin is ~1 ns, and the worst conceivable
+failure is a transient wrong pixel in one frame of one quad,
+overwritten by the continuous re-render.  Alternatives on record:
+PLL split (clk_iter 95 MHz, ~5% iteration cost, deterministic
+closure) remains the documented escalation if field reports ever
+suggest heat-related artifacts.
+
+## Stage 2 verification (2026-07-10)  [sim PASS]
 
 - video_timing pair-TB: all pre-480p modes bit-identical to HEAD;
   480p geometry exact (525 lines/frame, prefetch rows 0..479).
