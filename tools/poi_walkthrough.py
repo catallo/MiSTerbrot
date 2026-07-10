@@ -62,12 +62,39 @@ except ImportError:
 ROOT = Path(__file__).resolve().parent.parent
 MASTER_JSON = ROOT / "tools" / "poi_master.json"
 THUMB_DIR = ROOT / "screenshots" / "poi"
+THUMB480_DIR = ROOT / "screenshots" / "poi480"
 OUT_DIR = ROOT / "screenshots" / "poi_compare"
 UNMATCHED_DIR = OUT_DIR / "_unmatched"
 MISTERCLAW = str(ROOT / "tools" / "misterclaw-send")
 
 HOST = os.environ.get("MISTER_HOST", "10.0.0.8")
 PAUSE_SEC = float(os.environ.get("PAUSE_SEC", "3"))
+
+# Mode detection (live, from a probe capture — the CFG only stores
+# SAVED settings, not runtime OSD/J-key state; found the hard way):
+#   - capture width 320 vs 640 -> OCR glyph scale (h_scale)
+#   - adjacent-row similarity -> 240-line modes (scaler doubles every
+#     row: pairs identical) vs 480-line modes (real content per row).
+#     480i vs 480p need no distinction: identical tooling behavior.
+# WALK_MODE=240|480 forces the vertical interpretation if ever needed.
+
+
+def detect_from_capture(path):
+    """Return (mode_640, is_480_lines) from a normalized-before probe."""
+    img = Image.open(path)
+    mode_640 = img.width >= 640
+    env = os.environ.get("WALK_MODE")
+    if env is not None:
+        return mode_640, env.strip() == "480"
+    if img.height == 240:
+        # F1-suppressed interlace: the scaler shows each field as a
+        # 240-tall progressive picture -> 480-line sampling underneath
+        return mode_640, True
+    a = np.asarray(img.convert("L"), dtype=np.int32)
+    # compare row pairs over the central band (clear of overlay text)
+    band = a[80:400, :]
+    pair_diff = np.abs(band[0::2] - band[1::2]).mean()
+    return mode_640, bool(pair_diff > 1.5)
 
 # Fuzzy-match threshold (0..1). Below this, treat as unmatched.
 NAME_MATCH_THRESHOLD = 0.45
@@ -95,18 +122,38 @@ def prepare_overlay():
         )
 
 
-def screenshot_to(path):
+def screenshot_to(path, normalize=True):
     subprocess.run(
         [MISTERCLAW, "--host", HOST, "screenshot", "--output", str(path)],
         check=True, capture_output=True, timeout=15,
     )
+    if not normalize:
+        return
+    # Normalize capture geometry to the 640x480 frame the OCR grid and
+    # scoring were built for (nearest = exact pixel duplication):
+    #   - 320-wide modes capture 320-wide (1x horizontal since the
+    #     vga_scaler ini change) -> double horizontally
+    #   - the F1-suppressed interlaced modes capture each field as a
+    #     240-tall progressive picture (1x vertical) -> double vertically
+    from PIL import Image as _Img
+    img = _Img.open(path)
+    w = 640 if img.width == 320 else img.width
+    h = 480 if img.height == 240 else img.height
+    if (w, h) != img.size:
+        img.resize((w, h), _Img.NEAREST).save(path)
+
+
+WALK_MODE_640 = True        # set in main() from the detected resolution mode
+THUMB_ACTIVE = THUMB_DIR    # reference set matching the detected mode
 
 
 def ocr_overlay(image_path):
     """Read POI name from the overlay via template-matching against the FPGA's
-    fixed 5×5 pixel font (parsed from rtl/text_overlay.v at import time)."""
+    fixed 5×5 pixel font (parsed from rtl/text_overlay.v at import time).
+    mode_640 follows the detected core mode: in 320-wide modes the
+    (normalized) capture has 2x-wide glyphs."""
     try:
-        return _ocr_poi_name(image_path, mode_640=True)
+        return _ocr_poi_name(image_path, mode_640=WALK_MODE_640)
     except Exception:
         return ""
 
@@ -198,6 +245,21 @@ def main():
     n = len(pois)
     max_presses = int(os.environ.get("MAX_PRESSES", str(2 * n)))
 
+    global WALK_MODE_640, THUMB_ACTIVE, PAUSE_SEC
+    probe = OUT_DIR / "_probe.png"
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    screenshot_to(probe, normalize=False)  # detection needs RAW geometry
+    WALK_MODE_640, is480 = detect_from_capture(probe)
+    mode_name = f"{'640' if WALK_MODE_640 else '320'}x{'480' if is480 else '240'}"
+    THUMB_ACTIVE = THUMB480_DIR if is480 else THUMB_DIR
+    if is480 and not THUMB480_DIR.exists():
+        print("WARNING: no 480-line references (run poi_render.py --vres 480); falling back to 240-line thumbs")
+        THUMB_ACTIVE = THUMB_DIR
+    # 480-line modes render up to 4x slower — give deep POIs more time
+    # to finish before the capture unless the operator overrode PAUSE_SEC
+    if is480 and "PAUSE_SEC" not in os.environ:
+        PAUSE_SEC = 6.0
+
     # Map upper-case POI name → index in JSON
     name_to_idx = {p["name"].upper(): i for i, p in enumerate(pois)}
     valid_names = list(name_to_idx.keys())
@@ -207,6 +269,7 @@ def main():
     UNMATCHED_DIR.mkdir(parents=True, exist_ok=True)
 
     print(f"MiSTer host    : {HOST}")
+    print(f"Core resolution: {mode_name} (probe-detected; override vertical with WALK_MODE=240|480)")
     print(f"POIs to capture: {n}")
     print(f"Pause per snap : {PAUSE_SEC}s")
     print(f"Output         : {OUT_DIR}/")
@@ -272,7 +335,7 @@ def main():
         folder = OUT_DIR / f"idx_{idx:03d}_{safe_filename(poi['name'])}"
         folder.mkdir(parents=True, exist_ok=True)
         shutil.move(tmp, folder / "fpga.png")
-        py_thumb = THUMB_DIR / f"idx_{idx:03d}_{safe_filename(poi['name'])}.png"
+        py_thumb = THUMB_ACTIVE / f"idx_{idx:03d}_{safe_filename(poi['name'])}.png"
         if py_thumb.exists():
             shutil.copy(py_thumb, folder / "python.png")
             try:

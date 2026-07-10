@@ -24,6 +24,8 @@ MASTER_JSON = ROOT / "tools" / "poi_master.json"
 OUT_DIR = ROOT / "screenshots" / "poi"
 
 W, H = 640, 240  # matches FPGA's 640-mode native output (640×240 px)
+# --vres 480 renders 640x480 references (V_OVERSAMPLE=2: vertical pitch
+# step/2, matching the FPGA's 480-line modes) into screenshots/poi480/.
 # FPGA's coord_generator covers a 4:3 complex-plane region regardless of mode:
 #   320 mode → 320 px × step horiz, 240 px × step vert
 #   640 mode → 640 px × (step/2) horiz, 240 px × step vert  (same complex extent, 2× h oversampling)
@@ -66,8 +68,11 @@ def render(cx, cy, zoom_level, w=W, h=H, max_iter=None):
     """
     step = DEFAULT_STEP / (2.0 ** zoom_level)
     step_x = step / H_OVERSAMPLE  # matches FPGA's step_x = step >>> 1 in 640 mode
+    # vertical: 240 rows at pitch step, or 480 rows at pitch step/2
+    # (same complex extent, 2x vertical sampling like the 480 modes)
+    step_y = step * 240.0 / h
     xs = cx + (np.arange(w) - w / 2 + 0.5) * step_x
-    ys = cy + (np.arange(h) - h / 2 + 0.5) * step
+    ys = cy + (np.arange(h) - h / 2 + 0.5) * step_y
     X, Y = np.meshgrid(xs, ys)
     C = X + 1j * Y
 
@@ -103,6 +108,15 @@ def safe_filename(name):
 
 
 def main():
+    global H, OUT_DIR
+    if "--vres" in sys.argv:
+        i = sys.argv.index("--vres")
+        vres = int(sys.argv[i + 1])
+        if vres == 480:
+            H = 480
+            OUT_DIR = ROOT / "screenshots" / "poi480"
+        elif vres != 240:
+            sys.exit("--vres must be 240 or 480")
     if not MASTER_JSON.exists():
         print(f"ERROR: {MASTER_JSON} not found. Run after research agent produces it.", file=sys.stderr)
         sys.exit(1)
@@ -119,7 +133,7 @@ def main():
         zoom = float(p["zoom_level"])
         fname = OUT_DIR / f"idx_{i:03d}_{safe_filename(name)}.png"
         try:
-            img = render(cx, cy, zoom)
+            img = render(cx, cy, zoom, w=W, h=H)
             img.save(fname)
             print(f"  [{i:3d}] {name:<24} ({cx:+.6f}, {cy:+.6f}) z{zoom:5.2f} -> {fname.name}")
         except Exception as e:

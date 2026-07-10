@@ -117,18 +117,35 @@ def _best_match(cell_5x5):
     return best_code, best_dist
 
 
-def _find_text_origin(bin_img, y0, y1, expected_x_range=(0, 30)):
-    """Find the first column with a near-white pixel in any row of [y0..y1].
+def _find_text_origin(bin_img, y0, y1, expected_x_range=(0, 30),
+                      glyph_w_screen=5, h_scale=1):
+    """Find the text origin by ALIGNMENT QUALITY, not by first-white-column.
 
-    Auto-detects the actual text origin so we don't depend on pixel-perfect
-    offsets from the FPGA's video timing.
+    The naive first-white scan latches onto stray near-white fractal
+    pixels in the left margin on bright palettes (HDR, Migraine Aura —
+    both produced garbage OCR on real captures).  Instead, decode the
+    first few glyph cells at every candidate offset in the expected
+    range and pick the offset with the lowest total template distance:
+    correct alignment decodes real glyphs at distance ~0, a few pixels
+    off decodes noise at distance >5 per cell.
     """
-    band = bin_img[y0:y1]
-    col_has_white = band.max(axis=0)
+    best_x, best_total = expected_x_range[0], 10**9
     for x in range(expected_x_range[0], expected_x_range[1]):
-        if col_has_white[x]:
-            return x
-    return expected_x_range[0]
+        total = 0
+        for c in range(3):  # first three cells are plenty to disambiguate
+            cell = bin_img[y0:y1, x + c * glyph_w_screen:
+                                  x + (c + 1) * glyph_w_screen]
+            if h_scale == 2:
+                cell = cell[:, ::2]
+            g = _cell_to_glyph(cell)
+            if g is None or g.shape != (5, 5):
+                total += 26
+                continue
+            _, d = _best_match(g)
+            total += d
+        if total < best_total:
+            best_total, best_x = total, x
+    return best_x
 
 
 def read_target_line(image_path, mode_640=True, line_idx=0,
@@ -162,7 +179,8 @@ def read_target_line(image_path, mode_640=True, line_idx=0,
     # column containing white in this line's row band.
     nominal_x = TARGET_X_NATIVE * h_scale
     x0 = _find_text_origin(bin_img, y0, y0 + glyph_h_screen,
-                            expected_x_range=(nominal_x - 2, nominal_x + 5))
+                            expected_x_range=(nominal_x - 2, nominal_x + 5),
+                            glyph_w_screen=glyph_w_screen, h_scale=h_scale)
 
     chars = []
     for c in range(line_len):
