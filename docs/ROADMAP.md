@@ -351,6 +351,17 @@ half-pictures — it looks like a smeared 640x256, strictly worse than
 whole-frame 480i, whose 2x render cost buys exactly the property that
 both fields come from the same instant.
 
+User observation after the fact: there was also NO perceived speed
+benefit vs 640x480p.  Three compounding reasons: (1) zoom speed is
+wall-clock constant (auto_zoom steps per display vblank, not per
+rendered frame) — modes only differ in update granularity, not
+apparent motion; (2) 20 half-picture updates/s do not read smoother
+than 10 full updates/s — each pass moves only half the lines while
+the other half shows the older moment, so the cadence gain is eaten
+by the temporal smear; (3) A2 symmetry was off in field mode, making
+it literally cost-neutral on every cy=0 view (a whole-frame render
+with mirroring computes the same 240 unique rows as one field).
+
 The whole-frame-render 480i (Track B) is therefore the keeper, along
 with the Weave/Bob/Off deinterlace selector.  Do not revisit
 field-sequential rendering unless a mode guarantees render >= field
