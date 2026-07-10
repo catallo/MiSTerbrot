@@ -114,7 +114,25 @@ always @(*) begin
 end
 
 wire [7:0] cycle_idx_offset = cycle_enable ? phase_for_pixel[11:4]                       : 8'd0;
-wire [3:0] cycle_frac       = (cycle_enable & ~cycle_blend_hard) ? phase_for_pixel[3:0] : 4'd0;
+
+// Restaged blend-side band select (100 MHz video domain, 2 clks per
+// stage): the blend runs two enables after the cidx capture, when the
+// live fb data already belongs to the next pixel — so the band bit is
+// registered at the cidx stage (low_band_q, below) and the blend
+// fraction recomputed from that copy.  The phase counters only change
+// at vblank, so everything else in this cone is frame-stable.
+reg        low_band_q;
+reg [11:0] phase_for_blend;
+always @(*) begin
+    case (cycle_band_mode)
+        2'd0: phase_for_blend = cycle_phase;
+        2'd1: phase_for_blend = low_band_q ? cycle_phase_lo : cycle_phase;
+        2'd2: phase_for_blend = low_band_q ? cycle_phase_lo : cycle_phase;
+        2'd3: phase_for_blend = low_band_q ? ~cycle_phase   : cycle_phase;
+        default: phase_for_blend = cycle_phase;
+    endcase
+end
+wire [3:0] cycle_frac = (cycle_enable & ~cycle_blend_hard) ? phase_for_blend[3:0] : 4'd0;
 
 wire [7:0] base_cidx = iter_count[7:0] + cycle_idx_offset;
 // Parallel 3-input add (not base_cidx + 1): keeps the next-entry index
@@ -2359,19 +2377,30 @@ always @(*) begin
     palette_rgb(pal_from, cidx_base_r, eval_fb_r, eval_fb_g, eval_fb_b);
 end
 
-// Stage sequencing + capture.  ce_d1..ce_d3 track the ce_pix tick; the
-// cidx pair registers on ce_d2, all three evaluator outputs on ce_d3.
-// No reset needed — the pipeline self-flushes within one tick period and
-// blanking hides warmup pixels.
+// Stage sequencing + capture — fully restaged for the 100 MHz video
+// domain: every hop gets TWO clocks even at the /4 cadence a future
+// 480p needs.  Ring schedule for pixel N (tick period T >= 4):
+//   fb data           lands   tickN+1
+//   cidx pair + band + escaped_q1   capture ce_d3   (tickN+3)
+//   evaluator outputs capture the NEXT tick's ce_d1 (tick(N+1)+1)
+//   cycling blend + escaped_q2      capture ce_d3   (tick(N+1)+3)
+//   final color regs  capture the next ce_d1        (tick(N+2)+1)
+//   downstream tick sampler consumes at tick(N+3)
+// One tick more latency than the old schedule — uniform, so it only
+// shifts the image one further pixel into the porches.  Same-edge
+// captures always take the pre-edge (pixel N) value.  No reset needed
+// — the pipeline self-flushes and blanking hides warmup pixels.
 always @(posedge clk) begin
     ce_d1 <= pixel_valid_in;
     ce_d2 <= ce_d1;
     ce_d3 <= ce_d2;
-    if (ce_d2) begin
+    if (ce_d3) begin
         cidx_base_r <= base_cidx;
         cidx_next_r <= next_cidx;
+        low_band_q  <= is_low_band;
+        escaped_q1  <= escaped;
     end
-    if (ce_d3) begin
+    if (ce_d1) begin
         color_a_r  <= eval_tb_r;
         color_a_g  <= eval_tb_g;
         color_a_b  <= eval_tb_b;
@@ -2382,18 +2411,11 @@ always @(posedge clk) begin
         color_fa_g <= eval_fb_g;
         color_fa_b <= eval_fb_b;
     end
-    // Blend retiming stage (100 MHz video-domain move): the cycling
-    // blend registers at the NEXT tick's ce_d1 (2 clks after the ce_d3
-    // eval latch), splitting the two chained blends across separate
-    // multicycle-2 hops.  escaped pipelines along — the final capture
-    // moved past the point where the live rd_data still holds this
-    // pixel.  Values are pixel N's throughout (evals latched at N's
-    // ce_d3 stay stable until N+1's).
-    if (ce_d1) begin
+    if (ce_d3) begin
         to_blend_qr <= to_blend_r;
         to_blend_qg <= to_blend_g;
         to_blend_qb <= to_blend_b;
-        escaped_d1  <= escaped;
+        escaped_q2  <= escaped_q1;
     end
 end
 
@@ -2403,7 +2425,7 @@ wire [7:0] to_blend_r   = blend_channel(color_a_r,  color_b_r,  cycle_frac);
 wire [7:0] to_blend_g   = blend_channel(color_a_g,  color_b_g,  cycle_frac);
 wire [7:0] to_blend_b   = blend_channel(color_a_b,  color_b_b,  cycle_frac);
 reg  [7:0] to_blend_qr, to_blend_qg, to_blend_qb;
-reg        escaped_d1;
+reg        escaped_q1, escaped_q2;
 // FROM (outgoing) palette uses the base entry only — its next-entry
 // evaluator was dropped in the three-evaluator restructure.  During a
 // crossfade the dissolving image's cycling interpolation is hard-stepped;
@@ -2508,17 +2530,13 @@ always @(posedge clk or negedge rst_n) begin
 
         pixel_valid_out <= pixel_valid_in;
 
-        // Final capture on ce_d3 (three clks AFTER the tick): the
-        // downstream consumer (arcade_video RGB_fix) samples these
-        // registers only at the NEXT tick, so anything up to tick+3 is
-        // free at the minimum cadence (ce every 4 clks in 640/480p).
-        // With the to_blend_q retiming stage at ce_d1, each blend hop
-        // gets 2 cycles (SDC multicycle 2 per hop) — required for
-        // closure at 10 ns/cycle in the 100 MHz video domain.  escaped
-        // uses the ce_d1-pipelined copy: live rd_data no longer holds
-        // this pixel at tick+3.
-        if (ce_d3) begin
-            if (escaped_d1) begin
+        // Final capture on ce_d1 (see the restaged ring schedule at the
+        // staging block): to_blend_q latched two clocks earlier, the
+        // tick sampler consumes three clocks later — every hop is
+        // multicycle-2-clean at the /4 cadence.  escaped uses the
+        // twice-pipelined copy aligned to this stage.
+        if (ce_d1) begin
+            if (escaped_q2) begin
                 color_r <= crossfade_r;
                 color_g <= crossfade_g;
                 color_b <= crossfade_b;

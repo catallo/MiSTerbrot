@@ -56,8 +56,18 @@ set_net_delay -max 20 -from [get_registers {*u_quad|ctx_escaped[*]*}]
 # data-at-tick+1 -> capture-at-next-tick+1 budget as the final regs.
 # The fb_ddr3 -> cidx_*_r pass-A path stays single-cycle (not in -to),
 # exactly like the BRAM equivalent.
-set_multicycle_path -setup 3 -from [get_registers {*u_framebuffer|* *u_fb_ddr3|*}] -to [get_registers {*u_color_mapper|color_r[*]* *u_color_mapper|color_g[*]* *u_color_mapper|color_b[*]* *u_color_mapper|to_blend_q*}]
-set_multicycle_path -hold  2 -from [get_registers {*u_framebuffer|* *u_fb_ddr3|*}] -to [get_registers {*u_color_mapper|color_r[*]* *u_color_mapper|color_g[*]* *u_color_mapper|color_b[*]* *u_color_mapper|to_blend_q*}]
+# Restaged ring (2 clks/stage, see color_mapper staging block): fb data
+# lands at tick+1 and the first captures (cidx pair, band bit, escaped)
+# happen at ce_d3 = tick+3 — 2 cycles real at the /4 cadence.  Direct
+# fb paths into the evaluator latches (next tick's ce_d1) have >=4
+# cycles; constrained at 2 conservatively.  No fb path reaches the
+# blend or final stages anymore (band + escaped are pipelined copies).
+set_multicycle_path -setup 2 -from [get_registers {*u_framebuffer|* *u_fb_ddr3|*}] -to [get_registers {*u_color_mapper|cidx_base_r[*]* *u_color_mapper|cidx_next_r[*]* *u_color_mapper|low_band_q *u_color_mapper|escaped_q1 *u_color_mapper|color_a_* *u_color_mapper|color_b_* *u_color_mapper|color_fa_*}]
+set_multicycle_path -hold  1 -from [get_registers {*u_framebuffer|* *u_fb_ddr3|*}] -to [get_registers {*u_color_mapper|cidx_base_r[*]* *u_color_mapper|cidx_next_r[*]* *u_color_mapper|low_band_q *u_color_mapper|escaped_q1 *u_color_mapper|color_a_* *u_color_mapper|color_b_* *u_color_mapper|color_fa_*}]
+# cidx regs (ce_d3) -> evaluator latches (next tick's ce_d1): the
+# 90-entry palette mux gets its 2 cycles.
+set_multicycle_path -setup 2 -from [get_registers {*u_color_mapper|cidx_base_r[*]* *u_color_mapper|cidx_next_r[*]*}] -to [get_registers {*u_color_mapper|color_a_* *u_color_mapper|color_b_* *u_color_mapper|color_fa_*}]
+set_multicycle_path -hold  1 -from [get_registers {*u_color_mapper|cidx_base_r[*]* *u_color_mapper|cidx_next_r[*]*}] -to [get_registers {*u_color_mapper|color_a_* *u_color_mapper|color_b_* *u_color_mapper|color_fa_*}]
 
 # (The earlier shared-evaluator false path fb -> color_a_*/color_b_* was
 # removed with the three-evaluator restructure: every evaluator now reads
@@ -85,10 +95,9 @@ set_multicycle_path -hold  1 -from [get_registers {*u_color_mapper|to_blend_q* *
 # valid in every mode.
 set_multicycle_path -setup 3 -from [get_registers {*u_fractal_top|vid_pixel_x_d[*] *u_fractal_top|vid_pixel_y_d[*] *u_fractal_top|vid_active_d}] -to [get_registers {*u_arcade_video|* *|dvid_* *ascal|i_pix*}]
 set_multicycle_path -hold  2 -from [get_registers {*u_fractal_top|vid_pixel_x_d[*] *u_fractal_top|vid_pixel_y_d[*] *u_fractal_top|vid_active_d}] -to [get_registers {*u_arcade_video|* *|dvid_* *ascal|i_pix*}]
-# NOTE for 480p (stage 2): with the ce_d3 final capture the real
-# budget of color_r -> RGB_fix/dvid shrinks to 1 clk at /4 cadence —
-# this setup-2 must be removed or the output re-staged before the
-# 480p mode ships.  Valid today (real budget 5 clks at /8).
+# With the restaged ring the final color regs capture at ce_d1 and the
+# tick sampler consumes 3 clks later even at /4 — setup 2 is valid in
+# every mode including 480p.
 set_multicycle_path -setup 2 -from [get_registers {*u_color_mapper|color_*}] -to [get_registers {*u_arcade_video|* *|dvid_* *ascal|i_pix*}]
 set_multicycle_path -hold  1 -from [get_registers {*u_color_mapper|color_*}] -to [get_registers {*u_arcade_video|* *|dvid_* *ascal|i_pix*}]
 
