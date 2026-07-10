@@ -140,8 +140,10 @@ set_multicycle_path -hold  1 -from [get_registers {*u_auto_zoom|step[*]}] -to [g
 # capture at the next tick+1.  Multicycle-2 holds at every ce_pix
 # cadence incl. a future 480p (/4).  Only this cone is relaxed; the
 # rest of ascal's input stage stays single-cycle.
-set_multicycle_path -setup 2 -from [get_registers {*ascal|i_mem*}] -to [get_registers {*ascal|i_pix*}]
-set_multicycle_path -hold  1 -from [get_registers {*ascal|i_mem*}] -to [get_registers {*ascal|i_pix*}]
+# (extended for the 480p closure round: the h/v fraction and hpix
+# chain registers live in the same i_pce-gated pipeline)
+set_multicycle_path -setup 2 -from [get_registers {*ascal|i_mem* *ascal|i_v_frac* *ascal|i_h_frac* *ascal|i_hpix* *ascal|i_ldrm*}] -to [get_registers {*ascal|i_pix* *ascal|i_hpix* *ascal|i_h_bil*}]
+set_multicycle_path -hold  1 -from [get_registers {*ascal|i_mem* *ascal|i_v_frac* *ascal|i_h_frac* *ascal|i_hpix* *ascal|i_ldrm*}] -to [get_registers {*ascal|i_pix* *ascal|i_hpix* *ascal|i_h_bil*}]
 
 # text_overlay registers into the tick-sampled video captures: every
 # register in the module is either frame-static display text (coord/
@@ -158,6 +160,12 @@ set_multicycle_path -hold  1 -from [get_registers {*u_text_overlay|*}] -to [get_
 # scandoubler.  Narrowly scoped to the blender.
 set_multicycle_path -setup 2 -from [get_registers {*|Hq2x:Hq2x|Blend:blender|*}] -to [get_registers {*|Hq2x:Hq2x|Blend:blender|*}]
 set_multicycle_path -hold  1 -from [get_registers {*|Hq2x:Hq2x|Blend:blender|*}] -to [get_registers {*|Hq2x:Hq2x|Blend:blender|*}]
+# ...same cadence for the ce_in-gated pixel-window registers feeding the
+# pattern compare and the blender inputs (one pixel per CE tick; the
+# scandoubler never runs above the /8 cadence).  The 1-clk pulse regs
+# (wrout_en/wrin_en) are deliberately NOT relaxed.
+set_multicycle_path -setup 2 -from [get_registers {*|Hq2x:Hq2x|Prev0* *|Hq2x:Hq2x|Curr0* *|Hq2x:Hq2x|Next0* *|Hq2x:Hq2x|Prev1* *|Hq2x:Hq2x|Curr1* *|Hq2x:Hq2x|Next1* *|Hq2x:Hq2x|Prev2* *|Hq2x:Hq2x|Curr2* *|Hq2x:Hq2x|Next2* *|Hq2x:Hq2x|patt*}] -to [get_registers {*|Hq2x:Hq2x|nextpatt* *|Hq2x:Hq2x|patt* *|Hq2x:Hq2x|Blend:blender|*}]
+set_multicycle_path -hold  1 -from [get_registers {*|Hq2x:Hq2x|Prev0* *|Hq2x:Hq2x|Curr0* *|Hq2x:Hq2x|Next0* *|Hq2x:Hq2x|Prev1* *|Hq2x:Hq2x|Curr1* *|Hq2x:Hq2x|Next1* *|Hq2x:Hq2x|Prev2* *|Hq2x:Hq2x|Curr2* *|Hq2x:Hq2x|Next2* *|Hq2x:Hq2x|patt*}] -to [get_registers {*|Hq2x:Hq2x|nextpatt* *|Hq2x:Hq2x|patt* *|Hq2x:Hq2x|Blend:blender|*}]
 
 # pixel counters -> framebuffer/line-buffer address inputs: the RAM
 # address ports re-read every clock; downstream only consumes the data
@@ -165,3 +173,15 @@ set_multicycle_path -hold  1 -from [get_registers {*|Hq2x:Hq2x|Blend:blender|*}]
 # one-clock-late address settle is invisible.
 set_multicycle_path -setup 2 -from [get_registers {*u_video_timing|pixel_x[*] *u_video_timing|pixel_y[*]}] -to [get_registers {*u_framebuffer|* *u_fb_ddr3|*}]
 set_multicycle_path -hold  1 -from [get_registers {*u_video_timing|pixel_x[*] *u_video_timing|pixel_y[*]}] -to [get_registers {*u_framebuffer|* *u_fb_ddr3|*}]
+
+# Vid-side 2FF syncs of quasi-static mode/bank controls (m480p_vs,
+# ddr_mode_vs, bank_sel_vs, single_buf_vs): they feed pixel-path muxes
+# (overlay row halving, fb source select, display bank select) whose
+# consumers all capture on the ce tick grid.  The sources change once
+# per OSD/key event — a one-tick-late settle repaints one frame's
+# worth of pixels a tick late, invisible.  Multicycle-3 (the overlay
+# y-mux feeds the same ~25 ns glyph cone that put vid_pixel_*_d at 3;
+# real budget is a full tick, 4 clks minimum) into every tick-sampled
+# capture rank.
+set_multicycle_path -setup 3 -from [get_registers {*u_fractal_top|m480p_vs* *u_fractal_top|ddr_mode_vs* *u_fractal_top|bank_sel_vs* *u_fractal_top|single_buf_vs*}] -to [get_registers {*u_arcade_video|* *|dvid_* *ascal|i_pix* *u_color_mapper|* *u_text_overlay|* *u_framebuffer|* *u_fb_ddr3|*}]
+set_multicycle_path -hold  2 -from [get_registers {*u_fractal_top|m480p_vs* *u_fractal_top|ddr_mode_vs* *u_fractal_top|bank_sel_vs* *u_fractal_top|single_buf_vs*}] -to [get_registers {*u_arcade_video|* *|dvid_* *ascal|i_pix* *u_color_mapper|* *u_text_overlay|* *u_framebuffer|* *u_fb_ddr3|*}]
