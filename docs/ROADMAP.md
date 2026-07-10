@@ -415,6 +415,23 @@ glyphs — trivial) or omitted.  Coordinate ladder needs a per-frame
 serial multiply for the non-power-of-2 step scaling (pattern exists
 in auto_zoom).
 
+**UX (user spec, 2026-07-11).**  1920x1080 becomes Resolution value 5
+(O[56:54]; J cycles six modes) — selecting it IS gallery activation,
+no separate switch.  Zoom-related OSD rows (Attract Zoom In/Out, Zoom
+Pacing, Zoom Speed) grey out via the framework's D-mask mechanism
+(CONF_STR `D<n>` prefixes + status_menumask, currently tied to 0);
+"Wait on POI" stays active — it is the dwell per gallery image.
+Zoom keys go inert; Color Cycling and its whole submenu keep working
+(palette-level).
+
+**ALM budget.**  ~1000-1400 ALMs total (index write path ~250, FB
+register glue ~50, palette-writer sequencer reusing the idle
+color_mapper evaluators ~350, framework MISTER_FB+PALETTE side
+~500 + 1-2 M10K).  Zero new DSPs.  Lands at ~87-88% — feasible but
+tightens the seed lottery; escape hatch if it no-fits: put the
+benchmark engine (scene tables + measurement logic, est. 1-2k ALMs)
+behind a build define for release builds.
+
 **Shape.**  NOT a fork: `FB_EN` is runtime-switchable, so this is an
 OSD mode of the existing core ("Gallery 1080p").  Reuses iterators,
 POI catalogue, attract dwell, the entire cycling machinery (only its
