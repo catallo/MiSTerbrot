@@ -375,6 +375,54 @@ For the record, the implementation lessons live in the git history of
 ladder), parity via pure per-pass toggle + swap gated to the matching
 field's vblank, and mandatory continuous re-render in field mode.
 
+## Gallery Mode — 1080p indexed framebuffer (planned, ~1 week)
+
+User-driven brainstorm result (2026-07-11): a zoom-less full-HD mode
+IS reachable, because "static image + live color cycling" is exactly
+the profile of the indexed framework-framebuffer option we rejected
+for the driving modes (TRACKB_DESIGN.md option C — noted there as
+worth remembering "if a scaler-only mode is ever wanted").
+
+**Concept.**  The core renders the current POI ONCE as 8-bit color
+indices (cidx 0..89 + interior; 180 indices with the iter-band bit
+baked in) into a DDR3 buffer (1920x1080 = 2 MB), enables `FB_EN`
+(`MISTER_FB` + `MISTER_FB_PALETTE` defines), and ascal scans it
+natively — the menu core's wallpaper is the existence proof.  Color
+cycling moves from per-pixel to per-palette-entry: the existing
+cycling state machine rewrites ~90-180 `FB_PAL` entries per vblank
+(smooth-blend interpolation happens at entry-write time, crossfades
+per entry) — cycling always runs at 60 Hz regardless of scene depth.
+POI transitions as the classic demo trick: palette-fade to black,
+flip `FB_BASE` to the second buffer (where the next POI rendered
+invisibly), fade back in.
+
+**Numbers.**  Render-once per POI: ~0.5 s (home) to 1-2 min (deep
+2048-iter POIs) — a one-time cost per image; progressive build-up may
+even be left visible.  Very slow zoom (~0.5-2 s/frame) remains
+possible but is not the point.
+
+**Resolution ceiling.**  HDMI transmitter (ADV7513) is in-spec to
+165 MHz pixel clock -> 1920x1080@60 is the official maximum
+(MiSTer.ini also offers overclocked 1920x1440/2048x1536@60 4:3 modes;
+no 4K ever — the TV upscales).  FB at output resolution = 1:1
+passthrough.  Free choice the driving modes never had: 16:9
+full-bleed (wider complex-plane extent) or classic 4:3 pillarboxed
+(1440x1080).
+
+**Costs.**  Scaler-only output (no native analog in this mode); text
+overlay must be baked into the framebuffer after render (static
+glyphs — trivial) or omitted.  Coordinate ladder needs a per-frame
+serial multiply for the non-power-of-2 step scaling (pattern exists
+in auto_zoom).
+
+**Shape.**  NOT a fork: `FB_EN` is runtime-switchable, so this is an
+OSD mode of the existing core ("Gallery 1080p").  Reuses iterators,
+POI catalogue, attract dwell, the entire cycling machinery (only its
+target changes: palette entries instead of pixels).  New: a linear
+index write path (simpler than fb_ddr3 — no core-side read path at
+all) and the palette writer.  Gallery FB lives above the Track B
+banks (e.g. 0x3020_0000) — no conflict with 640x480 modes.
+
 ## Variety enhancements (secondary track)
 
 Independent of resolution/framerate work. Worth pursuing whenever Track A/B has spare capacity. Ranked impact-vs-cost:
