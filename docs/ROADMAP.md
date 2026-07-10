@@ -337,33 +337,32 @@ Both modes via new OSD bits or by extending `O[22]`.
 - Does `auto_zoom.v`'s framebuffer sampling (`fb_rd_data`, `fb_rd_addr`) still work transparently? Yes — it just reads via the same line-cache path the display uses.
 - What's the visible behaviour at SDRAM module absent? Either: graceful fallback to 240p BRAM, or boot-time failure with a clear OSD message. Decide before integration.
 
-### Field-sequential rendering (planned WITH 480p)
+### Field-sequential rendering — TRIED AND REJECTED (2026-07-10)
 
-User-suggested (2026-07-09), and the plan firmed up with the 480p
-decision: **once 480p exists, 480i stops duplicating the full-quality
-role and becomes the mode that actually saves compute** — render only
-the 240 lines of the CURRENT field per pass, the classic TV approach.
-Roughly doubles the effective temporal rate (a 640-wide field costs
-~640×240, not 640×480).
+Implemented, silicon-verified (including a parity-association bug
+found and fixed on hardware), and then **rejected on sight by the
+user** — correctly.  The fatal flaw, obvious in hindsight:
 
-Role split after 480p lands:
+**The "2x temporal rate" benefit only exists while the render keeps
+pace with the field rate (60/s).**  At the 10-20 fps of real deep
+zooms, each 240-row field snapshot comes from a DIFFERENT zoom moment,
+and the display slowly alternates between two temporally incoherent
+half-pictures — it looks like a smeared 640x256, strictly worse than
+whole-frame 480i, whose 2x render cost buys exactly the property that
+both fields come from the same instant.
 
-- **480p (31 kHz)**: full-quality progressive 480 lines — the right
-  choice for every scaler/31 kHz display (including the user's own
-  `vga_scaler` CRT + HDMI OLED).
-- **480i, field-rendered**: the performance variant.  On native
-  15 kHz displays temporally offset fields are the normal TV look;
-  scaler users who dislike the deinterlacing artifacts (weave combing
-  / bob shimmer on time-different fields) simply pick 480p instead.
+The whole-frame-render 480i (Track B) is therefore the keeper, along
+with the Weave/Bob/Off deinterlace selector.  Do not revisit
+field-sequential rendering unless a mode guarantees render >= field
+rate (e.g. a capped-shallow attract preset) — and even then the
+static-view case needs continuous re-rendering to keep both parities
+fresh (a bank pair can never hold both fields without fresh passes).
 
-Implementation notes:
-
-- A2 symmetry must be disabled while field-rendering: the mirror row
-  479−y always has opposite parity, i.e. lands in the other field.
-- Ship as an OSD toggle first (e.g. "Field Render", 480i modes only)
-  to preserve the current verified whole-frame behavior; decide the
-  default after comparing both on hardware.  Weave deinterlace should
-  be discouraged while it is on.
+For the record, the implementation lessons live in the git history of
+2026-07-10 (three reverted commits, branchless): per-field ci ladder
+(240p pitch, odd field offset step/2 — bit-exact vs the whole-480
+ladder), parity via pure per-pass toggle + swap gated to the matching
+field's vblank, and mandatory continuous re-render in field mode.
 
 ## Variety enhancements (secondary track)
 
