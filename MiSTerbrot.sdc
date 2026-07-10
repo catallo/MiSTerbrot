@@ -79,8 +79,8 @@ set_multicycle_path -hold  1 -from [get_registers {*u_color_mapper|cidx_base_r[*
 # the next tick).  Each hop is 2 cycles by construction at the minimum
 # cadence (ce every 4 clks); the downstream consumer samples only at
 # the following tick, so the later final capture is free.
-set_multicycle_path -setup 2 -from [get_registers {*u_color_mapper|color_a_* *u_color_mapper|color_b_*}] -to [get_registers {*u_color_mapper|to_blend_q*}]
-set_multicycle_path -hold  1 -from [get_registers {*u_color_mapper|color_a_* *u_color_mapper|color_b_*}] -to [get_registers {*u_color_mapper|to_blend_q*}]
+set_multicycle_path -setup 2 -from [get_registers {*u_color_mapper|color_a_* *u_color_mapper|color_b_* *u_color_mapper|low_band_q*}] -to [get_registers {*u_color_mapper|to_blend_q*}]
+set_multicycle_path -hold  1 -from [get_registers {*u_color_mapper|color_a_* *u_color_mapper|color_b_* *u_color_mapper|low_band_q*}] -to [get_registers {*u_color_mapper|to_blend_q*}]
 set_multicycle_path -setup 2 -from [get_registers {*u_color_mapper|to_blend_q* *u_color_mapper|color_fa_*}] -to [get_registers {*u_color_mapper|color_r[*]* *u_color_mapper|color_g[*]* *u_color_mapper|color_b[*]*}]
 set_multicycle_path -hold  1 -from [get_registers {*u_color_mapper|to_blend_q* *u_color_mapper|color_fa_*}] -to [get_registers {*u_color_mapper|color_r[*]* *u_color_mapper|color_g[*]* *u_color_mapper|color_b[*]*}]
 
@@ -150,3 +150,18 @@ set_multicycle_path -hold  1 -from [get_registers {*ascal|i_mem*}] -to [get_regi
 # Multicycle-2 into the ce-gated targets is valid for both classes.
 set_multicycle_path -setup 2 -from [get_registers {*u_text_overlay|*}] -to [get_registers {*u_arcade_video|* *|dvid_* *ascal|i_pix*}]
 set_multicycle_path -hold  1 -from [get_registers {*u_text_overlay|*}] -to [get_registers {*u_arcade_video|* *|dvid_* *ascal|i_pix*}]
+
+# HQ2x blender (framework scandoubler): every register in the Blend
+# stage advances under clk_en (= the scandoubler pixel CE,
+# sys/hq2x.sv) — the df_rule -> i30 multiply cone is tick-cadenced
+# with >=4 clk_vid between captures in every mode that runs the
+# scandoubler.  Narrowly scoped to the blender.
+set_multicycle_path -setup 2 -from [get_registers {*|Hq2x:Hq2x|Blend:blender|*}] -to [get_registers {*|Hq2x:Hq2x|Blend:blender|*}]
+set_multicycle_path -hold  1 -from [get_registers {*|Hq2x:Hq2x|Blend:blender|*}] -to [get_registers {*|Hq2x:Hq2x|Blend:blender|*}]
+
+# pixel counters -> framebuffer/line-buffer address inputs: the RAM
+# address ports re-read every clock; downstream only consumes the data
+# present >=2 clocks after the ce tick (d2/d3 capture enables), so a
+# one-clock-late address settle is invisible.
+set_multicycle_path -setup 2 -from [get_registers {*u_video_timing|pixel_x[*] *u_video_timing|pixel_y[*]}] -to [get_registers {*u_framebuffer|* *u_fb_ddr3|*}]
+set_multicycle_path -hold  1 -from [get_registers {*u_video_timing|pixel_x[*] *u_video_timing|pixel_y[*]}] -to [get_registers {*u_framebuffer|* *u_fb_ddr3|*}]
