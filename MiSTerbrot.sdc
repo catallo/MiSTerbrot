@@ -142,3 +142,11 @@ set_multicycle_path -hold  1 -from [get_registers {*u_auto_zoom|step[*]}] -to [g
 # rest of ascal's input stage stays single-cycle.
 set_multicycle_path -setup 2 -from [get_registers {*ascal|i_mem*}] -to [get_registers {*ascal|i_pix*}]
 set_multicycle_path -hold  1 -from [get_registers {*ascal|i_mem*}] -to [get_registers {*ascal|i_pix*}]
+
+# text_overlay registers into the tick-sampled video captures: every
+# register in the module is either frame-static display text (coord/
+# zoom/fps digit latches — a one-tick-late settle repaints one glyph
+# pixel a tick late, invisible) or tick-cadenced pixel-path state.
+# Multicycle-2 into the ce-gated targets is valid for both classes.
+set_multicycle_path -setup 2 -from [get_registers {*u_text_overlay|*}] -to [get_registers {*u_arcade_video|* *|dvid_* *ascal|i_pix*}]
+set_multicycle_path -hold  1 -from [get_registers {*u_text_overlay|*}] -to [get_registers {*u_arcade_video|* *|dvid_* *ascal|i_pix*}]
