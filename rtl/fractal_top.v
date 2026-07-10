@@ -48,6 +48,7 @@ module fractal_top #(
     output wire        vblank,
     output wire        vga_f1,     // interlace field flag (0 when progressive)
     output wire        vga_interlaced,  // level: 480i mode active
+    output wire        vga_mode_480p,   // level: 640x480p (31 kHz) active
     output reg         new_vmode,  // toggles on any resolution change (hps_io)
     output wire        bob_deint,  // HDMI deinterlace: 1 = Bob
     output wire [7:0]  vga_r,
@@ -107,11 +108,11 @@ end
 // J-key override releases as soon as the OSD selection changes — the
 // most recently used source wins (a sticky override made the OSD
 // selector appear dead after the first keypress; found on hardware).
-reg  [1:0] res_override;
+reg  [2:0] res_override;
 reg        res_override_en;
-reg  [1:0] osd_res_prev;
-reg  [1:0] eff_res_prev_nv;
-wire [1:0] eff_res = res_override_en ? res_override : osd_res_mode;
+reg  [2:0] osd_res_prev;
+reg  [2:0] eff_res_prev_nv;
+wire [2:0] eff_res = res_override_en ? res_override : osd_res_mode;
 // Boot grace: the framework's very first mode lock after a core load
 // cannot cope with an interlaced signal (PSX never boots interlaced —
 // its BIOS runs 240p; found the hard way with a saved 480i setting).
@@ -119,14 +120,22 @@ wire [1:0] eff_res = res_override_en ? res_override : osd_res_mode;
 // then switch — a transition it demonstrably handles (new_vmode fires).
 reg [5:0] boot_grace_cnt;
 wire      boot_grace_done = (boot_grace_cnt >= BOOT_GRACE_VBLANKS);
-wire interlace_mode = eff_res[1] && boot_grace_done && !benchmark_active;
+wire interlace_mode = (eff_res == 3'd2 || eff_res == 3'd3)
+                    && boot_grace_done && !benchmark_active;
+// 640x480p (eff_res 4, Track B stage 2): progressive 525-line timing
+// at 31.25 kHz.  Same boot-grace policy as the interlaced modes.
+wire mode_480p = (eff_res == 3'd4) && boot_grace_done && !benchmark_active;
 wire effective_mode_640 = benchmark_active ? bench_mode_640
-                        : (eff_res == 2'd1 || eff_res == 2'd3);
-// 640x480i (eff_res 3) = 307,200 px = 2x one BRAM bank: the framebuffer
+                        : (eff_res == 3'd1 || eff_res == 3'd3 || eff_res == 3'd4);
+// 640x480 (i or p) = 307,200 px = 2x one BRAM bank: the framebuffer
 // moves to DDR3 (fb_ddr3).  During boot grace / benchmark the mode falls
 // back to progressive 640x240 in BRAM, same as 320x480i falls back to
 // 320x240.
-wire ddr_fb_mode = (eff_res == 2'd3) && interlace_mode;
+wire ddr_fb_mode = ((eff_res == 3'd3) && interlace_mode)
+                 || mode_480p;
+// 480-line rendering (interlaced scanout or 480p): drives the coord
+// ladder and the A2 symmetry bounds/mirror target below.
+wire render_480 = interlace_mode | mode_480p;
 
 // ---- Pixel clock (video domain, 100 MHz base) ----
 //   320 mode: 100 MHz / 16 = 6.25 MHz dot clock (15.625 kHz line rate)
@@ -138,8 +147,9 @@ always @(posedge clk_vid or negedge rst_n) begin
     if (!rst_n) ce_pix_cnt <= 4'd0;
     else        ce_pix_cnt <= ce_pix_cnt + 4'd1;
 end
-assign ce_pix = effective_mode_640 ? (ce_pix_cnt[2:0] == 3'd0)
-                                   : (ce_pix_cnt       == 4'd0);
+assign ce_pix = mode_480p            ? (ce_pix_cnt[1:0] == 2'd0)
+              : effective_mode_640   ? (ce_pix_cnt[2:0] == 3'd0)
+                                     : (ce_pix_cnt       == 4'd0);
 
 // ---- OSD Parameter Decoding ----
 wire [6:0] osd_palette_sel;
@@ -160,7 +170,7 @@ wire       key_vmode_toggle;
 wire [1:0] osd_p3_mode;
 wire       osd_periodicity_enable;
 wire       attract_randomize;
-wire [1:0] osd_res_mode;
+wire [2:0] osd_res_mode;
 wire [1:0] osd_deint_mode;
 wire       color_depth_mode;
 wire [3:0] cycle_speed_sel;
@@ -219,10 +229,10 @@ always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         blank_text_override <= 2'b00;
         bg_dim_override     <= 2'b00;
-        res_override        <= 2'd0;
+        res_override        <= 3'd0;
         res_override_en     <= 1'b0;
-        osd_res_prev        <= 2'd0;
-        eff_res_prev_nv     <= 2'd0;
+        osd_res_prev        <= 3'd0;
+        eff_res_prev_nv     <= 3'd0;
         new_vmode           <= 1'b0;
         boot_grace_cnt      <= 6'd0;
     end else begin
@@ -242,7 +252,7 @@ always @(posedge clk or negedge rst_n) begin
         if (eff_res != eff_res_prev_nv) new_vmode <= ~new_vmode;
         if (key_vmode_toggle) begin
             res_override_en <= 1'b1;
-            res_override    <= (eff_res == 2'd3) ? 2'd0 : (eff_res + 2'd1);
+            res_override    <= (eff_res >= 3'd4) ? 3'd0 : (eff_res + 3'd1);
         end else if (osd_res_mode != osd_res_prev) begin
             res_override_en <= 1'b0;
         end
@@ -725,7 +735,7 @@ coord_generator #(
 ) u_coord_gen (
     .clk(clk), .rst_n(rst_n),
     .mode_640(effective_mode_640),
-    .mode_480(interlace_mode),
+    .mode_480(render_480),
     .start_frame(start_render),
     // Raw cy_is_zero, NOT sym_active_frame: coord_generator latches its
     // own copy at start_frame — the same edge sym_active_frame latches.
@@ -899,7 +909,7 @@ assign symq_backpressure = sym_active_frame &&
                            (symq_count >= (SYMQ_DEPTH - N_ITERATORS));
 
 wire need_mirror_now = sym_active_frame &&
-                       (pipe_result_y <= (interlace_mode ? 10'd239 : 10'd119));
+                       (pipe_result_y <= (render_480 ? 10'd239 : 10'd119));
 wire mirror_drain    = !pipe_result_valid && !symq_empty
                      && (ddr_wr_ready || !ddr_fb_mode);
 
@@ -939,7 +949,7 @@ always @(posedge clk or negedge rst_n) begin
     end else begin
         if (pipe_result_valid && need_mirror_now && !symq_full) begin
             symq_x   [symq_wr_ptr[SYMQ_AW-1:0]] <= pipe_result_x;
-            symq_y   [symq_wr_ptr[SYMQ_AW-1:0]] <= (interlace_mode ? 10'd479 : 10'd239)
+            symq_y   [symq_wr_ptr[SYMQ_AW-1:0]] <= (render_480 ? 10'd479 : 10'd239)
                                                    - pipe_result_y;
             symq_iter[symq_wr_ptr[SYMQ_AW-1:0]] <= pipe_result_iter;
             symq_esc [symq_wr_ptr[SYMQ_AW-1:0]] <= pipe_result_escaped;
@@ -978,7 +988,7 @@ wire [9:0]  vid_pixel_y;
 // Clamp x and y to the active region — outside, force address 0 to avoid
 // out-of-bounds BRAM reads during hblank/vblank that could leak through
 // the 1-cycle BRAM-read latency into the next active pixel.
-wire vid_in_range = (vid_pixel_y < 10'd240) &&
+wire vid_in_range = (vid_pixel_y < (mode_480p ? 10'd480 : 10'd240)) &&
                     (vid_pixel_x < (effective_mode_640 ? 11'd640 : 11'd320));
 // 480i scanout: display row r of field f shows logical row 2r+f of the
 // progressive 320x480 frame in the bank.
@@ -999,20 +1009,23 @@ wire [FB_ADDR_WIDTH-1:0] rd_addr = az_fb_sampling ? az_fb_rd_addr : vid_rd_addr;
 // Quasi-static controls crossing into clk_vid (see 480P_DESIGN.md).
 // bank_sel toggles deep inside vblank, so the 2FF latency can never
 // race an active-area read; the others change on OSD/key events.
-reg [1:0] bank_sel_vs, single_buf_vs, ddr_mode_vs;
+reg [1:0] bank_sel_vs, single_buf_vs, ddr_mode_vs, m480p_vs;
 always @(posedge clk_vid or negedge rst_n) begin
     if (!rst_n) begin
         bank_sel_vs   <= 2'b00;
         single_buf_vs <= 2'b00;
         ddr_mode_vs   <= 2'b00;
+        m480p_vs      <= 2'b00;
     end else begin
         bank_sel_vs   <= {bank_sel_vs[0], bank_sel};
         single_buf_vs <= {single_buf_vs[0], single_buffer};
         ddr_mode_vs   <= {ddr_mode_vs[0], ddr_fb_mode};
+        m480p_vs      <= {m480p_vs[0], mode_480p};
     end
 end
 wire bank_sel_v    = bank_sel_vs[1];
 wire ddr_fb_mode_v = ddr_mode_vs[1];
+wire mode_480p_v   = m480p_vs[1];
 wire display_bank_sel_v = single_buf_vs[1] ? ~bank_sel_v : bank_sel_v;
 
 // vblank edge, video-domain native (for color_mapper's cycling state)
@@ -1092,6 +1105,7 @@ video_timing u_video_timing (
     .ce_pix(ce_pix),
     .mode_640(effective_mode_640),
     .interlace(interlace_mode),
+    .mode_480p(mode_480p),
     .hsync(hsync),
     .vsync(vsync),
     .hblank(hblank),
@@ -1108,6 +1122,7 @@ video_timing u_video_timing (
 // (no weave combing, no bob shimmer, softer vertical resolution).
 assign vga_f1 = interlace_mode & vid_field & (osd_deint_mode != 2'd2);
 assign vga_interlaced = interlace_mode;
+assign vga_mode_480p  = mode_480p;
 assign bob_deint = (osd_deint_mode == 2'd1);
 
 always @(posedge clk_vid or negedge rst_n) begin
@@ -1182,7 +1197,9 @@ text_overlay #(
     .always_show_poi(always_show_poi),
     .overlay_bg_dim(overlay_bg_dim),
     .pixel_x(vid_pixel_x_d),
-    .pixel_y(vid_pixel_y_d),
+    // 480p scans 480 native rows; halving keeps the glyph layout (and
+    // its doubled-line look) identical to all other modes
+    .pixel_y(mode_480p_v ? {1'b0, vid_pixel_y_d[9:1]} : vid_pixel_y_d),
     .video_active(vid_active_d),
     .palette_sel(palette_sel),
     .max_iter(max_iter),

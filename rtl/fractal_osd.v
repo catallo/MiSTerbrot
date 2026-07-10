@@ -47,10 +47,11 @@ module fractal_osd #(
     output wire         periodicity_enable,
     // Attract Randomizer (status[52]): 0 = On (default), 1 = Off
     output wire         attract_randomize,
-    // Unified resolution (status[55:54]): 0 = 320x240 (default),
-    // 1 = 640x240, 2 = 320x480i, 3 = 640x480i (DDR3 framebuffer).
-    // Replaces the former O[22]/O[53] pair.
-    output wire [1:0]   res_mode,
+    // Unified resolution (status[56:54]): 0 = 320x240 (default),
+    // 1 = 640x240, 2 = 320x480i, 3 = 640x480i, 4 = 640x480p (both
+    // DDR3 framebuffer).  Bit 56 was free since the Deinterlace move
+    // to O[58:57], so existing saved configs keep their meaning.
+    output wire [2:0]   res_mode,
     // Deinterlace mode for 480i (status[58:57]): 0 = Weave (default;
     // sharp, combs on motion), 1 = Bob (no combing, slightly softer),
     // 2 = Off (fields scaled as independent half-pictures: F1 is
@@ -108,7 +109,7 @@ assign color_cycle_enable = ~status[24];  // 0=On, 1=Off
 assign p3_mode = status[26:25];
 assign periodicity_enable = ~status[51];
 assign attract_randomize = ~status[52];
-assign res_mode = status[55:54];
+assign res_mode = status[56:54];
 assign deint_mode = status[58:57];
 assign color_depth_mode = status[36];
 

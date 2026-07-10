@@ -86,7 +86,8 @@ tight spots at 10 ns/cycle:
    ce-tick-exact sync geometry (cycle-exact pair-TBs across domains
    are not meaningful); hardware 240p walkthrough regression + visual
    check.  Lands and soaks alone.
-2. **480p mode** on top: video_timing 480p mux (V: 480+10+3+32 = 525
+2. **480p mode** on top — DONE in sim 2026-07-10 (see stage-2
+   verification below): video_timing 480p mux (V: 480+10+3+32 = 525
    lines, H structure unchanged at 800 → 31.25 kHz / 59.5 Hz),
    Resolution selector widens to `O[56:54]` (bit 56 is free since the
    Deinterlace move to O[58:57]; existing saved configs keep their
@@ -100,6 +101,19 @@ tight spots at 10 ns/cycle:
    worst-case measured — 8× margin).
 3. **Field-sequential 480i toggle** (see ROADMAP) — independent of
    the domain move, scheduled after 480p.
+
+## Stage 2 verification (2026-07-10)  [sim PASS, awaits hardware]
+
+- video_timing pair-TB: all pre-480p modes bit-identical to HEAD;
+  480p geometry exact (525 lines/frame, prefetch rows 0..479).
+- fractal_top mode-4 functional TB: 480p activates after grace,
+  VGA_F1 silent, interlaced flag low, 4374 progressive line fetches
+  with a clean +1 row sequence, writes cover all 480 rows and both
+  banks, zero underruns.  Caught one real bug pre-silicon: the A2
+  symmetry bounds/mirror target still keyed on interlace_mode — in
+  480p the mirror writes vanished (would have been corruption on
+  hardware).  Fixed with the shared `render_480` term; mode-3 TB and
+  the modes-0/1 frame-content pair-TB re-run clean after the fix.
 
 ## Stage 1 verification (2026-07-10)  [hardware PASS]
 

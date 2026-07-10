@@ -23,6 +23,12 @@ module video_timing (
     // requirement) — verified by a cycle-compare TB against the old
     // module.
     input  wire        interlace,
+    // 640x480p (Track B stage 2): 525 progressive lines at the same
+    // 800-pixel H structure — 31.25 kHz / ~59.5 Hz with a 25 MHz dot
+    // clock (ce_pix /4 in the 100 MHz video domain).  Mutually
+    // exclusive with interlace (fractal_top enforces it).  All other
+    // modes stay BIT-IDENTICAL when this is 0.
+    input  wire        mode_480p,
 
     output reg         hsync,
     output reg         vsync,
@@ -71,6 +77,17 @@ localparam V_SYNC   = 10'd3;
 localparam V_BP     = 10'd9;
 localparam V_TOTAL  = V_ACTIVE + V_FP + V_SYNC + V_BP; // 262
 
+// 480p vertical constants: 480+10+3+32 = 525 lines -> 31.25 kHz line
+// rate / 59.52 Hz frame rate at the 800-pixel 640-mode H structure.
+localparam V_ACTIVE_480P = 10'd480;
+localparam V_BP_480P     = 10'd32;
+localparam V_TOTAL_480P  = V_ACTIVE_480P + V_FP + V_SYNC + V_BP_480P; // 525
+
+// Runtime-muxed vertical constants (mode_480p=0 reduces to the
+// original constants everywhere)
+wire [9:0] v_active = mode_480p ? V_ACTIVE_480P : V_ACTIVE;
+wire [9:0] v_total  = mode_480p ? V_TOTAL_480P  : V_TOTAL;
+
 // Runtime-muxed horizontal constants
 wire [10:0] h_active = mode_640 ? H_ACTIVE_640 : H_ACTIVE_320;
 wire [10:0] h_fp     = mode_640 ? H_FP_640     : H_FP_320;
@@ -85,13 +102,13 @@ assign active = ~hblank & ~vblank;
 // Interlace: field 1 runs one extra line (263 vs 262) and its vsync is
 // offset by half a line.  With interlace=0, v_total_eff == V_TOTAL and
 // the vsync expression reduces exactly to the progressive one.
-wire [9:0]  v_total_eff = (interlace && field) ? (V_TOTAL + 10'd1) : V_TOTAL;
+wire [9:0]  v_total_eff = (interlace && field) ? (v_total + 10'd1) : v_total;
 wire [10:0] h_half      = {1'b0, h_total[10:1]};   // h_total/2 (h_total is even)
 
-wire vsync_line_first = (vc == V_ACTIVE + V_FP);              // 250
-wire vsync_line_mid   = (vc >  V_ACTIVE + V_FP) &&
-                        (vc <  V_ACTIVE + V_FP + V_SYNC);     // 251..252
-wire vsync_line_last  = (vc == V_ACTIVE + V_FP + V_SYNC);     // 253
+wire vsync_line_first = (vc == v_active + V_FP);              // 250 / 490
+wire vsync_line_mid   = (vc >  v_active + V_FP) &&
+                        (vc <  v_active + V_FP + V_SYNC);
+wire vsync_line_last  = (vc == v_active + V_FP + V_SYNC);
 wire vsync_prog = vsync_line_first || vsync_line_mid;
 // Field-1 vsync: starts mid-line on 250, ends mid-line on 253.
 wire vsync_ilace_odd = (vsync_line_first && (hc >= h_half)) ||
@@ -109,12 +126,12 @@ wire        line_wrap   = (hc == h_total - 11'd1);
 wire        frame_wrap  = (vc == v_total_eff - 10'd1);
 wire [9:0]  vc_next     = frame_wrap ? 10'd0 : (vc + 10'd1);
 wire        field_next  = frame_wrap ? (interlace ? ~field : 1'b0) : field;
-wire [9:0]  vte_next    = (interlace && field_next) ? (V_TOTAL + 10'd1) : V_TOTAL;
+wire [9:0]  vte_next    = (interlace && field_next) ? (v_total + 10'd1) : v_total;
 wire        frame_wrap2 = (vc_next == vte_next - 10'd1);
 wire [9:0]  line_after  = frame_wrap2 ? 10'd0 : (vc_next + 10'd1);
 wire        field_after = frame_wrap2 ? (interlace ? ~field_next : 1'b0) : field_next;
-wire [9:0]  pf_y = (line_after < V_ACTIVE) ? line_after : 10'd0;
-wire        pf_f = (line_after < V_ACTIVE) ? field_after
+wire [9:0]  pf_y = (line_after < v_active) ? line_after : 10'd0;
+wire        pf_f = (line_after < v_active) ? field_after
                                            : (interlace ? ~field_next : 1'b0);
 
 always @(posedge clk or negedge rst_n) begin
@@ -158,7 +175,7 @@ always @(posedge clk or negedge rst_n) begin
         hsync  <= (hc >= h_active + h_fp) && (hc < h_active + h_fp + h_sync);
 
         // Vertical signals
-        vblank <= (vc >= V_ACTIVE);
+        vblank <= (vc >= v_active);
         vsync  <= vsync_next;
 
         // Pixel coordinates (in active region)

@@ -125,6 +125,7 @@ wire core_ddram_underrun;
 
 wire core_f1;
 wire core_interlaced;
+wire core_480p;
 wire core_new_vmode;
 wire core_bob_deint;
 assign VGA_F1 = core_f1;
@@ -159,7 +160,7 @@ localparam CONF_STR = {
 	"O[19],Blank Text,On,Off;",
 	"O[20],Always Show FPS,Off,On;",
 	"O[21],Always Show POI/Palette,On,Off;",
-	"O[55:54],Resolution,320x240,640x240,320x480i,640x480i;",
+	"O[56:54],Resolution,320x240,640x240,320x480i,640x480i,640x480p;",
 	"O[58:57],Deinterlace (HDMI),Weave,Bob,Off;",
 	"O[23],Overlay BG,Transparent,Dimmed;",
 	"O[17:15],Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
@@ -274,6 +275,7 @@ fractal_top #(
 	.vblank(core_vblank),
 	.vga_f1(core_f1),
 	.vga_interlaced(core_interlaced),
+	.vga_mode_480p(core_480p),
 	.new_vmode(core_new_vmode),
 	.bob_deint(core_bob_deint),
 	.vga_r(core_r),
@@ -314,8 +316,8 @@ arcade_video #(.WIDTH(640), .DW(24)) u_arcade_video
 	.VGA_DE(av_de),
 	.VGA_SL(av_sl),
 
-	.fx(core_interlaced ? 3'b000 : status[17:15]),
-	.forced_scandoubler(forced_scandoubler & ~core_interlaced),
+	.fx((core_interlaced | core_480p) ? 3'b000 : status[17:15]),
+	.forced_scandoubler(forced_scandoubler & ~core_interlaced & ~core_480p),
 	.gamma_bus(gamma_bus)
 );
 
@@ -344,14 +346,18 @@ always @(posedge clk_iter) begin
 	end
 end
 
-assign CE_PIXEL = core_interlaced ? dvid_ce : av_ce;
-assign VGA_R    = core_interlaced ? dvid_r  : av_r;
-assign VGA_G    = core_interlaced ? dvid_g  : av_g;
-assign VGA_B    = core_interlaced ? dvid_b  : av_b;
-assign VGA_HS   = core_interlaced ? dvid_hs : av_hs;
-assign VGA_VS   = core_interlaced ? dvid_vs : av_vs;
-assign VGA_DE   = core_interlaced ? dvid_de : av_de;
-assign VGA_SL   = core_interlaced ? 2'd0 : av_sl;
+// Direct path for interlaced AND 480p output: both bypass the
+// arcade_video chain (the mixer's sync_lock broke the 480i half-line
+// cadence on the CRT, and 480p is already 31 kHz — nothing to double).
+wire direct_video = core_interlaced | core_480p;
+assign CE_PIXEL = direct_video ? dvid_ce : av_ce;
+assign VGA_R    = direct_video ? dvid_r  : av_r;
+assign VGA_G    = direct_video ? dvid_g  : av_g;
+assign VGA_B    = direct_video ? dvid_b  : av_b;
+assign VGA_HS   = direct_video ? dvid_hs : av_hs;
+assign VGA_VS   = direct_video ? dvid_vs : av_vs;
+assign VGA_DE   = direct_video ? dvid_de : av_de;
+assign VGA_SL   = direct_video ? 2'd0 : av_sl;
 
 // User LED doubles as the DDR3 line-fetch underrun alarm during Track B
 // bring-up: solid ON = sticky underrun (must never happen, 16x budget
