@@ -101,6 +101,25 @@ tight spots at 10 ns/cycle:
 3. **Field-sequential 480i toggle** (see ROADMAP) — independent of
    the domain move, scheduled after 480p.
 
+## Stage 1 verification (2026-07-10)  [hardware PASS]
+
+Hardware regression on the seed-19 build (worst -0.216 on a single
+iter_quad multiplier-carry path; deployed for verification while the
+seed lottery continues):
+
+- 240p walkthrough: **90/90 POIs, zero misses**, scores clean (worst
+  interior-fraction delta 0.9%).
+- A2 mirror correlation on the static home view (color cycling off):
+  **1.00000 / meandiff 0.00** in BOTH 320x480i and 640x480i.
+- HQ2x scandoubler visually correct under the new multicycle —
+  characteristic smoothing, no corruption.
+- Boot into saved mode, J-cycling through all four modes, attract /
+  cycling / crossfade all healthy.
+- Operational notes: static-view checks must disable color cycling
+  first (C key) or they read animation as motion; misterclaw key
+  injection occasionally drops a keypress — verify effect (coords
+  line) instead of assuming.
+
 ## Stage 1 closure notes (2026-07-10, running log)
 
 Round 1 (first build, worst −6.4 / TNS −856) resolved by SDC only —
