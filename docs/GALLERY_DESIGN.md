@@ -241,11 +241,14 @@ instead (tools/gallery_verify.py).
 - M-snap renders at INTEGER zoom (az `snap_step`); the overlay's
   fractional zoom display is the known x10 display mismatch.  The
   verify tool defaults to snap semantics.
-- **Open observation (1 of 3 gallery entries)**: on the very first
-  gallery activation after a cold core load, the first render froze at
-  ~row 830 and never completed (buffer static for minutes; leaving
-  gallery un-wedged it, later entries were clean).  Not reproduced by
-  cold-boot repro or mid-render M presses.  Suspects: a restart loop
-  repainting the top rows (static boundary = identical repaint), or a
-  transient f2sdram state from J-cycling through the DDR modes.  If it
-  recurs in user testing, instrument then.
+- **Open observation — first-entry render anomalies (2 sightings)**:
+  twice, the buffer after "gallery entry + M ~2 s later" held a stale
+  or partial view (once frozen at ~row 830 for minutes; once showing
+  the pre-M glide view where the snapped POI was expected).  Both
+  sightings are tangled with unreliable remote keyboard delivery (six
+  consecutive M presses later provably did nothing), and the race does
+  NOT reproduce in simulation: tb_gallery_msnap injects a PS/2 M mid
+  first-render and completes 2.7M writes post-M cleanly.  All clean
+  protocol runs verified bit-exact.  Next probe is simply the user's
+  eyes: if painting visibly freezes on entry, instrument then;
+  tb_gallery_msnap stays as the regression guard.
