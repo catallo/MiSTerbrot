@@ -171,11 +171,14 @@ Deviations and decisions made during implementation:
   Verified bit-exact against an independent golden color_mapper
   (8-tick-hold evaluation, latency-independent) over multiple frames
   with cycling advancing.
-- **Sweep trigger = core vblank_rise**: same edge the cycling phase
-  steps, so each sweep samples a coherent phase.  ascal's scanout is
-  asynchronous to the core vblank, so a scanout frame can mix entries
-  from two consecutive sweeps — adjacent cycling phases, invisible.
-  (FB_VBL-synced writes remain an option if it ever shows.)
+- **Sweep trigger = FB_VBL rise** (scaler-scanout vblank; changed in
+  user-testing round 2): the original core-vblank trigger rewrote the
+  palette mid-scanout — invisible at slow cycling (adjacent phases
+  near-identical) but a clear horizontal tear line at fast speeds.
+  Sweeping inside the scaler's blanking (~10 us of writes vs ~450 us
+  of 1080p vblank) removes the seam; the rare core-vblank-mid-sweep
+  frame (~0.06 %) mixes two adjacent phases across the entry range —
+  a subtle one-frame inconsistency, not a spatial seam.
 - **Fade-flip (O[59]=Off)**: fade 3/vblank (63 -> 0 in ~0.35 s), flip
   FB_BASE only at fade 0 — the screen is uniformly black, so the flip
   is tear-free by construction, no FB_VBL handshake needed.
@@ -283,3 +286,14 @@ rise within two passes, correct at rise); tb_gallery validates
 frame-start coordinates against the LATCHED pitch and its freshness
 (no publish-latency tolerance anymore); tb_gallery_flip fails on any
 double render per POI advance.
+
+## User-testing round 2 (2026-07-11)
+
+- vmode resolved: `[MiSTerbrot] video_mode=8` PLUS `video_mode_ntsc=8`
+  / `video_mode_pal=8` (the global `video_mode_ntsc=4` otherwise
+  overrides the per-core `video_mode` for ~60 Hz cores — the CRT's
+  reported 1280x1024 gave it away).  User's CRT syncs 1080p60; the
+  one-time geometry readjust is per-mode memory in the monitor.
+- 16:9 confirmed working after the AR fix + vmode.
+- **Palette tearing at fast cycling** found by the user and fixed:
+  sweep moved from core vblank to FB_VBL (see above).

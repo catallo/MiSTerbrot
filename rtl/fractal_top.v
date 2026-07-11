@@ -80,6 +80,9 @@ module fractal_top #(
     output wire [31:0] gal_fb_base,
     output wire [13:0] gal_fb_stride,
     output wire        gal_fb_force_blank,
+    // scaler-scanout vblank (FB_VBL from the framework; clk_vid-domain
+    // register in sys_top) — gallery palette sweeps run inside it
+    input  wire        fb_vbl_in,
     output wire        gal_pal_clk,
     output wire [7:0]  gal_pal_addr,
     output wire [23:0] gal_pal_dout,
@@ -1393,11 +1396,20 @@ always @(posedge clk_vid or negedge rst_n) begin
     end
 end
 
+// FB_VBL edge for the sweep trigger (2FF hygiene; sys_top already
+// registers it once on clk_vid)
+reg [2:0] fb_vbl_vs;
+always @(posedge clk_vid or negedge rst_n) begin
+    if (!rst_n) fb_vbl_vs <= 3'b000;
+    else        fb_vbl_vs <= {fb_vbl_vs[1:0], fb_vbl_in};
+end
+wire fb_vbl_rise = fb_vbl_vs[1] & ~fb_vbl_vs[2];
+
 gallery_palette u_gallery_palette (
     .clk(clk_vid), .rst_n(rst_n),
     .gallery_en(gallery_v),
     .ce_pix(ce_pix),
-    .vblank_rise(vblank_rise_v),
+    .sweep_start(fb_vbl_rise),
     .fade_scale(fade_vs),
     .inj_iter(gal_inj_iter),
     .color_r(disp_r), .color_g(disp_g), .color_b(disp_b),

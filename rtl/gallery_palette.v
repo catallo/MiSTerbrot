@@ -11,11 +11,17 @@
 // smooth/hard blend and palette crossfades all keep animating at
 // 60 Hz through palette rewrites alone.
 //
-// One sweep per core vblank, started at vblank_rise (the same edge
-// color_mapper steps its cycling phase, so the sweep always samples a
-// coherent phase).  255 entries + pipeline drain ~ 258 ticks ~ 10 us
-// — comfortably inside vblank.  Entry 0 (interior) is written black
-// at sweep start.
+// One sweep per SCALER vblank (FB_VBL rising edge, synced by the
+// caller): ascal scans the FB asynchronously to the core video, so a
+// core-vblank-triggered sweep rewrites the palette mid-scanout — at
+// fast cycling speeds the old/new palette seam shows as a horizontal
+// tear line (user-visible, testing round 2).  Sweeping in the scaler's
+// blanking (255 entries + drain ~ 10 us against ~450 us of 1080p
+// vblank) removes the seam.  The cycling phase still steps on the
+// CORE vblank; in the rare frame where that lands mid-sweep
+// (~10 us / 16.7 ms), part of one sweep is a phase ahead — a subtle
+// one-frame inconsistency, not a spatial seam.  Entry 0 (interior) is
+// written black at sweep start.
 //
 // Capture alignment (color_mapper's restaged ring, see its staging
 // comment): the index loaded into inj_k at tick edge N is presented
@@ -40,7 +46,7 @@ module gallery_palette (
     input  wire        rst_n,
     input  wire        gallery_en,   // vid-domain synced gallery_mode
     input  wire        ce_pix,
-    input  wire        vblank_rise,
+    input  wire        sweep_start,   // scaler-vblank rise (FB_VBL)
     input  wire [5:0]  fade_scale,   // 63 = full, 0 = black
 
     // injection into the display color path (fractal_top muxes this
@@ -60,6 +66,13 @@ module gallery_palette (
 
 // ---- sweep sequencing ----
 // inj_k runs 1..255 then parks; the delay line drains 3 more ticks.
+// The start request is latched and the sweep begins ON the next ce
+// tick edge: FB_VBL is not aligned to the ce grid (the old core-vblank
+// trigger accidentally was, via video_timing), and an unaligned load
+// presents the first index in a torn tick — the pipeline samples the
+// parked value and entry 1 captures a stale color (caught by the
+// golden-model TB the moment the trigger moved).
+reg        sweep_pend;
 reg  [8:0] inj_k;        // 9 bits: 256+ = parked
 reg  [8:0] cap_d1, cap_d2;
 wire       sweeping = (inj_k <= 9'd255);
@@ -89,6 +102,7 @@ endfunction
 
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
+        sweep_pend <= 1'b0;
         inj_k    <= 9'd256;
         cap_d1   <= 9'd256;
         cap_d2   <= 9'd256;
@@ -97,13 +111,16 @@ always @(posedge clk or negedge rst_n) begin
         pal_data <= 24'd0;
     end else begin
         pal_wr <= 1'b0;
+        if (sweep_start) sweep_pend <= 1'b1;
         if (!gallery_en) begin
+            sweep_pend <= 1'b0;
             inj_k  <= 9'd256;
             cap_d1 <= 9'd256;
             cap_d2 <= 9'd256;
-        end else if (vblank_rise) begin
-            // start a sweep; entry 0 = interior black, written directly
-            // (also correct during fades: black stays black)
+        end else if (sweep_pend && ce_pix) begin
+            // tick-aligned sweep start; entry 0 = interior black,
+            // written directly (also correct during fades)
+            sweep_pend <= 1'b0;
             inj_k    <= 9'd1;
             cap_d1   <= 9'd256;
             cap_d2   <= 9'd256;

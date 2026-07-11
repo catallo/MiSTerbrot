@@ -309,6 +309,7 @@ fractal_top #(
 	.gal_fb_stride(FB_STRIDE),
 	.gal_fb_force_blank(FB_FORCE_BLANK),
 `ifdef MISTER_FB_PALETTE
+	.fb_vbl_in(FB_VBL),
 	.gal_pal_clk(FB_PAL_CLK),
 	.gal_pal_addr(FB_PAL_ADDR),
 	.gal_pal_dout(FB_PAL_DOUT),

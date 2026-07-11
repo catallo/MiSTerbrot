@@ -37,6 +37,13 @@ wire underrun, rendering;
 wire fb_en; wire [4:0] fb_format; wire [11:0] fb_w, fb_h;
 wire [31:0] fb_base; wire [13:0] fb_stride; wire fb_blank;
 wire pal_clk; wire [7:0] pal_addr; wire [23:0] pal_dout; wire pal_wr;
+// FB_VBL model: the scaler's vblank — in silicon asynchronous to the
+// core; here a delayed copy of the core vblank so the lockstep palette
+// comparison keeps a stable phase relationship (sweep completes long
+// before the next core vblank either way).
+reg [1023:0] fb_vbl_dly = 0;
+wire fb_vbl = fb_vbl_dly[1023];
+always @(posedge clk_iter) fb_vbl_dly <= {fb_vbl_dly[1022:0], vblank};
 
 fractal_top #(
     .H_RES(320), .V_RES(240), .N_ITERATORS(24),
@@ -58,7 +65,7 @@ fractal_top #(
     .gal_fb_width(fb_w), .gal_fb_height(fb_h),
     .gal_fb_base(fb_base), .gal_fb_stride(fb_stride),
     .gal_fb_force_blank(fb_blank),
-    .gal_pal_clk(pal_clk), .gal_pal_addr(pal_addr),
+    .fb_vbl_in(fb_vbl), .gal_pal_clk(pal_clk), .gal_pal_addr(pal_addr),
     .gal_pal_dout(pal_dout), .gal_pal_wr(pal_wr),
     .rendering(rendering)
 );
