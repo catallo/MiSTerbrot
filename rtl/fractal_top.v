@@ -206,6 +206,7 @@ wire [1:0] zoom_speed_sel;
 wire       attract_zoom_in_enable;
 wire       attract_zoom_out_enable;
 wire [15:0] attract_wait_vblanks;
+wire       gallery_live_render;
 
 fractal_osd #(
     .WIDTH(WIDTH),
@@ -229,6 +230,7 @@ fractal_osd #(
     .periodicity_enable(osd_periodicity_enable),
     .attract_randomize(attract_randomize),
     .res_mode(osd_res_mode),
+    .gallery_live_render(gallery_live_render),
     .color_depth_mode(color_depth_mode),
     .cycle_speed_sel(cycle_speed_sel),
     .cycle_direction(cycle_direction),
@@ -433,9 +435,15 @@ auto_zoom #(
     .frame_done(vblank_rise),
     .vblank(vblank_sync_s[1]),
     .entropy_seed(entropy_seed),
-    .attract_zoom_in_enable(attract_zoom_in_enable),
-    .attract_zoom_out_enable(attract_zoom_out_enable),
+    // Gallery is zoom-less by definition (user spec): with both
+    // enables masked, auto_zoom snaps each POI to its canonical zoom,
+    // dwells, and advances — the gallery sequencing comes for free.
+    .attract_zoom_in_enable(attract_zoom_in_enable & ~gallery_mode),
+    .attract_zoom_out_enable(attract_zoom_out_enable & ~gallery_mode),
     .attract_wait_vblanks(attract_wait_vblanks),
+    // "Wait on POI" counts display time only: gate is forward-declared
+    // and driven below (render committed + fade settled).
+    .dwell_gate(gal_dwell_gate),
     .zoom_pacing_mode(zoom_pacing_mode),
     .zoom_speed_sel(zoom_speed_sel),
     .randomize_enable(attract_randomize),
@@ -494,12 +502,18 @@ reg         gallery_prev;
 // effective_mode_640 and interlace_mode constant) — without them the
 // grid change would not force a re-render on a static view.  Also
 // fires when boot grace expires with a 480/gallery mode saved.
-wire settings_changed = (palette_sel != palette_sel_prev) ||
+// Palette changes need no re-render in gallery mode: the FB indices
+// are palette-independent and the crossfade plays out entirely in the
+// per-frame palette sweep — a 1080p re-render (multi-second on deep
+// POIs) would buy nothing and, in hidden mode, force a pointless
+// fade-flip.
+wire settings_changed = ((palette_sel != palette_sel_prev) && !gallery_mode) ||
                         (max_iter != max_iter_prev) ||
                         (effective_mode_640 != mode_640_prev) ||
                         (interlace_mode != interlace_prev) ||
                         (render_480 != render_480_prev) ||
-                        (gallery_mode != gallery_prev);
+                        (gallery_mode != gallery_prev) ||
+                        gal_clear_done;
 
 // Auto-iter: scale max_iter with zoom depth so deep zooms don't render solid
 // black for lack of iterations. Tiers match tools/poi_render.max_iter_for_zoom.
@@ -578,6 +592,13 @@ wire symq_backpressure;
 // Gallery index-write FIFO ready — forward-declared for the dispatch
 // gating below; driven by gallery_fb in the gallery section.
 wire gal_wr_ready;
+// Gallery dwell gate for auto_zoom (driven in the gallery section).
+wire gal_dwell_gate;
+// Gallery activation clear in progress (gallery_ctl).
+wire gal_clear_active;
+// Gallery clear finished — forces a clean re-render (write-port mux
+// dropped any render writes that raced the clear).
+wire gal_clear_done;
 
 // Bank swap state machine
 //
@@ -825,7 +846,20 @@ localparam RID_W = 1;
 //
 // `symq_backpressure` is forward-declared near the top of the module
 // and assigned in the FIFO section below.
-wire                    pipe_coord_valid       = cg_valid && !symq_backpressure;
+// BOTH handshake sides must carry every backpressure term (the
+// 2026-05-16 lesson below applies to all of them, not just the mirror
+// FIFO): gating only cg_ready holds coord_generator at the current
+// pixel, but the pipeline keeps finding free slots and redispatches
+// the HELD pixel into each of them — unlimited duplicate results from
+// one coordinate, which then punch straight through the write FIFO's
+// in-flight headroom.  Found again 2026-07-11 in gallery mode: the
+// activation clear parks dispatch for ~86 ms while pre-saturating the
+// FIFO, the redispatch spin then overflowed it 2x (TB scoreboard).
+wire                    dispatch_ok            = !symq_backpressure
+                                              && (ddr_wr_ready || !ddr_fb_mode)
+                                              && ((gal_wr_ready && !gal_clear_active)
+                                                  || !gallery_mode);
+wire                    pipe_coord_valid       = cg_valid && dispatch_ok;
 wire [10:0]             pipe_coord_px          = cg_px;
 wire [10:0]             pipe_coord_py          = cg_py;
 wire signed [WIDTH-1:0] pipe_coord_cr          = cg_cr;
@@ -837,9 +871,7 @@ wire [RID_W-1:0]        pipe_result_region_id;
 // In DDR3 mode the write FIFO adds a third backpressure source; its
 // wr_ready threshold leaves headroom for the ~24 in-flight slot results
 // that keep completing after dispatch stalls.
-assign cg_ready = pipe_coord_ready && !symq_backpressure
-                && (ddr_wr_ready || !ddr_fb_mode)
-                && (gal_wr_ready || !gallery_mode);
+assign cg_ready = pipe_coord_ready && dispatch_ok;
 
 // A3 (period-3 bulb precheck) per-frame enable.  Three sources, OSD wins:
 //   osd_p3_mode = 2'd0 (Auto) → use the per-POI bench flag in benchmark
@@ -1063,23 +1095,26 @@ wire [FB_ADDR_WIDTH-1:0] rd_addr = az_fb_sampling ? az_fb_rd_addr : vid_rd_addr;
 // Quasi-static controls crossing into clk_vid (see 480P_DESIGN.md).
 // bank_sel toggles deep inside vblank, so the 2FF latency can never
 // race an active-area read; the others change on OSD/key events.
-reg [1:0] bank_sel_vs, single_buf_vs, ddr_mode_vs, m480p_vs;
+reg [1:0] bank_sel_vs, single_buf_vs, ddr_mode_vs, m480p_vs, gallery_vs;
 always @(posedge clk_vid or negedge rst_n) begin
     if (!rst_n) begin
         bank_sel_vs   <= 2'b00;
         single_buf_vs <= 2'b00;
         ddr_mode_vs   <= 2'b00;
         m480p_vs      <= 2'b00;
+        gallery_vs    <= 2'b00;
     end else begin
         bank_sel_vs   <= {bank_sel_vs[0], bank_sel};
         single_buf_vs <= {single_buf_vs[0], single_buffer};
         ddr_mode_vs   <= {ddr_mode_vs[0], ddr_fb_mode};
         m480p_vs      <= {m480p_vs[0], mode_480p};
+        gallery_vs    <= {gallery_vs[0], gallery_mode};
     end
 end
 wire bank_sel_v    = bank_sel_vs[1];
 wire ddr_fb_mode_v = ddr_mode_vs[1];
 wire mode_480p_v   = m480p_vs[1];
+wire gallery_v     = gallery_vs[1];
 wire display_bank_sel_v = single_buf_vs[1] ? ~bank_sel_v : bank_sel_v;
 
 // vblank edge, video-domain native (for color_mapper's cycling state)
@@ -1174,6 +1209,13 @@ fb_ddr3 u_fb_ddr3 (
 // the in-flight iterator results after a stall.
 wire        gal_wr_idle;
 wire        gal_render_bank, gal_display_bank;
+wire        gal_clear_wr, gal_clear_bank;
+wire [10:0] gal_clear_x, gal_clear_y;
+wire [5:0]  gal_fade_scale;
+wire        gal_dwell_ok;
+// palette stream: driven by gallery_palette in the VIDEO domain (the
+// sequencer taps color_mapper); gallery_fb forwards clk_vid as
+// fb_pal_clk so ascal's pal2 port clocks coherently with the writes.
 wire        gal_pwr;
 wire [7:0]  gal_paddr;
 wire [23:0] gal_pdata;
@@ -1185,23 +1227,45 @@ wire [7:0] gal_wr_index = fb_wr_escaped
 gallery_ctl u_gallery_ctl (
     .clk(clk), .rst_n(rst_n),
     .gallery_en(gallery_mode),
+    .live_render(gallery_live_render),
+    .frame_done_rise(frame_done_rise && gallery_mode),
+    .render_idle((render_state == RS_IDLE) && !need_rerender),
+    .wr_idle(gal_wr_idle),
+    .vblank_rise(vblank_rise),
+    .wr_ready(gal_wr_ready),
+    .clear_active(gal_clear_active),
+    .clear_wr(gal_clear_wr),
+    .clear_x(gal_clear_x), .clear_y(gal_clear_y),
+    .clear_bank(gal_clear_bank),
+    .clear_done(gal_clear_done),
     .render_bank(gal_render_bank), .display_bank(gal_display_bank),
-    .pal_wr(gal_pwr), .pal_addr(gal_paddr), .pal_data(gal_pdata)
+    .fade_scale(gal_fade_scale),
+    .dwell_ok(gal_dwell_ok)
 );
+
+// Dwell counts only while a settled image is displayed: render FSM
+// idle, every index write committed, no clear/fade in progress.
+assign gal_dwell_gate = !gallery_mode ||
+                        ((render_state == RS_IDLE) && gal_wr_idle
+                                                   && gal_dwell_ok);
 
 gallery_fb u_gallery_fb (
     .clk(clk), .rst_n(rst_n),
     .gallery_en(gallery_mode),
-    .wr_en(fb_wr_en & gallery_mode),
-    .wr_x(fb_wr_pixel_x), .wr_y(fb_wr_pixel_y),
-    .wr_index(gal_wr_index),
-    .render_bank(gal_render_bank),
+    // activation clear preempts the render tap (clear_done then forces
+    // a fresh render, so dropped writes cannot leave stale pixels)
+    .wr_en(gal_clear_active ? gal_clear_wr : (fb_wr_en & gallery_mode)),
+    .wr_x(gal_clear_active ? gal_clear_x : fb_wr_pixel_x),
+    .wr_y(gal_clear_active ? gal_clear_y : fb_wr_pixel_y),
+    .wr_index(gal_clear_active ? 8'd0 : gal_wr_index),
+    .render_bank(gal_clear_active ? gal_clear_bank : gal_render_bank),
     .wr_ready(gal_wr_ready), .wr_idle(gal_wr_idle),
     .display_bank(gal_display_bank),
     .fb_en(gal_fb_en), .fb_format(gal_fb_format),
     .fb_width(gal_fb_width), .fb_height(gal_fb_height),
     .fb_base(gal_fb_base), .fb_stride(gal_fb_stride),
     .fb_force_blank(gal_fb_force_blank),
+    .pal_clk_in(clk_vid),
     .pal_wr_in(gal_pwr), .pal_addr_in(gal_paddr), .pal_data_in(gal_pdata),
     .fb_pal_clk(gal_pal_clk), .fb_pal_addr(gal_pal_addr),
     .fb_pal_dout(gal_pal_dout), .fb_pal_wr(gal_pal_wr),
@@ -1262,8 +1326,14 @@ end
 // Pixel source mux: BRAM banks for 240p/320x480i, DDR3 line buffer for
 // 640x480i.  Both have 1-cycle read latency, so downstream timing is
 // identical.
-wire        fb_escaped = ddr_fb_mode_v ? ddr_rd_data[8]   : rd_data[8];
-wire [11:0] fb_iter    = {4'd0, ddr_fb_mode_v ? ddr_rd_data[7:0]
+// Gallery palette injection: in gallery mode the framework ignores
+// the core video, so the color pipeline is repurposed — the palette
+// sequencer streams iter=k, escaped=1 through it (GALLERY_DESIGN.md).
+wire [7:0]  gal_inj_iter;
+wire        fb_escaped = gallery_v ? 1'b1
+                       : ddr_fb_mode_v ? ddr_rd_data[8]   : rd_data[8];
+wire [11:0] fb_iter    = gallery_v ? {4'd0, gal_inj_iter}
+                       : {4'd0, ddr_fb_mode_v ? ddr_rd_data[7:0]
                                               : rd_data[7:0]};
 
 wire [7:0] disp_r, disp_g, disp_b;
@@ -1303,6 +1373,32 @@ color_mapper u_color_mapper (
     .color_r(disp_r),
     .color_g(disp_g),
     .color_b(disp_b)
+);
+
+// ---- Gallery palette sequencer (clk_vid, taps color_mapper) ----
+// fade_scale CDC: quasi-static (one +/-3 step per vblank).  Plain 2FF
+// per-bit sync — a torn sample can only affect the entries of a
+// single sweep for one frame, invisible and self-correcting.
+reg [5:0] fade_vs_meta, fade_vs;
+always @(posedge clk_vid or negedge rst_n) begin
+    if (!rst_n) begin
+        fade_vs_meta <= 6'd0;
+        fade_vs      <= 6'd0;
+    end else begin
+        fade_vs_meta <= gal_fade_scale;
+        fade_vs      <= fade_vs_meta;
+    end
+end
+
+gallery_palette u_gallery_palette (
+    .clk(clk_vid), .rst_n(rst_n),
+    .gallery_en(gallery_v),
+    .ce_pix(ce_pix),
+    .vblank_rise(vblank_rise_v),
+    .fade_scale(fade_vs),
+    .inj_iter(gal_inj_iter),
+    .color_r(disp_r), .color_g(disp_g), .color_b(disp_b),
+    .pal_wr(gal_pwr), .pal_addr(gal_paddr), .pal_data(gal_pdata)
 );
 
 text_overlay #(
@@ -1393,8 +1489,11 @@ wire        benchmark_telemetry_bit = benchmark_telemetry[5'd31 - benchmark_tele
 wire [7:0] q_r = color_depth_mode ? overlay_r : {overlay_r[7:2], 2'b00};
 wire [7:0] q_g = color_depth_mode ? overlay_g : {overlay_g[7:2], 2'b00};
 wire [7:0] q_b = color_depth_mode ? overlay_b : {overlay_b[7:2], 2'b00};
-assign vga_r = benchmark_telemetry_region ? (benchmark_telemetry_bit ? 8'hFF : 8'h00) : q_r;
-assign vga_g = benchmark_telemetry_region ? (benchmark_telemetry_bit ? 8'hFF : 8'h00) : q_g;
-assign vga_b = benchmark_telemetry_region ? (benchmark_telemetry_bit ? 8'h00 : 8'hFF) : q_b;
+// Gallery mode: the scaler shows the framework FB, and the core video
+// carries the palette sequencer's injection sweep — blank it so the
+// native analog output shows black (with live syncs) instead of noise.
+assign vga_r = gallery_v ? 8'h00 : benchmark_telemetry_region ? (benchmark_telemetry_bit ? 8'hFF : 8'h00) : q_r;
+assign vga_g = gallery_v ? 8'h00 : benchmark_telemetry_region ? (benchmark_telemetry_bit ? 8'hFF : 8'h00) : q_g;
+assign vga_b = gallery_v ? 8'h00 : benchmark_telemetry_region ? (benchmark_telemetry_bit ? 8'h00 : 8'hFF) : q_b;
 
 endmodule

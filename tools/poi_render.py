@@ -58,7 +58,7 @@ def palette_array():
 PALETTE = palette_array()
 
 
-def render(cx, cy, zoom_level, w=W, h=H, max_iter=None):
+def render(cx, cy, zoom_level, w=W, h=H, max_iter=None, gallery=False):
     if max_iter is None:
         max_iter = max_iter_for_zoom(zoom_level)
     """Render a Mandelbrot view centered at (cx, cy) at the given log2 zoom level.
@@ -67,12 +67,21 @@ def render(cx, cy, zoom_level, w=W, h=H, max_iter=None):
     to the default view (DEFAULT_STEP = 0.0125 / pixel at zoom_level=0).
     """
     step = DEFAULT_STEP / (2.0 ** zoom_level)
-    step_x = step / H_OVERSAMPLE  # matches FPGA's step_x = step >>> 1 in 640 mode
-    # vertical: 240 rows at pitch step, or 480 rows at pitch step/2
-    # (same complex extent, 2x vertical sampling like the 480 modes)
-    step_y = step * 240.0 / h
-    xs = cx + (np.arange(w) - w / 2 + 0.5) * step_x
-    ys = cy + (np.arange(h) - h / 2 + 0.5) * step_y
+    if gallery:
+        # Gallery Mode framing (docs/GALLERY_DESIGN.md): 1920x1080,
+        # square pixels, pitch = step * 2/9 on both axes.  Grid matches
+        # the FPGA exactly: cr = cx + (x - 960)*p, ci = cy + (y - 540)*p
+        # + p/2 (half-row-pitch grid shift).
+        pitch = step * 2.0 / 9.0
+        xs = cx + (np.arange(w) - w / 2) * pitch
+        ys = cy + (np.arange(h) - h / 2) * pitch + pitch / 2
+    else:
+        step_x = step / H_OVERSAMPLE  # matches FPGA's step_x = step >>> 1 in 640 mode
+        # vertical: 240 rows at pitch step, or 480 rows at pitch step/2
+        # (same complex extent, 2x vertical sampling like the 480 modes)
+        step_y = step * 240.0 / h
+        xs = cx + (np.arange(w) - w / 2 + 0.5) * step_x
+        ys = cy + (np.arange(h) - h / 2 + 0.5) * step_y
     X, Y = np.meshgrid(xs, ys)
     C = X + 1j * Y
 
@@ -108,8 +117,15 @@ def safe_filename(name):
 
 
 def main():
-    global H, OUT_DIR
+    global W, H, OUT_DIR
+    gallery = "--gallery" in sys.argv
+    if gallery:
+        # 1920x1080 gallery-framed references (screenshots/poi1080)
+        W, H = 1920, 1080
+        OUT_DIR = ROOT / "screenshots" / "poi1080"
     if "--vres" in sys.argv:
+        if gallery:
+            sys.exit("--gallery and --vres are mutually exclusive")
         i = sys.argv.index("--vres")
         vres = int(sys.argv[i + 1])
         if vres == 480:
@@ -133,7 +149,7 @@ def main():
         zoom = float(p["zoom_level"])
         fname = OUT_DIR / f"idx_{i:03d}_{safe_filename(name)}.png"
         try:
-            img = render(cx, cy, zoom, w=W, h=H)
+            img = render(cx, cy, zoom, w=W, h=H, gallery=gallery)
             img.save(fname)
             print(f"  [{i:3d}] {name:<24} ({cx:+.6f}, {cy:+.6f}) z{zoom:5.2f} -> {fname.name}")
         except Exception as e:

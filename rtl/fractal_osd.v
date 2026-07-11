@@ -52,6 +52,9 @@ module fractal_osd #(
     // DDR3 framebuffer).  Bit 56 was free since the Deinterlace move
     // to O[58:57], so existing saved configs keep their meaning.
     output wire [2:0]   res_mode,
+    // Gallery live render (status[59]): 0 = On (default; paint into the
+    // displayed buffer), 1 = Off (hidden render + palette fade-flip)
+    output wire         gallery_live_render,
     // Color depth (status[36]):
     //   1'b0 = 6-bit (default, recommended — matches MiSTer Analog I/O R-2R DAC)
     //   1'b1 = 8-bit full (no quantization)
@@ -105,6 +108,7 @@ assign p3_mode = status[26:25];
 assign periodicity_enable = ~status[51];
 assign attract_randomize = ~status[52];
 assign res_mode = status[56:54];
+assign gallery_live_render = ~status[59];
 assign color_depth_mode = status[36];
 
 // Color Cycling submenu decoding

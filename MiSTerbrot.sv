@@ -164,6 +164,7 @@ localparam CONF_STR = {
 	"O[20],Always Show FPS,Off,On;",
 	"O[21],Always Show POI/Palette,On,Off;",
 	"O[56:54],Resolution,320x240,640x240,320x480i,640x480i,640x480p,1920x1080;",
+	"d0O[59],Gallery Live Render,On,Off;",
 	"O[23],Overlay BG,Transparent,Dimmed;",
 	"O[17:15],Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
 	// Mariani-Silver was on the Optimisations page but had an intermittent
@@ -181,11 +182,11 @@ localparam CONF_STR = {
 	"P2O[45:44],Iter Band Mix,Off,Low Slow,Low Fast,Counter;",
 	"P2O[47:46],Palette Transition,Crossfade,Instant,Slow Crossfade;",
 	"P1,Attract Mode;",
-	"P1O[29],Zoom In,On,Off;",
-	"P1O[30],Zoom Out,On,Off;",
+	"D0P1O[29],Zoom In,On,Off;",
+	"D0P1O[30],Zoom Out,On,Off;",
 	"P1O[35:31],Wait on POI,10s,1s,2s,3s,4s,5s,6s,7s,8s,9s,15s,1 cycle,20s,30s,2 cycles,3 cycles,1m,4 cycles,5 cycles,2m,10 cycles,5m;",
-	"P1O[48],Zoom Pacing,Cinematic,Constant;",
-	"P1O[50:49],Zoom Speed,Normal,Slow,Fast,Very Fast;",
+	"D0P1O[48],Zoom Pacing,Cinematic,Constant;",
+	"D0P1O[50:49],Zoom Speed,Normal,Slow,Fast,Very Fast;",
 	"P1O[52],Randomize CC+Zoom Speed,On,Off;",
 		"-;",
 	"-, Arrows/WASD/D-Pad: Pan;",
@@ -226,7 +227,11 @@ hps_io #(.CONF_STR(CONF_STR)) hps_io
 	.forced_scandoubler(forced_scandoubler),
 	.buttons(buttons),
 	.status(status),
-	.status_menumask(1'b0),
+	// [0]: gallery selected — greys the zoom-related Attract rows
+	// (inert in gallery, user spec) and enables the gallery-only
+	// Live Render row.  Keyed to the SELECTION, not the post-grace
+	// gallery_mode, so the OSD reflects the choice immediately.
+	.status_menumask({15'd0, status[56:54] == 3'd5}),
 	.new_vmode(core_new_vmode),
 	.TIMESTAMP(TIMESTAMP),
 	.ps2_key(ps2_key),

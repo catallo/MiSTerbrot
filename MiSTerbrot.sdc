@@ -118,6 +118,9 @@ set_net_delay -max 20 -from [get_registers {*hps_io*|status[*]*}]
 # output register inside u_video_timing).
 set_net_delay -max 10 -from [get_registers {*u_fractal_top|bank_sel *u_fb_ddr3|req_tgl_v *u_video_timing|vblank}]
 set_net_delay -max 20 -from [get_registers {*u_fb_ddr3|line_row_hold[*]}]
+# Gallery fade scale into the clk_vid palette sequencer (2FF sync;
+# quasi-static, one +/-3 step per vblank — same CDC contract).
+set_net_delay -max 20 -from [get_registers {*u_gallery_ctl|fade_scale[*]}]
 
 # Cycling/crossfade phase regs are clk_vid-local now (color_mapper
 # moved wholesale): keep their relaxation into the vid compositing
@@ -183,5 +186,8 @@ set_multicycle_path -hold  1 -from [get_registers {*u_video_timing|pixel_x[*] *u
 # y-mux feeds the same ~25 ns glyph cone that put vid_pixel_*_d at 3;
 # real budget is a full tick, 4 clks minimum) into every tick-sampled
 # capture rank.
-set_multicycle_path -setup 3 -from [get_registers {*u_fractal_top|m480p_vs* *u_fractal_top|ddr_mode_vs* *u_fractal_top|bank_sel_vs* *u_fractal_top|single_buf_vs*}] -to [get_registers {*u_arcade_video|* *|dvid_* *ascal|i_pix* *u_color_mapper|* *u_text_overlay|* *u_framebuffer|* *u_fb_ddr3|*}]
-set_multicycle_path -hold  2 -from [get_registers {*u_fractal_top|m480p_vs* *u_fractal_top|ddr_mode_vs* *u_fractal_top|bank_sel_vs* *u_fractal_top|single_buf_vs*}] -to [get_registers {*u_arcade_video|* *|dvid_* *ascal|i_pix* *u_color_mapper|* *u_text_overlay|* *u_framebuffer|* *u_fb_ddr3|*}]
+# (gallery_vs joined the family 2026-07-11: same quasi-static OSD-event
+# cadence; it feeds the color_mapper injection mux, the analog blanking
+# mux and gallery_palette's enable — all tick-sampled consumers.)
+set_multicycle_path -setup 3 -from [get_registers {*u_fractal_top|m480p_vs* *u_fractal_top|ddr_mode_vs* *u_fractal_top|bank_sel_vs* *u_fractal_top|single_buf_vs* *u_fractal_top|gallery_vs*}] -to [get_registers {*u_arcade_video|* *|dvid_* *ascal|i_pix* *u_color_mapper|* *u_text_overlay|* *u_framebuffer|* *u_fb_ddr3|* *u_gallery_palette|*}]
+set_multicycle_path -hold  2 -from [get_registers {*u_fractal_top|m480p_vs* *u_fractal_top|ddr_mode_vs* *u_fractal_top|bank_sel_vs* *u_fractal_top|single_buf_vs* *u_fractal_top|gallery_vs*}] -to [get_registers {*u_arcade_video|* *|dvid_* *ascal|i_pix* *u_color_mapper|* *u_text_overlay|* *u_framebuffer|* *u_fb_ddr3|* *u_gallery_palette|*}]

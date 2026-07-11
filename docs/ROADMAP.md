@@ -375,7 +375,7 @@ For the record, the implementation lessons live in the git history of
 ladder), parity via pure per-pass toggle + swap gated to the matching
 field's vblank, and mandatory continuous re-render in field mode.
 
-## Gallery Mode — 1080p indexed framebuffer (planned, ~1 week)
+## Gallery Mode — 1080p indexed framebuffer (IN IMPLEMENTATION 2026-07-11, docs/GALLERY_DESIGN.md)
 
 User-driven brainstorm result (2026-07-11): a zoom-less full-HD mode
 IS reachable, because "static image + live color cycling" is exactly

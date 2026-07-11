@@ -29,6 +29,11 @@ module auto_zoom #(
     input  wire                    attract_zoom_in_enable,
     input  wire                    attract_zoom_out_enable,
     input  wire [15:0]             attract_wait_vblanks,
+    // Dwell qualifier: dwell vblanks only count while high.  Gallery
+    // mode holds it low until the 1080p frame is fully committed to
+    // DDR3 and the fade/flip settled — "Wait on POI" then measures
+    // pure DISPLAY time, not render time.  Tied high otherwise.
+    input  wire                    dwell_gate,
     // Zoom pacing during S_ZOOM_IN:
     //   1'b0 = Cinematic (default — slow first ~60 steps + slow last few zoom levels)
     //   1'b1 = Constant  (step_delta = step/512 every frame, no pacing)
@@ -589,7 +594,7 @@ always @(posedge clk or negedge rst_n) begin
                         adv_ph <= 2'd0;
                         // Skip the zoom-out animation when disabled
                         state <= attract_zoom_out_enable ? S_ZOOM_OUT : S_NEXT;
-                    end else if (vblank_rise) begin
+                    end else if (vblank_rise && dwell_gate) begin
                         dwell_count <= dwell_count + 16'd1;
                     end
                 end else if (frame_done) begin

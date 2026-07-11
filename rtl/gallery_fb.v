@@ -11,15 +11,19 @@
 //     (stage 1: static test palette; stage 3: the color-pipeline
 //     sequencer in fractal_top)
 //
-// Memory map: index buffer A at byte 0x3020_0000, B at 0x3040_0000
-// (word addresses 0x0604_0000 / 0x0608_0000), stride 2048 bytes =
+// Memory map: index buffer A at byte 0x3020_0000, B at 0x3060_0000
+// (word addresses 0x0604_0000 / 0x060C_0000), stride 2048 bytes =
 // 256 words -> shift-only addressing, 8 pixels per 64-bit word.
+// Banks are spaced 4 MiB apart: a 1080-row x 2048-stride buffer is
+// 2.11 MiB, so the original 2 MiB spacing made rows 1024..1079 of
+// bank A alias into rows 0..55 of bank B (caught by the flip TB's
+// independent bank classification, 2026-07-11).
 //
 // Everything runs in clk (= clk_sys = DDRAM_CLK, 50 MHz).
 
 module gallery_fb #(
     parameter [28:0] BASE_A_WORD = 29'h0604_0000, // byte 0x3020_0000
-    parameter [28:0] BASE_B_WORD = 29'h0608_0000, // byte 0x3040_0000
+    parameter [28:0] BASE_B_WORD = 29'h060C_0000, // byte 0x3060_0000
     parameter        FIFO_AW     = 8
 )(
     input  wire        clk,
@@ -49,7 +53,10 @@ module gallery_fb #(
     output wire [13:0] fb_stride,
     output wire        fb_force_blank,
 
-    // palette write port (pass-through to FB_PAL_*)
+    // palette write port (pass-through to FB_PAL_*).  The source runs
+    // in the VIDEO domain (gallery_palette taps color_mapper), so the
+    // caller supplies the matching clock for ascal's pal2 port.
+    input  wire        pal_clk_in,
     input  wire        pal_wr_in,
     input  wire [7:0]  pal_addr_in,
     input  wire [23:0] pal_data_in,
@@ -74,11 +81,11 @@ assign fb_format      = 5'b00011;
 assign fb_width       = 12'd1920;
 assign fb_height      = 12'd1080;
 assign fb_stride      = 14'd2048;
-assign fb_base        = display_bank ? 32'h3040_0000 : 32'h3020_0000;
+assign fb_base        = display_bank ? 32'h3060_0000 : 32'h3020_0000;
 assign fb_force_blank = 1'b0;
 
 // palette pass-through (ascal's pal2 port clocks on fb_pal_clk)
-assign fb_pal_clk  = clk;
+assign fb_pal_clk  = pal_clk_in;
 assign fb_pal_addr = pal_addr_in;
 assign fb_pal_dout = pal_data_in;
 assign fb_pal_wr   = pal_wr_in;
@@ -92,10 +99,15 @@ wire wf_empty = (wf_count == 0);
 assign wr_ready = (wf_count < ((1 << FIFO_AW) - 64));
 assign wr_idle  = wf_empty & ~ddram_we;
 
+// Overflow guard: a push at full drops (one stale pixel) instead of
+// wrapping the pointers (256 scrambled writes).  The dispatch gating
+// in fractal_top makes this unreachable; it exists as a corruption
+// backstop.
+wire wf_full = (wf_count >= (1 << FIFO_AW));
 always @(posedge clk) begin
     if (!rst_n) begin
         wf_wp <= 0;
-    end else if (wr_en) begin
+    end else if (wr_en && !wf_full) begin
         wfifo[wf_wp[FIFO_AW-1:0]] <= {render_bank, wr_y, wr_x, wr_index};
         wf_wp <= wf_wp + 1'b1;
     end

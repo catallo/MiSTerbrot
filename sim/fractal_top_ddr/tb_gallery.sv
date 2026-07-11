@@ -77,13 +77,25 @@ localparam SB = 512;
 reg [10:0] sb_x [0:SB-1];
 reg [10:0] sb_y [0:SB-1];
 reg [7:0]  sb_i [0:SB-1];
+reg        sb_c [0:SB-1];   // pushed by the activation clear engine
+reg        sb_b [0:SB-1];   // bank presented at push time
 integer sb_w = 0, sb_r = 0;
+integer clear_pushes = 0;
 
 integer push_errs = 0, wr_errs = 0, rd_cmds = 0;
 integer pal_writes = 0, pal0_black_ok = 1;
 integer covered_cnt = 0;
 reg covered [0:1920*1080-1];
 initial for (int i = 0; i < 1920*1080; i++) covered[i] = 1'b0;
+
+// palette stream — now clocked on clk_vid (gallery_palette taps
+// color_mapper), so sample in that domain
+always @(posedge clk_iter) if (rst_n) begin
+    if (pal_wr) begin
+        pal_writes = pal_writes + 1;
+        if (pal_addr == 8'd0 && pal_dout !== 24'h000000) pal0_black_ok = 0;
+    end
+end
 
 // frame-start coordinate check
 reg               exp_armed = 0;
@@ -107,7 +119,14 @@ always @(posedge clk) if (rst_n) begin
                 ? ((dut.pipe_result_iter[7:0] != 8'd0)
                        ? dut.pipe_result_iter[7:0] : 8'd1)
                 : 8'd0;
-        if (dut.u_gallery_fb.wr_index !== exp_idx ||
+        if (dut.gal_clear_active) begin
+            // activation clear: index must be 0 (both banks swept)
+            clear_pushes = clear_pushes + 1;
+            if (dut.u_gallery_fb.wr_index !== 8'd0) begin
+                push_errs = push_errs + 1;
+                if (push_errs < 5) $display("PUSHERR clear idx != 0");
+            end
+        end else if (dut.u_gallery_fb.wr_index !== exp_idx ||
             dut.u_gallery_fb.wr_x     !== dut.pipe_result_x ||
             dut.u_gallery_fb.wr_y     !== dut.pipe_result_y ||
             !dut.pipe_result_valid) begin
@@ -120,8 +139,14 @@ always @(posedge clk) if (rst_n) begin
         sb_x[sb_w % SB] = dut.u_gallery_fb.wr_x;
         sb_y[sb_w % SB] = dut.u_gallery_fb.wr_y;
         sb_i[sb_w % SB] = dut.u_gallery_fb.wr_index;
+        sb_c[sb_w % SB] = dut.gal_clear_active;
+        sb_b[sb_w % SB] = dut.u_gallery_fb.render_bank;
         sb_w = sb_w + 1;
-        if (sb_w - sb_r > SB) begin $display("FAIL: scoreboard overflow"); $fatal; end
+        if (sb_w - sb_r > SB) begin
+            $display("FAIL: scoreboard overflow sbw=%0d sbr=%0d wfcnt=%0d we=%b busy=%b clr=%b",
+                     sb_w, sb_r, dut.u_gallery_fb.wf_count, we, busy, dut.gal_clear_active);
+            $fatal;
+        end
     end
 
     // DDR command side
@@ -135,7 +160,8 @@ always @(posedge clk) if (rst_n) begin
             wr_errs = wr_errs + 1;
             if (wr_errs < 5) $display("WRERR: write with empty scoreboard");
         end else begin
-            eaddr = BASE_A + {10'd0, sb_y[sb_r % SB], 8'd0}
+            eaddr = (sb_b[sb_r % SB] ? 29'h060C_0000 : BASE_A)
+                           + {10'd0, sb_y[sb_r % SB], 8'd0}
                            + {21'd0, sb_x[sb_r % SB][10:3]};
             ebe   = 8'h01 << sb_x[sb_r % SB][2:0];
             if (burstcnt !== 8'd1 || nl != 1 || addr !== eaddr || be !== ebe ||
@@ -144,7 +170,9 @@ always @(posedge clk) if (rst_n) begin
                 if (wr_errs < 5)
                     $display("WRERR addr=%h exp=%h be=%h exp=%h d=%h exp=%h",
                              addr, eaddr, be, ebe, din[8*lane +: 8], sb_i[sb_r % SB]);
-            end else begin
+            end else if (!sb_c[sb_r % SB]) begin
+                // coverage counts RENDER writes only — the activation
+                // clear must not satisfy the full-frame assertion
                 automatic integer pix = sb_y[sb_r % SB] * 1920 + sb_x[sb_r % SB];
                 if (!covered[pix]) begin
                     covered[pix] = 1'b1;
@@ -153,12 +181,6 @@ always @(posedge clk) if (rst_n) begin
             end
             sb_r = sb_r + 1;
         end
-    end
-
-    // palette stream
-    if (pal_wr) begin
-        pal_writes = pal_writes + 1;
-        if (pal_addr == 8'd0 && pal_dout !== 24'h000000) pal0_black_ok = 0;
     end
 
     // frame-start latch capture: pre-NBA reads at this posedge see the
@@ -229,8 +251,11 @@ initial begin
         end
     end
     #1_000_000;
-    $display("covered=%0d push_errs=%0d wr_errs=%0d rd_cmds=%0d",
-             covered_cnt, push_errs, wr_errs, rd_cmds);
+    $display("covered=%0d push_errs=%0d wr_errs=%0d rd_cmds=%0d clear_pushes=%0d",
+             covered_cnt, push_errs, wr_errs, rd_cmds, clear_pushes);
+    if (clear_pushes !== 2*1920*1080) begin
+        $display("FAIL: clear push count %0d", clear_pushes); $fatal;
+    end
     $display("coord_checks=%0d coord_errs=%0d pitch_errs=%0d pal_writes=%0d pal0=%0d",
              coord_checks, coord_errs, pitch_errs, pal_writes, pal0_black_ok);
     if (push_errs != 0)  begin $display("FAIL: index mapping at FIFO push"); $fatal; end
