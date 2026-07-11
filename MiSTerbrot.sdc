@@ -98,8 +98,10 @@ set_multicycle_path -hold  2 -from [get_registers {*u_fractal_top|vid_pixel_x_d[
 # With the restaged ring the final color regs capture at ce_d1 and the
 # tick sampler consumes 3 clks later even at /4 — setup 2 is valid in
 # every mode including 480p.
-set_multicycle_path -setup 2 -from [get_registers {*u_color_mapper|color_*}] -to [get_registers {*u_arcade_video|* *|dvid_* *ascal|i_pix*}]
-set_multicycle_path -hold  1 -from [get_registers {*u_color_mapper|color_*}] -to [get_registers {*u_arcade_video|* *|dvid_* *ascal|i_pix*}]
+# (gallery_palette joined 2026-07-11: pal_data latches on the ce tick
+# grid from color_* through the fade scaler — same full-tick budget.)
+set_multicycle_path -setup 2 -from [get_registers {*u_color_mapper|color_*}] -to [get_registers {*u_arcade_video|* *|dvid_* *ascal|i_pix* *u_gallery_palette|pal_*}]
+set_multicycle_path -hold  1 -from [get_registers {*u_color_mapper|color_*}] -to [get_registers {*u_arcade_video|* *|dvid_* *ascal|i_pix* *u_gallery_palette|pal_*}]
 
 # ---- 100 MHz video-domain move (docs/480P_DESIGN.md) ----
 # The display path (video_timing, fb read, color_mapper, text_overlay,
@@ -189,5 +191,5 @@ set_multicycle_path -hold  1 -from [get_registers {*u_video_timing|pixel_x[*] *u
 # (gallery_vs joined the family 2026-07-11: same quasi-static OSD-event
 # cadence; it feeds the color_mapper injection mux, the analog blanking
 # mux and gallery_palette's enable — all tick-sampled consumers.)
-set_multicycle_path -setup 3 -from [get_registers {*u_fractal_top|m480p_vs* *u_fractal_top|ddr_mode_vs* *u_fractal_top|bank_sel_vs* *u_fractal_top|single_buf_vs* *u_fractal_top|gallery_vs*}] -to [get_registers {*u_arcade_video|* *|dvid_* *ascal|i_pix* *u_color_mapper|* *u_text_overlay|* *u_framebuffer|* *u_fb_ddr3|* *u_gallery_palette|*}]
-set_multicycle_path -hold  2 -from [get_registers {*u_fractal_top|m480p_vs* *u_fractal_top|ddr_mode_vs* *u_fractal_top|bank_sel_vs* *u_fractal_top|single_buf_vs* *u_fractal_top|gallery_vs*}] -to [get_registers {*u_arcade_video|* *|dvid_* *ascal|i_pix* *u_color_mapper|* *u_text_overlay|* *u_framebuffer|* *u_fb_ddr3|* *u_gallery_palette|*}]
+set_multicycle_path -setup 3 -from [get_registers {*u_fractal_top|m480p_vs* *u_fractal_top|ddr_mode_vs* *u_fractal_top|bank_sel_vs* *u_fractal_top|single_buf_vs* *u_fractal_top|gallery_vs* *u_fractal_top|fade_vs*}] -to [get_registers {*u_arcade_video|* *|dvid_* *ascal|i_pix* *u_color_mapper|* *u_text_overlay|* *u_framebuffer|* *u_fb_ddr3|* *u_gallery_palette|*}]
+set_multicycle_path -hold  2 -from [get_registers {*u_fractal_top|m480p_vs* *u_fractal_top|ddr_mode_vs* *u_fractal_top|bank_sel_vs* *u_fractal_top|single_buf_vs* *u_fractal_top|gallery_vs* *u_fractal_top|fade_vs*}] -to [get_registers {*u_arcade_video|* *|dvid_* *ascal|i_pix* *u_color_mapper|* *u_text_overlay|* *u_framebuffer|* *u_fb_ddr3|* *u_gallery_palette|*}]
