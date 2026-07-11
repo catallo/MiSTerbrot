@@ -304,3 +304,20 @@ double render per POI advance.
   references now classify interior at 4095.
 - **Palette tearing at fast cycling** found by the user and fixed:
   sweep moved from core vblank to FB_VBL (see above).
+
+## Ship build (2026-07-11, MiSTerbrot_20260711.rbf)
+
+Seed 7 with MISTERBROT_NO_BENCH: worst setup **-0.020 ns / TNS -0.022**
+(two paths, the known iter-quad mult family; hold +0.253, recovery and
+removal positive) — the best timing of any build in the project,
+including the pre-gallery ones.  Silicon verification on this exact
+RBF: booted straight into gallery via the saved CFG, waited one
+attract advance (canonical snap zoom), `gallery_verify --identify`
+scored **800/800 exact** (M3,1 WAKE 3/7 at 4095 iterations).  The
+NO_BENCH variant additionally passes tb_gallery in simulation.
+
+Deterministic verification trick (remote key injection drops keys):
+write the resolution directly into `/media/fat/config/MiSTerbrot.CFG`
+(status bits 56:54: byte 6 bits 7:6 + byte 7 bit 0; value 5 = byte6
+0x40, byte7 0x01) and `load_core` — the core boots into gallery with
+no OSD interaction.
