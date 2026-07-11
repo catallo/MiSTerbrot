@@ -95,6 +95,24 @@ module fractal_top #(
 );
 
 // ---- Deterministic benchmark scene data ----
+// MISTERBROT_NO_BENCH (release-build ALM diet, GALLERY_DESIGN.md
+// escape hatch): the scene ROM, mode toggle, window counters and
+// telemetry all fold away when benchmark_active is a constant 0 —
+// the ~90-scene constant mux alone is worth over a thousand ALMs of
+// fitter headroom at the device's congestion edge.
+`ifdef MISTERBROT_NO_BENCH
+wire                    benchmark_active = 1'b0;
+wire [`BENCH_IDX_BITS-1:0] benchmark_idx = {`BENCH_IDX_BITS{1'b0}};
+wire                    benchmark_view_changed = 1'b0;
+wire signed [WIDTH-1:0] bench_center_x = 64'shFF80000000000000;
+wire signed [WIDTH-1:0] bench_center_y = 64'sh0000000000000000;
+wire signed [WIDTH-1:0] bench_step     = 64'sh0003333333333333;
+wire [11:0]             bench_max_iter = 12'd512;
+wire [3:0]              bench_iter_tier = 4'd2;
+wire [6:0]              bench_palette  = 7'd0;
+wire                    bench_mode_640 = 1'b0;
+wire                    bench_precheck_p3 = 1'b0;
+`else
 reg                     benchmark_active;
 reg [`BENCH_IDX_BITS-1:0] benchmark_idx;
 reg                     benchmark_view_changed;
@@ -122,6 +140,7 @@ always @(*) begin
         end
     endcase
 end
+`endif
 
 // ---- Unified resolution: 320x240 / 640x240 / 320x480i / 640x480i ----
 // One OSD selector (O[55:54]); the J key cycles through the three modes
@@ -402,6 +421,7 @@ always @(posedge clk or negedge rst_n) begin
     end
 end
 
+`ifndef MISTERBROT_NO_BENCH
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         benchmark_active       <= 1'b0;
@@ -424,6 +444,7 @@ always @(posedge clk or negedge rst_n) begin
         end
     end
 end
+`endif
 
 // Forward declaration: rd_data from framebuffer (declared below)
 wire [FB_DATA_WIDTH-1:0] rd_data;

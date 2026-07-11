@@ -200,8 +200,10 @@ localparam CONF_STR = {
 	"-, Space/Start: Auto-Zoom Toggle;",
 	"-, N: Next POI;",
 	"-, M: Snap to next POI canonical zoom;",
+`ifndef MISTERBROT_NO_BENCH
 	"-, B: Benchmark mode toggle;",
 	"-, V: Benchmark next scene;",
+`endif
 	"-, S/A: Mariani-Silver On/Off;",
 	"-, G/H: Overlay BG Dim On/Off;",
 	"-, K/L: Overlay Blanking On/Off;",
