@@ -150,8 +150,11 @@ assign LED_POWER = 0;
 assign BUTTONS = 0;
 
 wire [1:0] ar = status[122:121];
-assign VIDEO_ARX = (!ar) ? 12'd4 : (ar - 1'd1);
-assign VIDEO_ARY = (!ar) ? 12'd3 : 12'd0;
+// Gallery mode (FB_EN) displays the 1920x1080 framework FB — "Original"
+// must mean 16:9 there, not the core video's 4:3 (user report: gallery
+// letterboxed to 4:3 on both displays).  Full Screen / ARC pass through.
+assign VIDEO_ARX = (!ar) ? (FB_EN ? 12'd16 : 12'd4) : (ar - 1'd1);
+assign VIDEO_ARY = (!ar) ? (FB_EN ? 12'd9  : 12'd3) : 12'd0;
 
 `include "build_id.v"
 localparam CONF_STR = {

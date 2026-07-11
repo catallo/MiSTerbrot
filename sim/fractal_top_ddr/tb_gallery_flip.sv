@@ -71,6 +71,26 @@ always @(negedge clk) begin
 end
 
 integer flips = 0, flip_errs = 0, bank_errs = 0;
+// Atomic POI advance: after settling, each target_idx change must
+// produce exactly ONE render (the combinational max_iter output used
+// to leak settings_changed one cycle before view_changed — double
+// render, first pass on a stale pitch).
+integer renders_this_poi = 0, double_renders = 0;
+reg [6:0] tidx_prev = 0;
+always @(posedge clk) if (rst_n) begin
+    if (dut.u_auto_zoom.target_idx_out !== tidx_prev) begin
+        renders_this_poi = 0;
+        tidx_prev <= dut.u_auto_zoom.target_idx_out;
+    end
+    if (dut.start_render && flips > 0) begin
+        renders_this_poi = renders_this_poi + 1;
+        if (renders_this_poi > 1) begin
+            double_renders = double_renders + 1;
+            $display("DOUBLERENDER poi=%0d count=%0d at t=%0t",
+                     tidx_prev, renders_this_poi, $time);
+        end
+    end
+end
 integer fade63_seen_after_flip = 0;
 reg [31:0] fb_base_prev = 32'h3020_0000;
 reg        fade_was_63 = 0;
@@ -136,8 +156,9 @@ initial begin
             if (g > 1_000_000) begin $display("FAIL: fade-in stuck"); $fatal; end
         end
     end
-    $display("flips=%0d flip_errs=%0d bank_errs=%0d fade63after=%0d",
-             flips, flip_errs, bank_errs, fade63_seen_after_flip);
+    $display("flips=%0d flip_errs=%0d bank_errs=%0d fade63after=%0d dbl=%0d",
+             flips, flip_errs, bank_errs, fade63_seen_after_flip, double_renders);
+    if (double_renders != 0) begin $display("FAIL: double render per POI"); $fatal; end
     if (flip_errs != 0) begin $display("FAIL: flip at nonzero fade"); $fatal; end
     if (bank_errs != 0) begin $display("FAIL: render into displayed bank"); $fatal; end
     if (fade63_seen_after_flip < 1) begin $display("FAIL: fade never settled"); $fatal; end

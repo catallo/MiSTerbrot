@@ -196,15 +196,19 @@ always @(posedge clk) if (rst_n) begin
         exp_armed    <= dut.gallery_mode;
     end
 
-    // first coordinate of a gallery frame
+    // first coordinate of a gallery frame.  Since the S_PITCH wait
+    // state, the coord generator latches pitch only when it is FRESH
+    // for the latched step — so validate against the LATCHED pair:
+    // cr/ci must follow pitch_frame exactly, and pitch_frame must be
+    // (step_frame*2)/9 within 2 ulp (freshness is now guaranteed, no
+    // publish-latency tolerance needed).
     if (exp_armed && dut.cg_valid && dut.cg_px == 11'd0 && dut.cg_py == 11'd0) begin
-        automatic logic signed [63:0] ecr = exp_cx - 64'sd960 * exp_pitch;
-        automatic logic signed [63:0] eci = exp_cy - 64'sd540 * exp_pitch
-                                                   + (exp_pitch >>> 1);
-        automatic logic signed [63:0] pref  = (exp_step * 64'sd2) / 64'sd9;
-        automatic logic signed [63:0] prefo = (exp_step_old * 64'sd2) / 64'sd9;
-        automatic logic signed [63:0] pdiff = exp_pitch - pref;
-        automatic logic signed [63:0] pdiffo = exp_pitch - prefo;
+        automatic logic signed [63:0] lp   = dut.u_coord_gen.pitch_frame;
+        automatic logic signed [63:0] ls   = dut.u_coord_gen.step_frame;
+        automatic logic signed [63:0] ecr  = exp_cx - 64'sd960 * lp;
+        automatic logic signed [63:0] eci  = exp_cy - 64'sd540 * lp + (lp >>> 1);
+        automatic logic signed [63:0] pref = (ls * 64'sd2) / 64'sd9;
+        automatic logic signed [63:0] pdiff = lp - pref;
         coord_checks = coord_checks + 1;
         if (dut.cg_cr !== ecr || dut.cg_ci !== eci) begin
             coord_errs = coord_errs + 1;
@@ -212,11 +216,10 @@ always @(posedge clk) if (rst_n) begin
                 $display("COORDERR cr=%h exp=%h ci=%h exp=%h",
                          dut.cg_cr, ecr, dut.cg_ci, eci);
         end
-        if ((pdiff > 2 || pdiff < -2) && (pdiffo > 2 || pdiffo < -2)) begin
+        if (pdiff > 2 || pdiff < -2) begin
             pitch_errs = pitch_errs + 1;
             if (pitch_errs < 5)
-                $display("PITCHERR pitch=%h exp=%h expold=%h",
-                         exp_pitch, pref, prefo);
+                $display("PITCHERR pitch=%h exp=%h (step=%h)", lp, pref, ls);
         end
         exp_armed <= 1'b0;   // one check per frame start
     end

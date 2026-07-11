@@ -457,7 +457,7 @@ auto_zoom #(
     .view_changed(az_view_changed),
     .palette_idx(az_palette_idx),
     .target_idx_out(az_target_idx),
-    .target_max_iter(az_max_iter),
+    .target_max_iter_r(az_max_iter),
     .rnd_cycle_speed(az_rnd_cycle_speed),
     .rnd_cycle_direction(az_rnd_cycle_direction),
     .rnd_zoom_speed()
@@ -798,8 +798,10 @@ wire                    cg_frame_done;
 // generator latches it at start_frame (same freshness as step itself,
 // the multiplier republishes every 64 clocks).
 wire signed [WIDTH-1:0] gal_pitch;
+wire                    gal_pitch_valid;
 gallery_pitch #(.WIDTH(WIDTH)) u_gallery_pitch (
-    .clk(clk), .rst_n(rst_n), .step(step), .pitch(gal_pitch)
+    .clk(clk), .rst_n(rst_n), .step(step), .pitch(gal_pitch),
+    .pitch_valid(gal_pitch_valid)
 );
 
 coord_generator #(
@@ -810,6 +812,7 @@ coord_generator #(
     .mode_480(render_480),
     .mode_1080(gallery_mode),
     .pitch(gal_pitch),
+    .pitch_valid(gal_pitch_valid),
     .start_frame(start_render),
     // Raw cy_is_zero, NOT sym_active_frame: coord_generator latches its
     // own copy at start_frame — the same edge sym_active_frame latches.

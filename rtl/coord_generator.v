@@ -35,6 +35,11 @@ module coord_generator #(
     // Overrides mode_640/mode_480 when set.
     input  wire                    mode_1080,
     input  wire signed [WIDTH-1:0] pitch,
+    // pitch freshness (gallery_pitch.pitch_valid): a 1080 frame start
+    // waits in S_PITCH until the serial multiplier has recomputed the
+    // pitch for the CURRENT step (<= 128 clk) — otherwise a POI snap
+    // renders its first frame at the previous step's pitch.
+    input  wire                    pitch_valid,
 
     // Control
     input  wire                    start_frame,
@@ -141,7 +146,8 @@ wire signed [WIDTH-1:0] ci_start =
 // States
 localparam [1:0] S_IDLE  = 2'd0,
                  S_SCAN  = 2'd1,
-                 S_DONE  = 2'd2;
+                 S_DONE  = 2'd2,
+                 S_PITCH = 2'd3;   // gallery: wait for a fresh pitch
 
 reg [1:0] state;
 
@@ -183,6 +189,32 @@ always @(posedge clk or negedge rst_n) begin
             valid      <= 1'b0;
             frame_done <= 1'b0;
             if (start_frame) begin
+                if (mode_1080 && !pitch_valid) begin
+                    state <= S_PITCH;
+                end else begin
+                    px             <= 11'd0;
+                    py             <= 11'd0;
+                    cr_accum       <= cr_start;
+                    ci_accum       <= ci_start;
+                    cr_row_start   <= cr_start;
+                    sym_frame      <= symmetry_active;
+                    step_frame     <= step;
+                    pitch_frame    <= pitch;
+                    mode_640_frame <= mode_640;
+                    mode_480_frame <= mode_480;
+                    mode_1080_frame <= mode_1080;
+                    state          <= S_SCAN;
+                end
+            end
+        end
+
+        S_PITCH: begin
+            // start parameters are (re)latched from the LIVE inputs at
+            // exit, so a restart or view change during the wait is
+            // naturally absorbed — the freshest values win.
+            valid      <= 1'b0;
+            frame_done <= 1'b0;
+            if (pitch_valid) begin
                 px             <= 11'd0;
                 py             <= 11'd0;
                 cr_accum       <= cr_start;
@@ -240,20 +272,24 @@ always @(posedge clk or negedge rst_n) begin
                 frame_done <= 1'b1;
             end
             if (start_frame) begin
-                valid          <= 1'b0;
-                px             <= 11'd0;
-                py             <= 11'd0;
-                cr_accum       <= cr_start;
-                ci_accum       <= ci_start;
-                cr_row_start   <= cr_start;
-                sym_frame      <= symmetry_active;
-                step_frame     <= step;
-                pitch_frame    <= pitch;
-                mode_640_frame <= mode_640;
-                mode_480_frame <= mode_480;
-                mode_1080_frame <= mode_1080;
-                frame_done     <= 1'b0;
-                state          <= S_SCAN;
+                valid      <= 1'b0;
+                frame_done <= 1'b0;
+                if (mode_1080 && !pitch_valid) begin
+                    state <= S_PITCH;
+                end else begin
+                    px             <= 11'd0;
+                    py             <= 11'd0;
+                    cr_accum       <= cr_start;
+                    ci_accum       <= ci_start;
+                    cr_row_start   <= cr_start;
+                    sym_frame      <= symmetry_active;
+                    step_frame     <= step;
+                    pitch_frame    <= pitch;
+                    mode_640_frame <= mode_640;
+                    mode_480_frame <= mode_480;
+                    mode_1080_frame <= mode_1080;
+                    state          <= S_SCAN;
+                end
             end
         end
 

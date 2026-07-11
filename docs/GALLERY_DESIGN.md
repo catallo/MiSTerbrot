@@ -252,3 +252,34 @@ instead (tools/gallery_verify.py).
   protocol runs verified bit-exact.  Next probe is simply the user's
   eyes: if painting visibly freezes on entry, instrument then;
   tb_gallery_msnap stays as the regression guard.
+
+## User-testing round 1 fixes (2026-07-11)
+
+First live viewing (CRT + OLED, both on the scaler) surfaced three
+issues, all fixed:
+
+1. **4:3 letterbox**: VIDEO_ARX/ARY still reported the core video's
+   4:3 in gallery mode.  "Original" now maps to 16:9 when FB_EN is up
+   (Full Screen / ARC options pass through unchanged).
+2. **Double render with a visible zoom step on POI advance**: az's
+   `target_max_iter` output was combinational on `target_idx`, which
+   updates one advance phase before center/step/view_changed — the
+   max_iter change leaked through settings_changed one cycle early,
+   starting render #1 before the view landed; need_rerender then
+   painted render #2.  The output is now registered, committing on
+   the same edge as view_changed (also removes the silent double
+   render POI advances caused in every other mode).
+3. **Stale pitch on the first frame after a snap** (the reason the
+   double render was VISIBLE as a zoom step): the free-running 2/9
+   multiplier lags a step change by up to 128 clk, and a POI snap
+   moves step by orders of magnitude in one cycle.  gallery_pitch now
+   exports `pitch_valid` (published pass matches the CURRENT step) and
+   coord_generator holds a 1080 frame start in S_PITCH until it is
+   fresh — the earlier "sub-0.2% transient" claim only held for glide
+   ticks, not snaps.
+
+TB coverage: tb_pitch checks the valid handshake (drop on change,
+rise within two passes, correct at rise); tb_gallery validates
+frame-start coordinates against the LATCHED pitch and its freshness
+(no publish-latency tolerance anymore); tb_gallery_flip fails on any
+double render per POI advance.

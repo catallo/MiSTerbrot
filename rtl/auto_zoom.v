@@ -63,7 +63,7 @@ module auto_zoom #(
     output reg                     view_changed,
     output reg  [6:0]              palette_idx,
     output wire [`POI_IDX_BITS-1:0] target_idx_out,
-    output reg  [11:0]              target_max_iter,
+    output reg  [11:0]              target_max_iter_r,
     // Per-POI random draws (valid whenever randomize_enable; consumers
     // in fractal_top additionally gate on auto_zoom active)
     output reg  [3:0]               rnd_cycle_speed,
@@ -175,11 +175,26 @@ always @(*) begin
     endcase
 end
 
+// The ROM lookup itself stays combinational (the generated macro uses
+// blocking assigns on this exact name)...
+reg [11:0] target_max_iter;
 always @(*) begin
     case (target_idx)
         `POI_ITER_CASES
         default: target_max_iter = 12'd1024;
     endcase
+end
+// ...but the module OUTPUT is REGISTERED: target_idx updates one
+// advance phase BEFORE center/step/view_changed land.  A combinational
+// max_iter output leaked through settings_changed one cycle early and
+// started a render with the not-yet-updated view — need_rerender then
+// repainted it (user-visible in gallery as a double render with a
+// zoom step, the first pass additionally on a stale pitch).  The
+// register delays it by exactly one cycle: it commits on the same
+// edge as view_changed.
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) target_max_iter_r <= 12'd1024;
+    else        target_max_iter_r <= target_max_iter;
 end
 
 // ---- Zoom rate (per-frame step adjustment) ----
