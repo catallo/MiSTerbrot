@@ -28,6 +28,13 @@ module coord_generator #(
     // mode_640 does horizontally.  The frame is written progressively;
     // only the display scanout is field-aware (see fractal_top).
     input  wire                    mode_480,
+    // Gallery (2026-07-11): 1920x1080 grid, square pixels, SAME vertical
+    // extent again (240*step over 1080 rows) — both axes use the
+    // externally computed pitch = step * 2/9 (gallery_pitch.v; 2/9 is a
+    // non-terminating binary fraction, so no shift-only step mux here).
+    // Overrides mode_640/mode_480 when set.
+    input  wire                    mode_1080,
+    input  wire signed [WIDTH-1:0] pitch,
 
     // Control
     input  wire                    start_frame,
@@ -44,16 +51,16 @@ module coord_generator #(
     input  wire                    ready,
     output reg                     valid,
 
-    // Coordinate output
+    // Coordinate output (pixel_y is 11 bits since gallery: 1079 > 1023)
     output reg  [10:0]             pixel_x,
-    output reg  [9:0]              pixel_y,
+    output reg  [10:0]             pixel_y,
     output reg  signed [WIDTH-1:0] cr,
     output reg  signed [WIDTH-1:0] ci,
     output reg                     frame_done
 );
 
 // Per-mode resolution
-localparam [9:0]  V_PIXELS = 10'd240;
+localparam [10:0] V_PIXELS = 11'd240;
 // Last row to emit when symmetry is active.  With the half-step ci
 // grid shift below, the symmetry axis lies *between* rows 119 and
 // 120 instead of on row 120 itself, so we iterate exactly 120 rows
@@ -61,7 +68,7 @@ localparam [9:0]  V_PIXELS = 10'd240;
 // clean 2.00× speedup, no center-axis row to special-case.
 // In 480 mode the same logic applies one octave down: axis between
 // rows 239 and 240, scan 0..239, mirror to 479..240.
-localparam [9:0]  V_PIXELS_SYM_LAST = 10'd119;
+localparam [10:0] V_PIXELS_SYM_LAST = 11'd119;
 
 // Per-frame latched copies of step and mode_640.  Without these
 // latches the per-pixel cr-increment and per-row ci-increment use
@@ -72,22 +79,28 @@ localparam [9:0]  V_PIXELS_SYM_LAST = 10'd119;
 // the bottom with another.  Latching here is the same pattern as
 // `sym_frame` below.
 reg signed [WIDTH-1:0] step_frame;
+reg signed [WIDTH-1:0] pitch_frame;
 reg                    mode_640_frame;
 reg                    mode_480_frame;
+reg                    mode_1080_frame;
 
-wire [10:0]             H_PIXELS_frame = mode_640_frame ? 11'd640 : 11'd320;
+wire [10:0]             H_PIXELS_frame = mode_1080_frame ? 11'd1920
+                                       : mode_640_frame  ? 11'd640 : 11'd320;
 // step_x: in 640 mode, halve step so 640 pixels cover same complex-plane
 // horizontal extent as 320 pixels did.  Uses the latched step.
-wire signed [WIDTH-1:0] step_x_frame   = mode_640_frame ? (step_frame >>> 1)
-                                                        : step_frame;
+// In 1080 mode both axes use the latched pitch (square pixels).
+wire signed [WIDTH-1:0] step_x_frame   = mode_1080_frame ? pitch_frame
+                                       : mode_640_frame  ? (step_frame >>> 1)
+                                                         : step_frame;
 // step_y: in 480 mode, halve step so 480 rows cover the same vertical
 // extent as 240 rows did.
-wire signed [WIDTH-1:0] step_y_frame   = mode_480_frame ? (step_frame >>> 1)
-                                                        : step_frame;
+wire signed [WIDTH-1:0] step_y_frame   = mode_1080_frame ? pitch_frame
+                                       : mode_480_frame  ? (step_frame >>> 1)
+                                                         : step_frame;
 
 // Internal pixel counters
 reg [10:0] px;
-reg [9:0]  py;
+reg [10:0] py;
 
 // Accumulated coordinates
 reg signed [WIDTH-1:0] cr_accum;
@@ -101,7 +114,13 @@ reg signed [WIDTH-1:0] cr_row_start;
 // → identical formula in both modes (160*step), no mux needed.
 wire signed [WIDTH-1:0] half_h_offset = (step <<< 7) + (step <<< 5);  // 160 * step
 wire signed [WIDTH-1:0] half_v_offset = (step <<< 7) - (step <<< 3);  // 120 * step
-wire signed [WIDTH-1:0] cr_start = center_x - half_h_offset;
+// 1080 mode: 960 * pitch horizontally, 540 * pitch vertically —
+// shift-add like above (960 = 1024 - 64, 540 = 512 + 16 + 8 + 4).
+wire signed [WIDTH-1:0] half_h_1080 = (pitch <<< 10) - (pitch <<< 6);
+wire signed [WIDTH-1:0] half_v_1080 = (pitch <<< 9) + (pitch <<< 4)
+                                    + (pitch <<< 3) + (pitch <<< 2);
+wire signed [WIDTH-1:0] cr_start = center_x - (mode_1080 ? half_h_1080
+                                                         : half_h_offset);
 // Half-step grid shift in ci: ci_start is offset by step/2 so no row
 // ever lands on ci=0 exactly.  Without this, any view crossing the
 // real axis renders a hard horizontal line at that row — the M-set's
@@ -113,9 +132,11 @@ wire signed [WIDTH-1:0] cr_start = center_x - half_h_offset;
 // effect: image samples shifted by half a pixel in the imaginary
 // direction (sub-pixel — visually imperceptible).
 // Grid shift is half the ROW PITCH (step/2 in 240 mode, step/4 in 480
-// mode) so no row lands on ci=0 in either mode.
-wire signed [WIDTH-1:0] ci_start = center_y - half_v_offset
-                                   + (mode_480 ? (step >>> 2) : (step >>> 1));
+// mode, pitch/2 in 1080 mode) so no row lands on ci=0 in any mode.
+wire signed [WIDTH-1:0] ci_start =
+    mode_1080 ? (center_y - half_v_1080 + (pitch >>> 1))
+              : (center_y - half_v_offset
+                 + (mode_480 ? (step >>> 2) : (step >>> 1)));
 
 // States
 localparam [1:0] S_IDLE  = 2'd0,
@@ -128,9 +149,13 @@ reg [1:0] state;
 // change between IDLE and DONE even if the caller toggles the input
 // while a frame is in flight.
 reg sym_frame;
-wire [9:0] v_last_full = mode_480_frame ? 10'd479 : (V_PIXELS - 10'd1);
-wire [9:0] v_last_sym  = mode_480_frame ? 10'd239 : V_PIXELS_SYM_LAST;
-wire [9:0] py_last = sym_frame ? v_last_sym : v_last_full;
+// (1080 sym values are defensive only — fractal_top masks A2 off in
+// gallery mode for v1, so sym_frame is never set with mode_1080.)
+wire [10:0] v_last_full = mode_1080_frame ? 11'd1079
+                        : mode_480_frame  ? 11'd479 : (V_PIXELS - 11'd1);
+wire [10:0] v_last_sym  = mode_1080_frame ? 11'd539
+                        : mode_480_frame  ? 11'd239 : V_PIXELS_SYM_LAST;
+wire [10:0] py_last = sym_frame ? v_last_sym : v_last_full;
 
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
@@ -138,18 +163,20 @@ always @(posedge clk or negedge rst_n) begin
         valid          <= 1'b0;
         frame_done     <= 1'b0;
         px             <= 11'd0;
-        py             <= 10'd0;
+        py             <= 11'd0;
         cr_accum       <= {WIDTH{1'b0}};
         ci_accum       <= {WIDTH{1'b0}};
         cr_row_start   <= {WIDTH{1'b0}};
         pixel_x        <= 11'd0;
-        pixel_y        <= 10'd0;
+        pixel_y        <= 11'd0;
         cr             <= {WIDTH{1'b0}};
         ci             <= {WIDTH{1'b0}};
         sym_frame      <= 1'b0;
         step_frame     <= {WIDTH{1'b0}};
+        pitch_frame    <= {WIDTH{1'b0}};
         mode_640_frame <= 1'b0;
         mode_480_frame <= 1'b0;
+        mode_1080_frame <= 1'b0;
     end else begin
         case (state)
         S_IDLE: begin
@@ -157,14 +184,16 @@ always @(posedge clk or negedge rst_n) begin
             frame_done <= 1'b0;
             if (start_frame) begin
                 px             <= 11'd0;
-                py             <= 10'd0;
+                py             <= 11'd0;
                 cr_accum       <= cr_start;
                 ci_accum       <= ci_start;
                 cr_row_start   <= cr_start;
                 sym_frame      <= symmetry_active;
                 step_frame     <= step;
+                pitch_frame    <= pitch;
                 mode_640_frame <= mode_640;
                 mode_480_frame <= mode_480;
+                mode_1080_frame <= mode_1080;
                 state          <= S_SCAN;
             end
         end
@@ -186,7 +215,7 @@ always @(posedge clk or negedge rst_n) begin
                     end else begin
                         // Next row
                         px           <= 11'd0;
-                        py           <= py + 10'd1;
+                        py           <= py + 11'd1;
                         cr_accum     <= cr_row_start;
                         ci_accum     <= ci_accum + step_y_frame;
                     end
@@ -213,14 +242,16 @@ always @(posedge clk or negedge rst_n) begin
             if (start_frame) begin
                 valid          <= 1'b0;
                 px             <= 11'd0;
-                py             <= 10'd0;
+                py             <= 11'd0;
                 cr_accum       <= cr_start;
                 ci_accum       <= ci_start;
                 cr_row_start   <= cr_start;
                 sym_frame      <= symmetry_active;
                 step_frame     <= step;
+                pitch_frame    <= pitch;
                 mode_640_frame <= mode_640;
                 mode_480_frame <= mode_480;
+                mode_1080_frame <= mode_1080;
                 frame_done     <= 1'b0;
                 state          <= S_SCAN;
             end

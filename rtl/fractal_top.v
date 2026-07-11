@@ -487,10 +487,19 @@ reg  [6:0] palette_sel_prev;
 reg  [11:0] max_iter_prev;
 reg         mode_640_prev;
 reg         interlace_prev;
+reg         render_480_prev;
+reg         gallery_prev;
+// render_480 / gallery_mode cover the resolution transitions the two
+// legacy flags miss (640x240 <-> 480p and 480p <-> gallery keep both
+// effective_mode_640 and interlace_mode constant) — without them the
+// grid change would not force a re-render on a static view.  Also
+// fires when boot grace expires with a 480/gallery mode saved.
 wire settings_changed = (palette_sel != palette_sel_prev) ||
                         (max_iter != max_iter_prev) ||
                         (effective_mode_640 != mode_640_prev) ||
-                        (interlace_mode != interlace_prev);
+                        (interlace_mode != interlace_prev) ||
+                        (render_480 != render_480_prev) ||
+                        (gallery_mode != gallery_prev);
 
 // Auto-iter: scale max_iter with zoom depth so deep zooms don't render solid
 // black for lack of iterations. Tiers match tools/poi_render.max_iter_for_zoom.
@@ -566,6 +575,9 @@ wire symq_empty;
 // Backpressure on coord_generator dispatch when FIFO is near-full.
 // Also forward-declared; assigned in the FIFO section.
 wire symq_backpressure;
+// Gallery index-write FIFO ready — forward-declared for the dispatch
+// gating below; driven by gallery_fb in the gallery section.
+wire gal_wr_ready;
 
 // Bank swap state machine
 //
@@ -640,6 +652,8 @@ always @(posedge clk or negedge rst_n) begin
         max_iter_prev     <= 12'd512;
         mode_640_prev     <= 1'b0;
         interlace_prev    <= 1'b0;
+        render_480_prev   <= 1'b0;
+        gallery_prev      <= 1'b0;
     end else begin
         start_render <= 1'b0;
         az_target_idx_prev <= az_target_idx;
@@ -647,6 +661,8 @@ always @(posedge clk or negedge rst_n) begin
         max_iter_prev     <= max_iter;
         mode_640_prev     <= effective_mode_640;
         interlace_prev    <= interlace_mode;
+        render_480_prev   <= render_480;
+        gallery_prev      <= gallery_mode;
 
         // Latch view changes during render or wait
         if ((view_changed || settings_changed) && render_state != RS_IDLE)
@@ -707,7 +723,7 @@ assign rendering = (render_state == RS_RENDER);
 // ---- Pixel Pipeline ----
 wire        pipe_result_valid;
 wire [10:0] pipe_result_x;
-wire [9:0]  pipe_result_y;
+wire [10:0] pipe_result_y;
 wire [11:0] pipe_result_iter;
 wire        pipe_result_escaped;
 
@@ -738,7 +754,12 @@ wire        pipe_result_escaped;
 // exactly 0.  As soon as auto-zoom drifts to non-zero, sym_active goes
 // false and we render the full frame — no risk of asymmetric corruption
 // when center_y is "almost" 0.
-wire cy_is_zero       = (center_y == {WIDTH{1'b0}});
+// Gallery v1 masks A2 off entirely: renders happen once per POI, so
+// the 2x speedup matters little, and keeping the mirror path out of
+// the 1080 index stream removes a verification axis.  (v2 candidate:
+// mirror row 1079-y, axis between rows 539/540 — coord_generator
+// already carries the defensive v_last_sym value.)
+wire cy_is_zero       = (center_y == {WIDTH{1'b0}}) && !gallery_mode;
 reg  sym_active_frame;
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n)             sym_active_frame <= 1'b0;
@@ -748,9 +769,17 @@ end
 // ---- Coord source: classic raster-order generator (only source) ----
 wire                    cg_valid, cg_ready;
 wire [10:0]             cg_px;
-wire [9:0]              cg_py;
+wire [10:0]             cg_py;
 wire signed [WIDTH-1:0] cg_cr, cg_ci;
 wire                    cg_frame_done;
+
+// Free-running pitch = step * 2/9 for the gallery grid; the coord
+// generator latches it at start_frame (same freshness as step itself,
+// the multiplier republishes every 64 clocks).
+wire signed [WIDTH-1:0] gal_pitch;
+gallery_pitch #(.WIDTH(WIDTH)) u_gallery_pitch (
+    .clk(clk), .rst_n(rst_n), .step(step), .pitch(gal_pitch)
+);
 
 coord_generator #(
     .WIDTH(WIDTH), .FRAC_BITS(FRAC_BITS)
@@ -758,6 +787,8 @@ coord_generator #(
     .clk(clk), .rst_n(rst_n),
     .mode_640(effective_mode_640),
     .mode_480(render_480),
+    .mode_1080(gallery_mode),
+    .pitch(gal_pitch),
     .start_frame(start_render),
     // Raw cy_is_zero, NOT sym_active_frame: coord_generator latches its
     // own copy at start_frame — the same edge sym_active_frame latches.
@@ -796,7 +827,7 @@ localparam RID_W = 1;
 // and assigned in the FIFO section below.
 wire                    pipe_coord_valid       = cg_valid && !symq_backpressure;
 wire [10:0]             pipe_coord_px          = cg_px;
-wire [9:0]              pipe_coord_py          = cg_py;
+wire [10:0]             pipe_coord_py          = cg_py;
 wire signed [WIDTH-1:0] pipe_coord_cr          = cg_cr;
 wire signed [WIDTH-1:0] pipe_coord_ci          = cg_ci;
 wire [RID_W-1:0]        pipe_coord_region_id   = {RID_W{1'b0}};
@@ -807,7 +838,8 @@ wire [RID_W-1:0]        pipe_result_region_id;
 // wr_ready threshold leaves headroom for the ~24 in-flight slot results
 // that keep completing after dispatch stalls.
 assign cg_ready = pipe_coord_ready && !symq_backpressure
-                && (ddr_wr_ready || !ddr_fb_mode);
+                && (ddr_wr_ready || !ddr_fb_mode)
+                && (gal_wr_ready || !gallery_mode);
 
 // A3 (period-3 bulb precheck) per-frame enable.  Three sources, OSD wins:
 //   osd_p3_mode = 2'd0 (Auto) → use the per-POI bench flag in benchmark
@@ -908,7 +940,7 @@ end
 localparam SYMQ_DEPTH = 32;
 localparam SYMQ_AW    = 5;   // log2(SYMQ_DEPTH)
 reg [10:0] symq_x    [0:SYMQ_DEPTH-1];
-reg [9:0]  symq_y    [0:SYMQ_DEPTH-1];
+reg [10:0] symq_y    [0:SYMQ_DEPTH-1];
 reg [11:0] symq_iter [0:SYMQ_DEPTH-1];
 reg        symq_esc  [0:SYMQ_DEPTH-1];
 reg [SYMQ_AW:0] symq_wr_ptr, symq_rd_ptr;  // 1 extra bit for full/empty
@@ -931,12 +963,12 @@ assign symq_backpressure = sym_active_frame &&
                            (symq_count >= (SYMQ_DEPTH - N_ITERATORS));
 
 wire need_mirror_now = sym_active_frame &&
-                       (pipe_result_y <= (render_480 ? 10'd239 : 10'd119));
+                       (pipe_result_y <= (render_480 ? 11'd239 : 11'd119));
 wire mirror_drain    = !pipe_result_valid && !symq_empty
                      && (ddr_wr_ready || !ddr_fb_mode);
 
 wire [10:0] mirror_x    = symq_x   [symq_rd_ptr[SYMQ_AW-1:0]];
-wire [9:0]  mirror_y    = symq_y   [symq_rd_ptr[SYMQ_AW-1:0]];
+wire [10:0] mirror_y    = symq_y   [symq_rd_ptr[SYMQ_AW-1:0]];
 wire [11:0] mirror_iter = symq_iter[symq_rd_ptr[SYMQ_AW-1:0]];
 wire        mirror_esc  = symq_esc [symq_rd_ptr[SYMQ_AW-1:0]];
 
@@ -971,7 +1003,7 @@ always @(posedge clk or negedge rst_n) begin
     end else begin
         if (pipe_result_valid && need_mirror_now && !symq_full) begin
             symq_x   [symq_wr_ptr[SYMQ_AW-1:0]] <= pipe_result_x;
-            symq_y   [symq_wr_ptr[SYMQ_AW-1:0]] <= (render_480 ? 10'd479 : 10'd239)
+            symq_y   [symq_wr_ptr[SYMQ_AW-1:0]] <= (render_480 ? 11'd479 : 11'd239)
                                                    - pipe_result_y;
             symq_iter[symq_wr_ptr[SYMQ_AW-1:0]] <= pipe_result_iter;
             symq_esc [symq_wr_ptr[SYMQ_AW-1:0]] <= pipe_result_escaped;
@@ -991,7 +1023,7 @@ end
 //   1. pipe_result_valid → original write (priority on its cycle)
 //   2. mirror FIFO drain → row-mirrored write when pipeline idle
 wire [10:0] fb_wr_pixel_x = pipe_result_valid ? pipe_result_x       : mirror_x;
-wire [9:0]  fb_wr_pixel_y = pipe_result_valid ? pipe_result_y       : mirror_y;
+wire [10:0] fb_wr_pixel_y = pipe_result_valid ? pipe_result_y       : mirror_y;
 wire [11:0] fb_wr_iter    = pipe_result_valid ? pipe_result_iter    : mirror_iter;
 wire        fb_wr_escaped = pipe_result_valid ? pipe_result_escaped : mirror_esc;
 wire        fb_wr_en      = pipe_result_valid | mirror_drain;
@@ -1064,7 +1096,7 @@ framebuffer #(
 ) u_framebuffer (
     .clk(clk),
     .rd_clk(clk_vid),
-    .wr_en(fb_wr_en & ~ddr_fb_mode),
+    .wr_en(fb_wr_en & ~ddr_fb_mode & ~gallery_mode),
     .wr_addr(wr_addr),
     .wr_data(wr_data),
     .rd_addr(rd_addr),
@@ -1108,7 +1140,7 @@ fb_ddr3 u_fb_ddr3 (
     .rst_n(rst_n),
     .wr_en(fb_wr_en & ddr_fb_mode),
     .wr_x(fb_wr_pixel_x),
-    .wr_y(fb_wr_pixel_y),
+    .wr_y(fb_wr_pixel_y[9:0]),
     .wr_data(wr_data),
     .render_bank(bank_sel),
     .wr_ready(ddr_wr_ready),
@@ -1130,29 +1162,38 @@ fb_ddr3 u_fb_ddr3 (
     .ddram_we(fbd_we)
 );
 
-// ---- Gallery Mode engine + controller (stage 1: test pattern) ----
-wire        gal_wr_en, gal_wr_ready, gal_wr_idle;
-wire [10:0] gal_wr_x, gal_wr_y;
-wire [7:0]  gal_wr_index;
+// ---- Gallery Mode engine + controller (stage 2: render tap) ----
+// The render result stream feeds the index buffer directly (originals
+// only — A2 is masked off in gallery mode, so the mirror leg of the
+// fb_wr_* mux never fires here):
+//   index = escaped ? (iter[7:0] != 0 ? iter[7:0] : 1) : 0
+// Interior is palette entry 0 (black); an escape at iter % 256 == 0
+// remaps to entry 1 — one color band shifted on one iteration value,
+// invisible (GALLERY_DESIGN.md).  Rate matching: cg_ready is gated on
+// gal_wr_ready above, and the FIFO keeps 64 entries of headroom for
+// the in-flight iterator results after a stall.
+wire        gal_wr_idle;
 wire        gal_render_bank, gal_display_bank;
 wire        gal_pwr;
 wire [7:0]  gal_paddr;
 wire [23:0] gal_pdata;
 
+wire [7:0] gal_wr_index = fb_wr_escaped
+                        ? ((fb_wr_iter[7:0] != 8'd0) ? fb_wr_iter[7:0] : 8'd1)
+                        : 8'd0;
+
 gallery_ctl u_gallery_ctl (
     .clk(clk), .rst_n(rst_n),
     .gallery_en(gallery_mode),
-    .wr_en(gal_wr_en), .wr_x(gal_wr_x), .wr_y(gal_wr_y),
-    .wr_index(gal_wr_index),
     .render_bank(gal_render_bank), .display_bank(gal_display_bank),
-    .wr_ready(gal_wr_ready),
     .pal_wr(gal_pwr), .pal_addr(gal_paddr), .pal_data(gal_pdata)
 );
 
 gallery_fb u_gallery_fb (
     .clk(clk), .rst_n(rst_n),
     .gallery_en(gallery_mode),
-    .wr_en(gal_wr_en), .wr_x(gal_wr_x), .wr_y(gal_wr_y),
+    .wr_en(fb_wr_en & gallery_mode),
+    .wr_x(fb_wr_pixel_x), .wr_y(fb_wr_pixel_y),
     .wr_index(gal_wr_index),
     .render_bank(gal_render_bank),
     .wr_ready(gal_wr_ready), .wr_idle(gal_wr_idle),

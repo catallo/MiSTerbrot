@@ -43,7 +43,7 @@ module pixel_pipeline #(
     input  wire                    coord_valid,
     output wire                    coord_ready,
     input  wire [10:0]             coord_px,
-    input  wire [9:0]              coord_py,
+    input  wire [10:0]             coord_py,
     input  wire signed [WIDTH-1:0] coord_cr,
     input  wire signed [WIDTH-1:0] coord_ci,
     input  wire [RID_W-1:0]        coord_region_id,
@@ -51,7 +51,7 @@ module pixel_pipeline #(
 
     output reg                     result_valid,
     output reg  [10:0]             result_x,
-    output reg  [9:0]              result_y,
+    output reg  [10:0]             result_y,
     output reg  [11:0]             result_iter,
     output reg                     result_escaped,
     output reg  [RID_W-1:0]        result_region_id
@@ -98,7 +98,7 @@ end
 reg                     iter_busy    [0:N_ITERATORS-1];
 reg                     iter_start_q [0:N_ITERATORS-1]; // toggle in clk_sys
 reg  [10:0]             iter_px      [0:N_ITERATORS-1];
-reg  [9:0]              iter_py      [0:N_ITERATORS-1];
+reg  [10:0]             iter_py      [0:N_ITERATORS-1];
 reg  signed [WIDTH-1:0] iter_cr      [0:N_ITERATORS-1];
 reg  signed [WIDTH-1:0] iter_ci      [0:N_ITERATORS-1];
 reg  [RID_W-1:0]        iter_rid     [0:N_ITERATORS-1]; // region_id tag
@@ -270,7 +270,7 @@ always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         collect_idx  <= {IDX_W{1'b0}};
         result_valid <= 1'b0;
-        result_x <= 11'd0; result_y <= 10'd0;
+        result_x <= 11'd0; result_y <= 11'd0;
         result_iter <= 12'd0; result_escaped <= 1'b0;
         result_region_id <= {RID_W{1'b0}};
         for (i = 0; i < N_ITERATORS; i = i + 1) begin
