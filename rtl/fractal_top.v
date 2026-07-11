@@ -72,6 +72,19 @@ module fractal_top #(
     output wire        ddram_we,
     output wire        ddram_underrun,  // sticky line-fetch budget violation
 
+    // Gallery Mode: framework framebuffer config + palette (emu FB_*)
+    output wire        gal_fb_en,
+    output wire [4:0]  gal_fb_format,
+    output wire [11:0] gal_fb_width,
+    output wire [11:0] gal_fb_height,
+    output wire [31:0] gal_fb_base,
+    output wire [13:0] gal_fb_stride,
+    output wire        gal_fb_force_blank,
+    output wire        gal_pal_clk,
+    output wire [7:0]  gal_pal_addr,
+    output wire [23:0] gal_pal_dout,
+    output wire        gal_pal_wr,
+
     // Status
     output wire        rendering
 );
@@ -130,7 +143,8 @@ wire interlace_mode = (eff_res == 3'd2 || eff_res == 3'd3)
 // at 31.25 kHz.  Same boot-grace policy as the interlaced modes.
 wire mode_480p = (eff_res == 3'd4) && boot_grace_done && !benchmark_active;
 wire effective_mode_640 = benchmark_active ? bench_mode_640
-                        : (eff_res == 3'd1 || eff_res == 3'd3 || eff_res == 3'd4);
+                        : (eff_res == 3'd1 || eff_res == 3'd3 || eff_res == 3'd4
+                           || eff_res == 3'd5);
 // 640x480 (i or p) = 307,200 px = 2x one BRAM bank: the framebuffer
 // moves to DDR3 (fb_ddr3).  During boot grace / benchmark the mode falls
 // back to progressive 640x240 in BRAM, same as 320x480i falls back to
@@ -140,6 +154,12 @@ wire ddr_fb_mode = ((eff_res == 3'd3) && interlace_mode)
 // 480-line rendering (interlaced scanout or 480p): drives the coord
 // ladder and the A2 symmetry bounds/mirror target below.
 wire render_480 = interlace_mode | mode_480p;
+// Gallery Mode (eff_res 5, docs/GALLERY_DESIGN.md): the framework
+// displays a 1080p indexed framebuffer (FB_EN); the core-side video
+// runs progressive 640x240 underneath (ignored by the framework, but
+// it keeps vblank pacing, attract dwell and — in stage 3 — the
+// palette sequencer's pipeline alive).
+wire gallery_mode = (eff_res == 3'd5) && boot_grace_done && !benchmark_active;
 
 // ---- Pixel clock (video domain, 100 MHz base) ----
 //   320 mode: 100 MHz / 16 = 6.25 MHz dot clock (15.625 kHz line rate)
@@ -254,7 +274,7 @@ always @(posedge clk or negedge rst_n) begin
         if (eff_res != eff_res_prev_nv) new_vmode <= ~new_vmode;
         if (key_vmode_toggle) begin
             res_override_en <= 1'b1;
-            res_override    <= (eff_res >= 3'd4) ? 3'd0 : (eff_res + 3'd1);
+            res_override    <= (eff_res >= 3'd5) ? 3'd0 : (eff_res + 3'd1);
         end else if (osd_res_mode != osd_res_prev) begin
             res_override_en <= 1'b0;
         end
@@ -1065,6 +1085,23 @@ wire [8:0]  ddr_rd_data;
 wire        vt_prefetch_req;
 wire [9:0]  vt_prefetch_row;
 
+// The DDRAM port is time-shared by mode: fb_ddr3 owns it in 640x480p,
+// gallery_fb in gallery mode.  Both engines are inert outside their
+// mode (write enables gated, line_req gated), so a simple output mux
+// suffices; busy/dout fan to both.
+wire [28:0] fbd_addr,  gal_addr;
+wire [7:0]  fbd_bcnt,  gal_bcnt;
+wire [63:0] fbd_din,   gal_din;
+wire [7:0]  fbd_be,    gal_be;
+wire        fbd_rd,    fbd_we,   gal_we;
+
+assign ddram_addr     = gallery_mode ? gal_addr : fbd_addr;
+assign ddram_burstcnt = gallery_mode ? gal_bcnt : fbd_bcnt;
+assign ddram_din      = gallery_mode ? gal_din  : fbd_din;
+assign ddram_be       = gallery_mode ? gal_be   : fbd_be;
+assign ddram_we       = gallery_mode ? gal_we   : fbd_we;
+assign ddram_rd       = gallery_mode ? 1'b0     : fbd_rd;
+
 fb_ddr3 u_fb_ddr3 (
     .clk(clk),
     .clk_vid(clk_vid),
@@ -1082,16 +1119,56 @@ fb_ddr3 u_fb_ddr3 (
     .rd_x(vid_in_range ? vid_pixel_x[9:0] : 10'd0),
     .rd_data(ddr_rd_data),
     .underrun_sticky(ddram_underrun),
-    .ddram_addr(ddram_addr),
-    .ddram_burstcnt(ddram_burstcnt),
+    .ddram_addr(fbd_addr),
+    .ddram_burstcnt(fbd_bcnt),
     .ddram_busy(ddram_busy),
     .ddram_dout(ddram_dout),
     .ddram_dout_ready(ddram_dout_ready),
-    .ddram_rd(ddram_rd),
-    .ddram_din(ddram_din),
-    .ddram_be(ddram_be),
-    .ddram_we(ddram_we)
+    .ddram_rd(fbd_rd),
+    .ddram_din(fbd_din),
+    .ddram_be(fbd_be),
+    .ddram_we(fbd_we)
 );
+
+// ---- Gallery Mode engine + controller (stage 1: test pattern) ----
+wire        gal_wr_en, gal_wr_ready, gal_wr_idle;
+wire [10:0] gal_wr_x, gal_wr_y;
+wire [7:0]  gal_wr_index;
+wire        gal_render_bank, gal_display_bank;
+wire        gal_pwr;
+wire [7:0]  gal_paddr;
+wire [23:0] gal_pdata;
+
+gallery_ctl u_gallery_ctl (
+    .clk(clk), .rst_n(rst_n),
+    .gallery_en(gallery_mode),
+    .wr_en(gal_wr_en), .wr_x(gal_wr_x), .wr_y(gal_wr_y),
+    .wr_index(gal_wr_index),
+    .render_bank(gal_render_bank), .display_bank(gal_display_bank),
+    .wr_ready(gal_wr_ready),
+    .pal_wr(gal_pwr), .pal_addr(gal_paddr), .pal_data(gal_pdata)
+);
+
+gallery_fb u_gallery_fb (
+    .clk(clk), .rst_n(rst_n),
+    .gallery_en(gallery_mode),
+    .wr_en(gal_wr_en), .wr_x(gal_wr_x), .wr_y(gal_wr_y),
+    .wr_index(gal_wr_index),
+    .render_bank(gal_render_bank),
+    .wr_ready(gal_wr_ready), .wr_idle(gal_wr_idle),
+    .display_bank(gal_display_bank),
+    .fb_en(gal_fb_en), .fb_format(gal_fb_format),
+    .fb_width(gal_fb_width), .fb_height(gal_fb_height),
+    .fb_base(gal_fb_base), .fb_stride(gal_fb_stride),
+    .fb_force_blank(gal_fb_force_blank),
+    .pal_wr_in(gal_pwr), .pal_addr_in(gal_paddr), .pal_data_in(gal_pdata),
+    .fb_pal_clk(gal_pal_clk), .fb_pal_addr(gal_pal_addr),
+    .fb_pal_dout(gal_pal_dout), .fb_pal_wr(gal_pal_wr),
+    .ddram_addr(gal_addr), .ddram_burstcnt(gal_bcnt),
+    .ddram_busy(ddram_busy),
+    .ddram_din(gal_din), .ddram_be(gal_be), .ddram_we(gal_we)
+);
+wire unused_gal = &{1'b0, gal_wr_idle};
 wire unused_ddr = &{1'b0, ddr_wr_idle, ddr_line_busy};
 
 // ---- Video Timing ----

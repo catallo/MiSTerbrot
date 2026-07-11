@@ -163,7 +163,7 @@ localparam CONF_STR = {
 	"O[19],Blank Text,On,Off;",
 	"O[20],Always Show FPS,Off,On;",
 	"O[21],Always Show POI/Palette,On,Off;",
-	"O[56:54],Resolution,320x240,640x240,320x480i,640x480i,640x480p;",
+	"O[56:54],Resolution,320x240,640x240,320x480i,640x480i,640x480p,1920x1080;",
 	"O[23],Overlay BG,Transparent,Dimmed;",
 	"O[17:15],Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
 	// Mariani-Silver was on the Optimisations page but had an intermittent
@@ -292,6 +292,21 @@ fractal_top #(
 	.ddram_be(DDRAM_BE),
 	.ddram_we(DDRAM_WE),
 	.ddram_underrun(core_ddram_underrun),
+`ifdef MISTER_FB
+	.gal_fb_en(FB_EN),
+	.gal_fb_format(FB_FORMAT),
+	.gal_fb_width(FB_WIDTH),
+	.gal_fb_height(FB_HEIGHT),
+	.gal_fb_base(FB_BASE),
+	.gal_fb_stride(FB_STRIDE),
+	.gal_fb_force_blank(FB_FORCE_BLANK),
+`ifdef MISTER_FB_PALETTE
+	.gal_pal_clk(FB_PAL_CLK),
+	.gal_pal_addr(FB_PAL_ADDR),
+	.gal_pal_dout(FB_PAL_DOUT),
+	.gal_pal_wr(FB_PAL_WR),
+`endif
+`endif
 	.rendering(core_rendering)
 );
 
