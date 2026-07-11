@@ -197,3 +197,25 @@ Deviations and decisions made during implementation:
 - **OSD**: `O[59]` "Gallery Live Render" On/Off (default On), `d0`
   (greyed outside gallery); zoom rows `D0` (greyed in gallery);
   `status_menumask[0]` = resolution selection == 1920x1080.
+
+## OPEN: output video mode for the FB display (user decision)
+
+The framework FB is displayed by ascal's output reader, which expects
+FB size == output resolution (menu-core convention).  The user's ini
+has no fixed `video_mode` — the scaler follows the core timing, so the
+1080p FB cannot display correctly out of the box.  Complication: the
+`[MiSTerbrot]` ini section sets `vga_scaler=1`, i.e. the CRT is on the
+SCALER output too — pinning `video_mode=8` (1080p60) would retime the
+CRT to 67.5 kHz in ALL modes.  Options to discuss:
+  (a) `[MiSTerbrot] video_mode=8` if the CRT syncs 1080p (or move the
+      CRT to direct video),
+  (b) an alt-ini profile for gallery sessions,
+  (c) accept OLED-only gallery with a manual vmode switch.
+Until decided, gallery on the current ini shows the FB reader's
+attempt at a 1920x1080 buffer inside a ~640x480 output — garbage
+expected on screen; the DDR3 content itself is verified good.
+
+Also note: MiSTer screenshots read ascal's triple buffer (core video,
+pre-FB-reader, pre-OSD) — they can NEVER show FB content.  Hardware
+verification of the index buffer runs over HPS `devmem` sampling
+instead (tools/gallery_verify.py).

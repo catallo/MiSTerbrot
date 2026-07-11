@@ -44,6 +44,7 @@ tools/*
 !tools/poi_pdf.py
 !tools/poi_walkthrough.py
 !tools/poi_ocr.py
+!tools/gallery_verify.py
 !tools/poi_compare_score.py
 !tools/poi_master.json
 !tools/benchmarks.json
