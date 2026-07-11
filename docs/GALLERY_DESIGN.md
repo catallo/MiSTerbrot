@@ -219,3 +219,33 @@ Also note: MiSTer screenshots read ascal's triple buffer (core video,
 pre-FB-reader, pre-OSD) — they can NEVER show FB content.  Hardware
 verification of the index buffer runs over HPS `devmem` sampling
 instead (tools/gallery_verify.py).
+
+## Silicon verification results (2026-07-11, seed-7 full build)
+
+- **Render path bit-exact end-to-end**: two POIs verified via devmem
+  sampling against the float reference — EJS DBL SPIRAL (snap zoom 19)
+  **996/1000 exact**, ELEPHANT MED (snap zoom 14, max_iter 1024)
+  **999/1000 exact, 1000/1000 class-consistent**.  Remainder is
+  float-vs-8.56 escape-boundary noise.  This covers the iterators,
+  coordinate ladder, 2/9 pitch multiplier, index mapping, FIFO and
+  DDR3 addressing in one measurement.
+- **Verification protocol matters**: enter gallery, press M once
+  (snap + S_HOLD freezes the view even across mode switches), wait
+  60 s, sample, then J to a native mode to read the ground-truth
+  overlay.  An early "mismatch" dataset (FEIGENBAUM, 636/1000) was
+  procedure garbage: the saved CFG boots at res 2, so blind J-press
+  counts landed in the wrong mode and sampled transitional renders.
+  A real-axis POI (cy=0) still deserves one CLEAN verification pass
+  (P2 Brent's 48-bit snapshot degenerates toward 24 bits on the axis
+  — birthday math says it should still be safe, but measure it).
+- M-snap renders at INTEGER zoom (az `snap_step`); the overlay's
+  fractional zoom display is the known x10 display mismatch.  The
+  verify tool defaults to snap semantics.
+- **Open observation (1 of 3 gallery entries)**: on the very first
+  gallery activation after a cold core load, the first render froze at
+  ~row 830 and never completed (buffer static for minutes; leaving
+  gallery un-wedged it, later entries were clean).  Not reproduced by
+  cold-boot repro or mid-render M presses.  Suspects: a restart loop
+  repainting the top rows (static boundary = identical repaint), or a
+  transient f2sdram state from J-cycling through the DDR modes.  If it
+  recurs in user testing, instrument then.

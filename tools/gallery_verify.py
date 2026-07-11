@@ -24,6 +24,13 @@ Usage:
   gallery_verify.py --identify        best match over the whole catalogue
   gallery_verify.py --bank b          sample bank B (default A)
   gallery_verify.py --samples N       words to sample (default 300)
+  gallery_verify.py --frac-zoom       use the fractional catalogue zoom
+                                      (default: integer snap zoom — the
+                                      M-snap/gallery sequencing renders
+                                      at DEFAULT_STEP >>> int(zoom))
+
+Proven on silicon 2026-07-11: EJS DBL SPIRAL at snap zoom scored
+996/1000 exact (remainder is float-vs-8.56 boundary noise).
 
 Requires the core to be in gallery mode with the target POI rendered
 (wait for the paint to finish in live mode).
@@ -76,11 +83,12 @@ def sample_words(bank, coords):
     return res
 
 
-def reference_indices(cx, cy, zoom_level, coords):
+def reference_indices(cx, cy, zoom_level, coords, max_iter=None):
     """Expected FB indices for the sampled pixels (float reference)."""
     step = DEFAULT_STEP / (2.0 ** zoom_level)
     pitch = step * 2.0 / 9.0
-    max_iter = max_iter_for_zoom(zoom_level)
+    if max_iter is None:
+        max_iter = max_iter_for_zoom(zoom_level)
     pts = []
     for (x, y) in coords:
         for i in range(4):
@@ -136,9 +144,17 @@ def main():
     hw = sample_words(bank, coords)
 
     def eval_poi(p):
+        # az uses the per-POI max_iter override when the OSD is on Auto
+        mi = int(p["max_iter"]) if "max_iter" in p else None
         ref_idx, ref_esc = reference_indices(
-            float(p["cx"]), float(p["cy"]), float(p["zoom_level"]), coords)
+            float(p["cx"]), float(p["cy"]), poi_zoom(p), coords, max_iter=mi)
         return score(hw, ref_idx, ref_esc)
+
+    frac = "--frac-zoom" in args
+
+    def poi_zoom(p):
+        z = float(p["zoom_level"])
+        return z if frac else float(int(z))
 
     if "--poi" in args:
         i = int(args[args.index("--poi") + 1])
@@ -152,12 +168,14 @@ def main():
         results = []
         for i, p in enumerate(pois):
             exact, loose, total = eval_poi(p)
-            results.append((exact + loose, exact, i, p["name"]))
-            print(f"  [{i:2d}] {p['name']:<28} {exact + loose}/{total}")
+            results.append((exact, exact + loose, i, p["name"]))
+            print(f"  [{i:2d}] {p['name']:<28} exact {exact}/{total}")
+        # rank by EXACT: interior-heavy images cross-match badly on the
+        # class-consistent metric (learned the hard way on silicon)
         results.sort(reverse=True)
         best = results[0]
         print(f"\nBest match: [{best[2]}] {best[3]} "
-              f"({best[0]} consistent, {best[1]} exact)")
+              f"({best[0]} exact, {best[1]} consistent)")
 
 
 if __name__ == "__main__":
