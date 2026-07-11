@@ -295,5 +295,12 @@ double render per POI advance.
   reported 1280x1024 gave it away).  User's CRT syncs 1080p60; the
   one-time geometry readjust is per-mode memory in the monitor.
 - 16:9 confirmed working after the AR fix + vmode.
+- **Iterations forced to 4095 in gallery** (user spec, round 2):
+  renders are one-off per POI, so boundary quality wins over render
+  time (worst case ~14 s for an all-interior 1080p frame; P2
+  periodicity keeps typical interiors far cheaper).  The OSD
+  Iterations row is D-masked in gallery; `GALLERY_MAX_ITER` is a
+  fractal_top parameter so TBs keep fast renders.  gallery_verify
+  references now classify interior at 4095.
 - **Palette tearing at fast cycling** found by the user and fixed:
   sweep moved from core vblank to FB_VBL (see above).

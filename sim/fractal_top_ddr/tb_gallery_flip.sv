@@ -45,7 +45,8 @@ always @(posedge clk_iter) fb_vbl_dly <= {fb_vbl_dly[1022:0], vblank};
 
 fractal_top #(
     .H_RES(320), .V_RES(240), .N_ITERATORS(24),
-    .WIDTH(64), .FRAC_BITS(56), .BOOT_GRACE_VBLANKS(6'd2)
+    .WIDTH(64), .FRAC_BITS(56), .BOOT_GRACE_VBLANKS(6'd2),
+    .GALLERY_MAX_ITER(12'd128)
 ) dut (
     .clk(clk), .clk_iter(clk_iter), .clk_vid(clk_iter), .rst_n(rst_n),
     .joystick(16'd0), .ps2_key(11'd0), .status(status),

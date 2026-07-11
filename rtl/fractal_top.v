@@ -25,7 +25,9 @@ module fractal_top #(
     // ~1 s of progressive output before honoring a saved interlaced
     // resolution (the ARM's first mode lock fails on 480i).  Parameter
     // so TBs can shorten it; synthesis always uses the default.
-    parameter [5:0] BOOT_GRACE_VBLANKS = 6'd60
+    parameter [5:0] BOOT_GRACE_VBLANKS = 6'd60,
+    // Gallery iteration ceiling (12-bit max; TBs override for speed)
+    parameter [11:0] GALLERY_MAX_ITER = 12'd4095
 )(
     input  wire        clk,       // 50 MHz (clk_sys: render, framebuffer write, control)
     input  wire        clk_iter,  // 100 MHz (iter_quad math)
@@ -491,7 +493,13 @@ reg  [11:0] input_max_iter;
 // sweep through {128, 256, 512, 1024, 2048} for every scene by simply
 // toggling the OSD setting between bench runs — no per-scene catalogue
 // edit needed for the profiling itself.  See `tools/profile_max_iter.py`.
-wire [11:0] max_iter = (benchmark_active && input_iter_sel == 3'd5)
+// Gallery renders each POI exactly once — render time is a one-off
+// cost, boundary quality is what stays on screen.  Iterations are
+// therefore forced to the maximum in gallery mode (user spec); the
+// OSD Iterations row is D-masked there.  Parameterized so the TBs can
+// keep fast render times.
+wire [11:0] max_iter = gallery_mode ? GALLERY_MAX_ITER[11:0]
+                     : (benchmark_active && input_iter_sel == 3'd5)
                        ? bench_max_iter   // bench + OSD-Auto: per-scene catalogue value
                        : input_max_iter;  // otherwise: OSD-driven (Auto-ladder or fixed)
 reg  [6:0] palette_sel_prev;

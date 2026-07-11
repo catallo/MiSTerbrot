@@ -144,10 +144,11 @@ def main():
     hw = sample_words(bank, coords)
 
     def eval_poi(p):
-        # az uses the per-POI max_iter override when the OSD is on Auto
-        mi = int(p["max_iter"]) if "max_iter" in p else None
+        # gallery forces the 12-bit iteration ceiling (user spec,
+        # 2026-07-11) — per-POI overrides no longer apply there
         ref_idx, ref_esc = reference_indices(
-            float(p["cx"]), float(p["cy"]), poi_zoom(p), coords, max_iter=mi)
+            float(p["cx"]), float(p["cy"]), poi_zoom(p), coords,
+            max_iter=4095)
         return score(hw, ref_idx, ref_esc)
 
     frac = "--frac-zoom" in args
