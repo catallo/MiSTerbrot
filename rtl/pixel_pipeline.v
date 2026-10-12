@@ -239,9 +239,14 @@ assign frame_done = coord_frame_done & ~any_busy;
 // =====================================================================
 // Dispatch + collect FSMs (clk_sys)
 //
-// Per-slot done_pending flag latches the synchronized done pulse, so
-// the collect FSM can pick it up whenever collect_idx wraps around to it.
-// Without this, pulses arriving while collect_idx is elsewhere would be lost.
+// Per-slot done_pending flag latches the synchronized done pulse; the
+// collect logic consumes ONE pending slot per clk_sys cycle, chosen by a
+// first-pending priority encoder (2026-10-12).  The previous round-robin
+// walk (collect_idx advancing every cycle regardless of pending state)
+// left a finished pixel's iterator blocked for 12 cycles on average and
+// 24 worst case before it could be re-dispatched — ~0.3 us of dead time
+// per pixel per slot on top of the two clock crossings, i.e. ~10% of
+// the per-pixel budget on 30 fps views (measured in sim/pixel_pipeline).
 //
 // Dispatch targets the FIRST FREE slot (priority encoder over the busy
 // vector).  The previous in-order ring (`dispatch_idx` advancing only on
@@ -252,7 +257,6 @@ assign frame_done = coord_frame_done & ~any_busy;
 // (dendrites, seahorse valley).  Free-slot dispatch lets fast slots
 // recycle immediately regardless of the stragglers.
 // =====================================================================
-reg [IDX_W-1:0] collect_idx;
 reg             iter_done_pending [0:N_ITERATORS-1];
 
 // First-free priority encoder over the (already flattened) busy vector.
@@ -265,10 +269,23 @@ always @(*) begin
 end
 assign coord_ready = ~&busy_flat;
 
+// First-pending priority encoder over (done_pending & busy).
+reg [N_ITERATORS-1:0] pend_flat;
+reg [IDX_W-1:0]       collect_slot;
+reg                   collect_any;
+integer pc;
+always @(*) begin
+    for (pc = 0; pc < N_ITERATORS; pc = pc + 1)
+        pend_flat[pc] = iter_done_pending[pc] & iter_busy[pc];
+    collect_slot = {IDX_W{1'b0}};
+    collect_any  = 1'b0;
+    for (pc = N_ITERATORS - 1; pc >= 0; pc = pc - 1)
+        if (pend_flat[pc]) begin collect_slot = pc[IDX_W-1:0]; collect_any = 1'b1; end
+end
+
 integer i;
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
-        collect_idx  <= {IDX_W{1'b0}};
         result_valid <= 1'b0;
         result_x <= 11'd0; result_y <= 11'd0;
         result_iter <= 12'd0; result_escaped <= 1'b0;
@@ -304,22 +321,20 @@ always @(posedge clk or negedge rst_n) begin
             iter_rid[dispatch_slot]     <= coord_region_id;
         end
 
-        // ---- Collect ----
-        // Walk collect_idx round-robin; consume a pending flag whenever found.
+        // ---- Collect (first pending slot) ----
         // iter_count/escaped buses are stable in clk_iter from done assertion
-        // until next dispatch — safe to sample combinationally here.
-        if (iter_done_pending[collect_idx] && iter_busy[collect_idx]) begin
-            result_valid                  <= 1'b1;
-            result_x                      <= iter_px[collect_idx];
-            result_y                      <= iter_py[collect_idx];
-            result_iter                   <= iter_count_level[collect_idx];
-            result_escaped                <= iter_escaped_level[collect_idx];
-            result_region_id              <= iter_rid[collect_idx];
-            iter_busy[collect_idx]        <= 1'b0;
-            iter_done_pending[collect_idx]<= 1'b0;
+        // until next dispatch — safe to sample combinationally here.  The
+        // freed slot is visible to the dispatch encoder next cycle.
+        if (collect_any) begin
+            result_valid                   <= 1'b1;
+            result_x                       <= iter_px[collect_slot];
+            result_y                       <= iter_py[collect_slot];
+            result_iter                    <= iter_count_level[collect_slot];
+            result_escaped                 <= iter_escaped_level[collect_slot];
+            result_region_id               <= iter_rid[collect_slot];
+            iter_busy[collect_slot]        <= 1'b0;
+            iter_done_pending[collect_slot]<= 1'b0;
         end
-        collect_idx <= (collect_idx == N_ITERATORS[IDX_W-1:0] - 1'b1)
-                       ? {IDX_W{1'b0}} : collect_idx + 1'b1;
     end
 end
 

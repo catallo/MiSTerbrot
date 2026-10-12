@@ -1565,6 +1565,19 @@ pll_audio pll_audio
 );
 
 wire spdif;
+// MISTERBROT_NO_AUDIO (2026-10-12, ALM diet): this core drives constant-zero
+// audio, so the whole audio_out chain (IIR filter, DC blockers, I2S/SPDIF
+// encoders, ~1.7k ALMs) is dead weight.  Tie the outputs off instead.
+`ifdef MISTERBROT_NO_AUDIO
+assign HDMI_SCLK  = 1'b0;
+assign HDMI_LRCLK = 1'b0;
+assign HDMI_I2S   = 1'b0;
+`ifndef MISTER_DUAL_SDRAM
+assign analog_l = 1'b0;
+assign analog_r = 1'b0;
+`endif
+assign spdif = 1'b0;
+`else
 audio_out audio_out
 (
 	.reset(reset | areset),
@@ -1601,6 +1614,7 @@ audio_out audio_out
 `endif
 	.spdif(spdif)
 );
+`endif
 
 
 `ifndef MISTER_DISABLE_ALSA
