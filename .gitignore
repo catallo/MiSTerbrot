@@ -46,6 +46,8 @@ tools/*
 !tools/poi_ocr.py
 !tools/gallery_verify.py
 !tools/poi_compare_score.py
+!tools/fps_poi_measure.py
+!tools/fps_ocr.py
 !tools/poi_master.json
 !tools/benchmarks.json
 !tools/bench_encode.py

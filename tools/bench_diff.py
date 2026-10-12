@@ -31,7 +31,7 @@ def main():
     p.add_argument("before", help="baseline JSON path")
     p.add_argument("after", help="post-optimisation JSON path")
     p.add_argument("--threshold", type=float, default=0.10,
-                   help="Highlight rows with |ratio-1| >= this (default 0.10 = 10%)")
+                   help="Highlight rows with |ratio-1| >= this (default 0.10 = 10%%)")
     args = p.parse_args()
 
     a = load(args.before)

@@ -230,3 +230,35 @@ Consequences:
 - ALM cost of the adapter (~500-1000 ALMs est.) on top of 84% — fine
   on paper; the seed lottery has recovered from worse.
 - 480p PLL/timing details deliberately unscoped here.
+
+## Triple buffering — tried and rejected (2026-10-12)
+
+Hypothesis: the double buffer's swap-on-vblank makes the render FSM idle
+until the next vblank after every frame (fps quantised to 60/N), so a
+third DDR3 bank (0x3050_0000, render/ready/display pointers, display
+pointer moved only at vblank) should lift mid-speed views from 30 to
+40-58 fps.  Implemented, 9/9 Verilator benches green, seed 2 fit at
+-0.639 ns (seed 3 of a write-paced variant at -0.474 ns).
+
+Silicon result on 640x480p (fixed-POI comparison via playlist skip +
+overlay OCR, same zoom levels):
+
+| POI / zoom            | double buffer | triple buffer |
+|-----------------------|---------------|---------------|
+| ANTENNA BAND MERGE 2.9| 30            | 30            |
+| ANTENNA BAND MERGE 3.8| 44            | 30 / 52 (paced) |
+| ANTENNA BAND MERGE 4.6| 60            | 60            |
+| JULIA ISLANDS 3.7     | 28            | 30            |
+| JULIA ISLANDS 12      | 12            | 12            |
+| P3 ISLAND 2..4.7      | 58-60         | 58-60         |
+
+No systematic gain: the "30 fps" views are genuinely ~33 ms frames,
+and fast views are bounded by one view change per vblank anyway.
+Worse, the renderer never idling turns the scattered single-beat pixel
+writes into a continuous DDR3 stream, and the HPS screenshot path
+(scaler buffer read) came back garbled in a third of the captures
+(stacked partial frames); the double-buffer builds were clean in 59/59
+captures of the same test.  Pacing the drain to one write per two
+clocks (25 M/s) did not cure it.  Reverted to the double buffer; if
+this is ever retried it needs write coalescing (4 px per 64-bit beat)
+first, and a check of the HDMI output, not only screenshots.
