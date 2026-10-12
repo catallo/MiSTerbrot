@@ -61,7 +61,11 @@ module gallery_palette (
     // palette stream (into gallery_fb pass-through -> FB_PAL_*)
     output reg         pal_wr,
     output reg  [7:0]  pal_addr,
-    output reg  [23:0] pal_data
+    output reg  [23:0] pal_data,
+    // level: the last COMPLETED sweep wrote every entry at fade_scale 0
+    // (cleared as soon as a sweep starts with a non-zero scale).
+    // gallery_ctl (clk_sys, 2FF-synced) flips the hidden bank on it.
+    output reg         black_shown
 );
 
 // ---- sweep sequencing ----
@@ -73,6 +77,7 @@ module gallery_palette (
 // parked value and entry 1 captures a stale color (caught by the
 // golden-model TB the moment the trigger moved).
 reg        sweep_pend;
+reg        sweep_black;  // every entry of the sweep in flight used scale 0
 reg  [8:0] inj_k;        // 9 bits: 256+ = parked
 reg  [8:0] cap_d1, cap_d2;
 wire       sweeping = (inj_k <= 9'd255);
@@ -109,6 +114,8 @@ always @(posedge clk or negedge rst_n) begin
         pal_wr   <= 1'b0;
         pal_addr <= 8'd0;
         pal_data <= 24'd0;
+        sweep_black <= 1'b0;
+        black_shown <= 1'b0;
     end else begin
         pal_wr <= 1'b0;
         if (sweep_start) sweep_pend <= 1'b1;
@@ -117,6 +124,8 @@ always @(posedge clk or negedge rst_n) begin
             inj_k  <= 9'd256;
             cap_d1 <= 9'd256;
             cap_d2 <= 9'd256;
+            sweep_black <= 1'b0;
+            black_shown <= 1'b0;
         end else if (sweep_pend && ce_pix) begin
             // tick-aligned sweep start; entry 0 = interior black,
             // written directly (also correct during fades)
@@ -127,6 +136,8 @@ always @(posedge clk or negedge rst_n) begin
             pal_wr   <= 1'b1;
             pal_addr <= 8'd0;
             pal_data <= 24'h000000;
+            sweep_black <= (fade_scale == 6'd0);
+            if (fade_scale != 6'd0) black_shown <= 1'b0;
         end else if (ce_pix) begin
             // nonblocking shift: capture reads the PRE-edge cap_d2 =
             // the index loaded 3 tick edges ago, whose color the
@@ -140,6 +151,8 @@ always @(posedge clk or negedge rst_n) begin
                 pal_data <= {scale_fade(color_r, fade_scale),
                              scale_fade(color_g, fade_scale),
                              scale_fade(color_b, fade_scale)};
+                if (fade_scale != 6'd0) sweep_black <= 1'b0;
+                if (cap_d2 == 9'd255) black_shown <= sweep_black && (fade_scale == 6'd0);
             end
         end
     end

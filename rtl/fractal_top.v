@@ -412,9 +412,14 @@ always @(posedge clk or negedge rst_n) begin
         az_enable_prev <= 1'b1;
     end else begin
         az_enable_prev <= az_enable;
+`ifdef MISTERBROT_NO_BENCH
+        // No benchmark engine: B is a no-op, it must not drop auto-zoom.
+        if (auto_zoom_deactivate)
+`else
         if (benchmark_toggle && !benchmark_active)
             az_enable <= 1'b0;
         else if (auto_zoom_deactivate)
+`endif
             az_enable <= 1'b0;
         else if (auto_zoom_toggle)
             az_enable <= ~az_enable;
@@ -1248,6 +1253,15 @@ wire        gal_clear_wr, gal_clear_bank;
 wire [10:0] gal_clear_x, gal_clear_y;
 wire [5:0]  gal_fade_scale;
 wire        gal_dwell_ok;
+// black_shown: gallery_palette (clk_vid) reports that the last completed
+// scaler sweep wrote an all-black palette; 2FF into clk_sys gates the
+// hidden-mode bank flip (single-bit level, no net-delay requirement).
+wire        gal_black_shown;
+reg  [1:0]  gal_black_ss;
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) gal_black_ss <= 2'b00;
+    else        gal_black_ss <= {gal_black_ss[0], gal_black_shown};
+end
 // palette stream: driven by gallery_palette in the VIDEO domain (the
 // sequencer taps color_mapper); gallery_fb forwards clk_vid as
 // fb_pal_clk so ascal's pal2 port clocks coherently with the writes.
@@ -1267,6 +1281,7 @@ gallery_ctl u_gallery_ctl (
     .render_idle((render_state == RS_IDLE) && !need_rerender),
     .wr_idle(gal_wr_idle),
     .vblank_rise(vblank_rise),
+    .black_shown(gal_black_ss[1]),
     .wr_ready(gal_wr_ready),
     .clear_active(gal_clear_active),
     .clear_wr(gal_clear_wr),
@@ -1442,7 +1457,8 @@ gallery_palette u_gallery_palette (
     .fade_scale(fade_vs),
     .inj_iter(gal_inj_iter),
     .color_r(disp_r), .color_g(disp_g), .color_b(disp_b),
-    .pal_wr(gal_pwr), .pal_addr(gal_paddr), .pal_data(gal_pdata)
+    .pal_wr(gal_pwr), .pal_addr(gal_paddr), .pal_data(gal_pdata),
+    .black_shown(gal_black_shown)
 );
 
 text_overlay #(

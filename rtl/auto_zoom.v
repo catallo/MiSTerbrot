@@ -151,8 +151,9 @@ reg [IDX_BITS-1:0] fill_idx;
 reg [1:0]          adv_ph;           // S_NEXT / S_SNAP_LOAD subphase
 
 // ---- POI data ROM (block RAM; init from rtl/poi_generated.vh) ----
-// One 155-bit word per POI: {cx[154:91], cy[90:27], zoom_x10[26:17],
-// zoom_int[16:12], max_iter[11:0]} — packing defined by poi_encode.py.
+// One POI_TABLE_W-bit word per POI: {cx, cy, zoom_x10, zoom_int, max_iter};
+// the packing (widths and LSB offsets) is defined once in poi_encode.py and
+// exported as `POI_*_LSB / `POI_TABLE_W in poi_generated.vh.
 // Was four combinational case-statement LUT ROMs; at 128 POIs those mux
 // trees cost enough ALMs/routing that the iter-clock MAC path lost 0.7 ns
 // of slack to placement congestion (2026-07-12). M10K leaves the fabric
@@ -164,21 +165,26 @@ reg [1:0]          adv_ph;           // S_NEXT / S_SNAP_LOAD subphase
 // was consumed. Every other consumer (S_IDLE/S_LOAD/S_ZOOM_IN snaps, the
 // zoom-stop compare) reads a target_idx that has been stable for many
 // cycles, where the 1-cycle-late poi_q is indistinguishable.
-localparam POI_W     = 155;
+localparam POI_W     = `POI_TABLE_W;
 localparam POI_DEPTH = 1 << IDX_BITS;
 (* ramstyle = "M10K" *) reg [POI_W-1:0] poi_rom [0:POI_DEPTH-1];
 initial begin
     `POI_TABLE_INIT
 end
 reg  [POI_W-1:0] poi_q;
-wire advance_rd = (state == S_NEXT || state == S_SNAP_LOAD) && (adv_ph == 2'd2);
+// Gated on `enable`: if Z/Space drops auto-zoom on the phase-2 edge the
+// FSM leaves for S_IDLE and target_idx keeps its value, so poi_q must
+// not be loaded from the (abandoned) playlist read — the 1-cycle
+// phantom would land in target_max_iter_r (2026-10-12 review fix).
+wire advance_rd = enable && (state == S_NEXT || state == S_SNAP_LOAD) && (adv_ph == 2'd2);
 always @(posedge clk) poi_q <= poi_rom[advance_rd ? tp_rdata : target_idx];
 
-wire signed [WIDTH-1:0] rom_cx              = poi_q[154:91];
-wire signed [WIDTH-1:0] rom_cy              = poi_q[90:27];
-wire        [9:0]       target_max_zoom_x10 = poi_q[26:17];
-wire        [4:0]       target_zoom_int     = poi_q[16:12];
-wire        [11:0]      target_max_iter     = poi_q[11:0];
+// Field offsets come from poi_generated.vh (single source: poi_encode.py).
+wire signed [WIDTH-1:0] rom_cx              = poi_q[`POI_CX_LSB    +: WIDTH];
+wire signed [WIDTH-1:0] rom_cy              = poi_q[`POI_CY_LSB    +: WIDTH];
+wire        [9:0]       target_max_zoom_x10 = poi_q[`POI_ZX10_LSB  +: 10];
+wire        [4:0]       target_zoom_int     = poi_q[`POI_ZINT_LSB  +: 5];
+wire        [11:0]      target_max_iter     = poi_q[`POI_MAXIT_LSB +: 12];
 
 // The module OUTPUT is REGISTERED: target_idx updates one advance phase
 // BEFORE center/step/view_changed land.  A combinational max_iter output

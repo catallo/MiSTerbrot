@@ -33,6 +33,7 @@ module gallery_ctl (
     input  wire        render_idle,      // render FSM idle, no restart pending
     input  wire        wr_idle,          // gallery_fb FIFO drained
     input  wire        vblank_rise,      // clk-domain vblank tick
+    input  wire        black_shown,      // synced: scaler palette is all-black
     input  wire        wr_ready,         // clear-write pacing
 
     // clear stream (fractal_top muxes it ahead of the render tap)
@@ -165,14 +166,19 @@ always @(posedge clk or negedge rst_n) begin
             if (vblank_rise && fade_scale != 6'd0)
                 fade_scale <= (fade_scale <= FADE_STEP)
                               ? 6'd0 : fade_scale - FADE_STEP;
-            // Flip only while black AND no render in flight: a frame
+            // Flip only once the scaler palette IS black (black_shown:
+            // fade_scale 0 lands in the clk_vid sweep only on the NEXT
+            // scaler vblank, which is unrelated in phase to the core
+            // vblank that zeroed it — flipping on fade_scale alone
+            // showed the new bank for a frame at the last dim step)
+            // AND no render in flight: a frame
             // started before the flip samples render_bank per push, so
             // flipping mid-render splits it across banks (TB caught 4
             // pre-flip pushes draining after the flip).  If a rerender
             // raced the fade, hold at black until it commits — the
             // flip then shows the newest frame, and the flip consumes
             // that commit (else G_WAIT would ping-pong on it).
-            if (fade_scale == 6'd0 && render_idle && wr_idle) begin
+            if (fade_scale == 6'd0 && black_shown && render_idle && wr_idle) begin
                 display_bank <= ~display_bank;
                 commit_arm   <= 1'b0;
                 state        <= G_FADE_IN;

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Encode POI master list into 8.56 fixed-point Verilog `case` blocks.
+"""Encode POI master list into 8.56 fixed-point block-RAM init tables.
 
 Reads tools/poi_master.json. Produces:
-  - tools/poi_generated.vh : case blocks for rom_cx/cy, target_max_zoom_x10,
-                              target_zoom_int, target_max_iter, and target_name_full
+  - rtl/poi_generated.vh : `POI_TABLE_INIT (auto_zoom.v poi_rom) and
+                           `POI_NAME_INIT (text_overlay.v name_rom) plus the
+                           `POI_*_LSB / width defines the RTL slices with
   - prints a roundtrip-verified summary table
 
 8.56 format: 64-bit signed, 56 fractional bits. value = signed_int / 2**56.
@@ -23,6 +24,20 @@ WIDTH = 64
 SCALE = 1 << FRAC_BITS
 MAX_VAL = (1 << (WIDTH - 1)) - 1
 MIN_VAL = -(1 << (WIDTH - 1))
+
+# Packed-word layout.  THE single definition: the generated header exports
+# these as `define POI_*_LSB / POI_*_W and the RTL slices with them, so a
+# layout change here cannot silently diverge from auto_zoom.v/text_overlay.v.
+POI_MAXIT_LSB, POI_MAXIT_W = 0, 12
+POI_ZINT_LSB,  POI_ZINT_W  = 12, 5
+POI_ZX10_LSB,  POI_ZX10_W  = 17, 10
+POI_CY_LSB                 = 27            # WIDTH bits
+POI_CX_LSB                 = 27 + WIDTH    # 91
+POI_TABLE_W                = POI_CX_LSB + WIDTH   # 155
+POI_NAME_CHARS             = 20
+POI_NAME_LABEL_W           = POI_NAME_CHARS * 8   # 160
+POI_NAME_LEN_LSB, POI_NAME_LEN_W = POI_NAME_LABEL_W, 5
+POI_NAME_W                 = POI_NAME_LEN_LSB + POI_NAME_LEN_W   # 165
 
 
 def to_8_56(x: float) -> int:
@@ -51,6 +66,13 @@ def name_to_overlay(s: str, length: int = 20) -> str:
     if len(s) > length:
         s = s[:length]
     return s.ljust(length)
+
+
+def pack_poi(cx_u: int, cy_u: int, zoom_x10: int, zoom_int: int, max_iter: int) -> int:
+    assert 0 <= zoom_x10 < (1 << POI_ZX10_W) and 0 <= zoom_int < (1 << POI_ZINT_W) \
+        and 0 <= max_iter < (1 << POI_MAXIT_W)
+    return ((cx_u << POI_CX_LSB) | (cy_u << POI_CY_LSB) | (zoom_x10 << POI_ZX10_LSB)
+            | (zoom_int << POI_ZINT_LSB) | max_iter)
 
 
 def main():
@@ -112,7 +134,7 @@ def main():
     # hardware from a register it blew the compose-stage budget by ~0.9 ns
     # (third BRAM build, 2026-07-12), so the encoder now bakes it in.
     depth = 1 << idx_bits
-    default_word = (to_8_56(-0.1875) << 91) | (to_8_56(0.0) << 27) | (80 << 17) | (8 << 12) | 1024
+    default_word = pack_poi(to_8_56(-0.1875), to_8_56(0.0), 80, 8, 1024)
     default_name = int.from_bytes(b" " * 20, "big")  # len 0, blank label
 
     lines = []
@@ -123,18 +145,29 @@ def main():
     lines.append(f"`define POI_IDX_BITS   {idx_bits}")
     lines.append(f"`define POI_LAST_IDX   {idx_bits}'d{n-1}")
     lines.append("")
+    lines.append("// Packed-word layout (LSB offsets / widths) — slice with these, never literals.")
+    lines.append(f"`define POI_TABLE_W       {POI_TABLE_W}")
+    lines.append(f"`define POI_CX_LSB        {POI_CX_LSB}")
+    lines.append(f"`define POI_CY_LSB        {POI_CY_LSB}")
+    lines.append(f"`define POI_ZX10_LSB      {POI_ZX10_LSB}")
+    lines.append(f"`define POI_ZINT_LSB      {POI_ZINT_LSB}")
+    lines.append(f"`define POI_MAXIT_LSB     {POI_MAXIT_LSB}")
+    lines.append(f"`define POI_NAME_W        {POI_NAME_W}")
+    lines.append(f"`define POI_NAME_LABEL_W  {POI_NAME_LABEL_W}")
+    lines.append(f"`define POI_NAME_LEN_LSB  {POI_NAME_LEN_LSB}")
+    lines.append("")
     lines.append("// ---- poi_rom init (auto_zoom.v): {cx, cy, zoom_x10, zoom_int, max_iter} ----")
     lines.append("`define POI_TABLE_INIT \\")
     for i in range(depth):
         if i < n:
             e = encoded[i]
             zint = max(0, min(31, int(round(e["zoom_x10"] / 10.0))))
-            word = (e["cx_u"] << 91) | (e["cy_u"] << 27) | (e["zoom_x10"] << 17) | (zint << 12) | e["max_iter"]
+            word = pack_poi(e["cx_u"], e["cy_u"], e["zoom_x10"], zint, e["max_iter"])
             comment = e["name"]
         else:
             word = default_word
             comment = "unused (default)"
-        lines.append(f"    poi_rom[{i:<3}] = 155'h{word:039X}; /* {comment} */ \\")
+        lines.append(f"    poi_rom[{i:<3}] = {POI_TABLE_W}'h{word:0{(POI_TABLE_W+3)//4}X}; /* {comment} */ \\")
     lines[-1] = lines[-1].rstrip(" \\")
     lines.append("")
     lines.append("// ---- name_rom init (text_overlay.v): {len, 20-char overlay label} ----")
@@ -143,12 +176,12 @@ def main():
         if i < n:
             e = encoded[i]
             name_len = len(e["overlay"].rstrip(" "))
-            word = (name_len << 160) | int.from_bytes(e["overlay"].encode("ascii"), "big")
+            word = (name_len << POI_NAME_LEN_LSB) | int.from_bytes(e["overlay"].encode("ascii"), "big")
             comment = f"{e['name']} (len {name_len})"
         else:
             word = default_name
             comment = "unused (blank, len 0)"
-        lines.append(f"    name_rom[{i:<3}] = 165'h{word:042X}; /* {comment} */ \\")
+        lines.append(f"    name_rom[{i:<3}] = {POI_NAME_W}'h{word:0{(POI_NAME_W+3)//4}X}; /* {comment} */ \\")
     lines[-1] = lines[-1].rstrip(" \\")
 
     with open(OUT_VH, "w") as f:

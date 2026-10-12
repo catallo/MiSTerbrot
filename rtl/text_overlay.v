@@ -91,7 +91,12 @@ localparam [9:0]  TARGET_H = 10'd19;  // 2 top + 5 + 5 gap + 5 + 2 bottom
 localparam [10:0] GITHUB_X_320 = 11'd221; // right-aligned for 320: 313 - 18*5 = 223 (using 221)
 localparam [10:0] GITHUB_X_640 = 11'd541; // right-aligned for 640: 633 - 18*5 = 543 (using 541)
 wire       [10:0] GITHUB_X = mode_640 ? GITHUB_X_640 : GITHUB_X_320;
-localparam [9:0]  GITHUB_Y = 10'd211; // same as TARGET_Y
+// 640 px: on the target box's row, right-aligned.  320 px is too narrow
+// for both on one row (target spans 5..248, GitHub would span 221..314 and
+// paint over the palette name), so the box stacks ABOVE the target box.
+localparam [9:0]  GITHUB_Y_640 = 10'd211; // same as TARGET_Y
+localparam [9:0]  GITHUB_Y_320 = 10'd190; // TARGET_Y - GITHUB_H - 2
+wire       [9:0]  GITHUB_Y = mode_640 ? GITHUB_Y_640 : GITHUB_Y_320;
 localparam [10:0] GITHUB_W = 11'd94;  // 18*5 + 4
 localparam [9:0]  GITHUB_H = 10'd19;
 
@@ -403,11 +408,12 @@ bcd_serial #(.BIN_W(14)) u_bcd_y (
 // the POI table in auto_zoom (2026-07-12 timing diet).  The read is
 // synchronous; the label only changes on POI/benchmark-scene advance, so
 // the 1-cycle-late q is invisible (text is re-rendered every frame).
-// ROM word is {len[164:160], label[159:0]} — the trailing-space-stripped
+// ROM word is {len, label} (offsets: `POI_NAME_LEN_LSB / `POI_NAME_LABEL_W
+// from poi_generated.vh) — the trailing-space-stripped
 // length is precomputed by poi_encode.py so no priority scan runs in
 // hardware (the old poi_length_calc chain missed the compose budget).
 localparam NAME_DEPTH = 1 << `POI_IDX_BITS;
-(* ramstyle = "M10K" *) reg [164:0] name_rom [0:NAME_DEPTH-1];
+(* ramstyle = "M10K" *) reg [`POI_NAME_W-1:0] name_rom [0:NAME_DEPTH-1];
 initial begin
     `POI_NAME_INIT
 end
@@ -417,7 +423,7 @@ end
 // combinationally out of the fixed-location RAM block and blew the video
 // path by ~2.6 ns (first BRAM build, 2026-07-12). Label appears 2 cycles
 // after an index change — still invisible.
-reg [164:0] name_ram_q, poi_name_q;
+reg [`POI_NAME_W-1:0] name_ram_q, poi_name_q;
 always @(posedge clk) begin
     name_ram_q <= name_rom[benchmark_active ? benchmark_idx : target_idx];
     poi_name_q <= name_ram_q;
@@ -797,7 +803,7 @@ endfunction
 // it gets its own pipeline register; 1-cycle-stale content is invisible.
 reg [383:0] poi_pal_line_r;
 always @(posedge clk)
-    poi_pal_line_r <= target_poi_palette(poi_name_q[159:0], poi_name_q[164:160], palette_sel);
+    poi_pal_line_r <= target_poi_palette(poi_name_q[`POI_NAME_LABEL_W-1:0], poi_name_q[`POI_NAME_LEN_LSB +: 5], palette_sel);
 
 function [383:0] target_line_data;
     input [2:0] line;

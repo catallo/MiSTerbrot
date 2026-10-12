@@ -123,6 +123,8 @@ set_net_delay -max 20 -from [get_registers {*u_fb_ddr3|line_row_hold[*]}]
 # Gallery fade scale into the clk_vid palette sequencer (2FF sync;
 # quasi-static, one +/-3 step per vblank — same CDC contract).
 set_net_delay -max 20 -from [get_registers {*u_gallery_ctl|fade_scale[*]}]
+# gallery_palette's all-black-sweep flag back into clk_sys (2FF, single bit)
+set_net_delay -max 20 -from [get_registers {*u_gallery_palette|black_shown}]
 
 # Cycling/crossfade phase regs are clk_vid-local now (color_mapper
 # moved wholesale): keep their relaxation into the vid compositing

@@ -5,6 +5,17 @@
 `define POI_IDX_BITS   7
 `define POI_LAST_IDX   7'd127
 
+// Packed-word layout (LSB offsets / widths) — slice with these, never literals.
+`define POI_TABLE_W       155
+`define POI_CX_LSB        91
+`define POI_CY_LSB        27
+`define POI_ZX10_LSB      17
+`define POI_ZINT_LSB      12
+`define POI_MAXIT_LSB     0
+`define POI_NAME_W        165
+`define POI_NAME_LABEL_W  160
+`define POI_NAME_LEN_LSB  160
+
 // ---- poi_rom init (auto_zoom.v): {cx, cy, zoom_x10, zoom_int, max_iter} ----
 `define POI_TABLE_INIT \
     poi_rom[0  ] = 155'h7F42E6C093D9663800000000000000000786800; /* P6 SUB BULB */ \

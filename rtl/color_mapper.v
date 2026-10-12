@@ -147,6 +147,15 @@ reg  [6:0] pal_from, pal_to;
 reg  [6:0] fade_counter;
 reg        fade_tick_div;       // halves the decrement rate for Slow Crossfade
 wire       fade_active = (fade_counter != 7'd0);
+// palette_sel is a clk_sys-domain value (fractal_top muxes OSD / keyboard /
+// auto_zoom registers combinationally).  The detector below runs every
+// clk_vid cycle, so a torn multi-bit sample (bits landing up to 2 clk_vid
+// apart under the 20 ns set_net_delay contract) used to start a crossfade
+// FROM a phantom palette.  2FF-synchronise and require three equal
+// consecutive samples before a change is acted on (2026-10-12).
+reg  [6:0] pal_s1, pal_s2, pal_s3, pal_s4;
+always @(posedge clk) {pal_s4, pal_s3, pal_s2, pal_s1} <= {pal_s3, pal_s2, pal_s1, palette_sel};
+wire       pal_sel_stable = (pal_s2 == pal_s3) && (pal_s3 == pal_s4);
 // 64-level crossfade: use top 6 bits of fade_counter as the weight.  With
 // dec=2 per vblank, the weight changes by 1 every vblank → 60 Hz step
 // rate, visually smooth (the previous 16-step ladder ran at ~16 Hz step
@@ -2456,10 +2465,10 @@ always @(posedge clk or negedge rst_n) begin
         color_b          <= 8'd0;
     end else begin
         // Palette change detector — runs every cycle (not gated on vblank)
-        // so we catch the change as soon as palette_sel updates.
-        if (palette_sel != pal_to) begin
+        // so we catch the change as soon as the synced palette_sel settles.
+        if (pal_sel_stable && pal_s2 != pal_to) begin
             pal_from     <= pal_to;
-            pal_to       <= palette_sel;
+            pal_to       <= pal_s2;
             // Instant mode skips the fade entirely; the other modes start
             // a full fade from the new pal_from to pal_to.
             fade_counter <= (palette_transition_mode == 2'd1) ? 7'd0 : 7'd127;
