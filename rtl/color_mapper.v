@@ -193,9 +193,7 @@ reg [7:0] color_a_r, color_a_g, color_a_b;          // TO   palette, base entry 
 reg [7:0] color_b_r, color_b_g, color_b_b;          // TO   palette, next entry (latched T+3)
 reg [7:0] color_fa_r, color_fa_g, color_fa_b;       // FROM palette, base entry (latched T+3)
 
-reg [7:0] eval_tb_r, eval_tb_g, eval_tb_b;          // TO-base evaluator out
-reg [7:0] eval_tn_r, eval_tn_g, eval_tn_b;          // TO-next evaluator out
-reg [7:0] eval_fb_r, eval_fb_g, eval_fb_b;          // FROM-base evaluator out
+reg [23:0] to_q_a, to_q_b, from_q;                  // BRAM palette reads: TO[base], TO[next], FROM[base]
 
 wire [4:0] blend_a_weight = 5'd16 - {1'b0, cycle_frac};
 wire [4:0] blend_b_weight = {1'b0, cycle_frac};
@@ -2379,11 +2377,72 @@ task palette_rgb;
     end
 endtask
 
-// Three dedicated evaluators, all reading registered inputs only.
-always @(*) begin
-    palette_rgb(pal_to,   cidx_base_r, eval_tb_r, eval_tb_g, eval_tb_b);
-    palette_rgb(pal_to,   cidx_next_r, eval_tn_r, eval_tn_g, eval_tn_b);
-    palette_rgb(pal_from, cidx_base_r, eval_fb_r, eval_fb_g, eval_fb_b);
+// === BRAM palette tables (ALM diet, 2026-10-12) ==========================
+// The procedural palette_rgb task above is ~2,100 lines of arithmetic;
+// three per-pixel instances of it (TO-base, TO-next, FROM-base) cost
+// ~5.5k ALMs — the largest block in the design after the iterators.
+// Now ONE instance fills three 256x24 M10K tables during vblank
+// (TO x2 — one per read port — and FROM), and the pixel path only does
+// synchronous RAM reads at the cidx registers: same ring schedule, same
+// latency (RAM q lands one clk after cidx_*_r, captured at the next
+// tick's ce_d1 as before).
+//
+// Fill engine: vblank_rise -> 512 entries at HALF rate (one every 2 clks,
+// ~1,030 clks total — vblank is >20k clks in every mode).  Half rate so
+// the evaluator cone keeps the 2-clk budget it always had (SDC
+// multicycle fill_cnt/pal_* -> fill_rgb).  pal_to/pal_from only change
+// on vblank_rise (detector below), i.e. on the same edge the fill
+// restarts, so the tables always describe the palettes the fade logic
+// believes they hold.  Power-up: tables are undefined until the first
+// vblank (one frame, inside the boot grace).
+reg [23:0] to_tab_a [0:255];
+reg [23:0] to_tab_b [0:255];
+reg [23:0] from_tab [0:255];
+reg [9:0]  fill_cnt;                 // 0..511 filling, 512 = idle
+reg        fill_tick;                // half-rate phase
+wire       fill_active = ~fill_cnt[9];
+reg [7:0]  fe_r, fe_g, fe_b;         // the single evaluator
+always @(*) palette_rgb(fill_cnt[8] ? pal_from : pal_to, fill_cnt[7:0], fe_r, fe_g, fe_b);
+reg        fill_we_to, fill_we_from;
+reg [7:0]  fill_idx;
+reg [23:0] fill_rgb;
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        fill_cnt     <= 10'd512;
+        fill_tick    <= 1'b0;
+        fill_we_to   <= 1'b0;
+        fill_we_from <= 1'b0;
+        fill_idx     <= 8'd0;
+        fill_rgb     <= 24'd0;
+    end else begin
+        fill_we_to   <= 1'b0;
+        fill_we_from <= 1'b0;
+        fill_tick    <= ~fill_tick;
+        if (vblank_rise) begin
+            fill_cnt  <= 10'd0;
+            fill_tick <= 1'b0;       // first capture two clks after the restart
+        end else if (fill_tick && fill_active) begin
+            // inputs (fill_cnt, pal_*) have been stable for 2 clks
+            fill_rgb     <= {fe_r, fe_g, fe_b};
+            fill_idx     <= fill_cnt[7:0];
+            fill_we_to   <= ~fill_cnt[8];
+            fill_we_from <=  fill_cnt[8];
+            fill_cnt     <= fill_cnt + 10'd1;
+        end
+    end
+end
+// one simple-dual-port RAM per read port (write side shared)
+always @(posedge clk) begin
+    if (fill_we_to) to_tab_a[fill_idx] <= fill_rgb;
+    to_q_a <= to_tab_a[cidx_base_r];
+end
+always @(posedge clk) begin
+    if (fill_we_to) to_tab_b[fill_idx] <= fill_rgb;
+    to_q_b <= to_tab_b[cidx_next_r];
+end
+always @(posedge clk) begin
+    if (fill_we_from) from_tab[fill_idx] <= fill_rgb;
+    from_q <= from_tab[cidx_base_r];
 end
 
 // Stage sequencing + capture — fully restaged for the 100 MHz video
@@ -2410,15 +2469,15 @@ always @(posedge clk) begin
         escaped_q1  <= escaped;
     end
     if (ce_d1) begin
-        color_a_r  <= eval_tb_r;
-        color_a_g  <= eval_tb_g;
-        color_a_b  <= eval_tb_b;
-        color_b_r  <= eval_tn_r;
-        color_b_g  <= eval_tn_g;
-        color_b_b  <= eval_tn_b;
-        color_fa_r <= eval_fb_r;
-        color_fa_g <= eval_fb_g;
-        color_fa_b <= eval_fb_b;
+        color_a_r  <= to_q_a[23:16];
+        color_a_g  <= to_q_a[15:8];
+        color_a_b  <= to_q_a[7:0];
+        color_b_r  <= to_q_b[23:16];
+        color_b_g  <= to_q_b[15:8];
+        color_b_b  <= to_q_b[7:0];
+        color_fa_r <= from_q[23:16];
+        color_fa_g <= from_q[15:8];
+        color_fa_b <= from_q[7:0];
     end
     if (ce_d3) begin
         to_blend_qr <= to_blend_r;
@@ -2464,9 +2523,12 @@ always @(posedge clk or negedge rst_n) begin
         color_g          <= 8'd0;
         color_b          <= 8'd0;
     end else begin
-        // Palette change detector — runs every cycle (not gated on vblank)
-        // so we catch the change as soon as the synced palette_sel settles.
-        if (pal_sel_stable && pal_s2 != pal_to) begin
+        // Palette change detector — acts on vblank_rise only (2026-10-12):
+        // the BRAM tables are refilled from pal_to/pal_from in the vblank
+        // that starts on this edge, so a change latched here is on screen
+        // from the next frame with consistent tables.  (Previously it ran
+        // every clk; the one-frame delay is invisible against a 1 s fade.)
+        if (vblank_rise && pal_sel_stable && pal_s2 != pal_to) begin
             pal_from     <= pal_to;
             pal_to       <= pal_s2;
             // Instant mode skips the fade entirely; the other modes start

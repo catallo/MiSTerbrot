@@ -137,6 +137,14 @@ set_net_delay -max 20 -from [get_registers {*u_gallery_palette|black_shown}]
 set_multicycle_path -setup 2 -from [get_registers {*u_color_mapper|cycle_phase* *u_color_mapper|pal_* *u_color_mapper|fade_* *u_color_mapper|ping_dir}] -to [remove_from_collection [get_registers {*u_arcade_video|* *u_color_mapper|* *|dvid_*}] [get_registers {*u_color_mapper|pal_from[*] *u_color_mapper|pal_to[*] *u_color_mapper|fade_counter[*] *u_color_mapper|fade_tick_div}]]
 set_multicycle_path -hold  1 -from [get_registers {*u_color_mapper|cycle_phase* *u_color_mapper|pal_* *u_color_mapper|fade_* *u_color_mapper|ping_dir}] -to [remove_from_collection [get_registers {*u_arcade_video|* *u_color_mapper|* *|dvid_*}] [get_registers {*u_color_mapper|pal_from[*] *u_color_mapper|pal_to[*] *u_color_mapper|fade_counter[*] *u_color_mapper|fade_tick_div}]]
 
+# color_mapper BRAM palette fill (2026-10-12): the single palette evaluator
+# runs at half rate (fill_cnt advances every other clk, fill_rgb captures
+# on the same edge), so its cone keeps the 2-clk budget the per-pixel
+# evaluators used to have.  pal_to/pal_from change only on vblank_rise,
+# the edge that restarts the fill.
+set_multicycle_path -setup 2 -from [get_registers {*u_color_mapper|fill_cnt[*] *u_color_mapper|pal_to[*] *u_color_mapper|pal_from[*]}] -to [get_registers {*u_color_mapper|fill_rgb[*]}]
+set_multicycle_path -hold  1 -from [get_registers {*u_color_mapper|fill_cnt[*] *u_color_mapper|pal_to[*] *u_color_mapper|pal_from[*]}] -to [get_registers {*u_color_mapper|fill_rgb[*]}]
+
 # auto_zoom's step register roots a deep combinational cone (step_msb
 # priority tree -> zoom_exp -> zoom_level_x10 -> pacing -> step_delta)
 # whose captures are all vblank_rise / keypress-pulse gated — step itself
