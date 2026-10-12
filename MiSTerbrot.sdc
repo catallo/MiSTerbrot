@@ -127,8 +127,13 @@ set_net_delay -max 20 -from [get_registers {*u_gallery_ctl|fade_scale[*]}]
 # Cycling/crossfade phase regs are clk_vid-local now (color_mapper
 # moved wholesale): keep their relaxation into the vid compositing
 # cone, same one-tick-late-settle argument as before.
-set_multicycle_path -setup 2 -from [get_registers {*u_color_mapper|cycle_phase* *u_color_mapper|pal_* *u_color_mapper|fade_* *u_color_mapper|ping_dir}] -to [get_registers {*u_arcade_video|* *u_color_mapper|* *|dvid_*}]
-set_multicycle_path -hold  1 -from [get_registers {*u_color_mapper|cycle_phase* *u_color_mapper|pal_* *u_color_mapper|fade_* *u_color_mapper|ping_dir}] -to [get_registers {*u_arcade_video|* *u_color_mapper|* *|dvid_*}]
+# EXCLUDED from the relaxation (2026-10-11): the palette-change detector
+# feedback pal_to -> (palette_sel != pal_to) -> pal_from/pal_to/
+# fade_counter/fade_tick_div re-evaluates EVERY clock (color_mapper
+# "runs every cycle (not gated on vblank)"), so those captures are
+# genuinely single-cycle and must not inherit the tick-cadence budget.
+set_multicycle_path -setup 2 -from [get_registers {*u_color_mapper|cycle_phase* *u_color_mapper|pal_* *u_color_mapper|fade_* *u_color_mapper|ping_dir}] -to [remove_from_collection [get_registers {*u_arcade_video|* *u_color_mapper|* *|dvid_*}] [get_registers {*u_color_mapper|pal_from[*] *u_color_mapper|pal_to[*] *u_color_mapper|fade_counter[*] *u_color_mapper|fade_tick_div}]]
+set_multicycle_path -hold  1 -from [get_registers {*u_color_mapper|cycle_phase* *u_color_mapper|pal_* *u_color_mapper|fade_* *u_color_mapper|ping_dir}] -to [remove_from_collection [get_registers {*u_arcade_video|* *u_color_mapper|* *|dvid_*}] [get_registers {*u_color_mapper|pal_from[*] *u_color_mapper|pal_to[*] *u_color_mapper|fade_counter[*] *u_color_mapper|fade_tick_div}]]
 
 # auto_zoom's step register roots a deep combinational cone (step_msb
 # priority tree -> zoom_exp -> zoom_level_x10 -> pacing -> step_delta)
@@ -136,8 +141,14 @@ set_multicycle_path -hold  1 -from [get_registers {*u_color_mapper|cycle_phase* 
 # changes at most once per display frame.  Only the step-rooted cone is
 # relaxed: free_counter / LFSR / shuffle logic runs full-rate every cycle
 # and must stay single-cycle.
-set_multicycle_path -setup 2 -from [get_registers {*u_auto_zoom|step[*]}] -to [get_registers {*u_auto_zoom|*}]
-set_multicycle_path -hold  1 -from [get_registers {*u_auto_zoom|step[*]}] -to [get_registers {*u_auto_zoom|*}]
+# EXCLUDED (2026-10-11): the serial zoom normaliser (zstep_prev / znorm /
+# znorm_sh / zbusy) captures from `step` on the very clock after it
+# changes (`zstep_prev <= step; if (step != zstep_prev) znorm <= step`),
+# so those paths are real single-cycle paths — a relaxed route there
+# could load a stale step into the normaliser and leave zoom_level_x10
+# wrong until the next step change.
+set_multicycle_path -setup 2 -from [get_registers {*u_auto_zoom|step[*]}] -to [remove_from_collection [get_registers {*u_auto_zoom|*}] [get_registers {*u_auto_zoom|zstep_prev[*] *u_auto_zoom|znorm[*] *u_auto_zoom|znorm_sh[*] *u_auto_zoom|zbusy}]]
+set_multicycle_path -hold  1 -from [get_registers {*u_auto_zoom|step[*]}] -to [remove_from_collection [get_registers {*u_auto_zoom|*}] [get_registers {*u_auto_zoom|zstep_prev[*] *u_auto_zoom|znorm[*] *u_auto_zoom|znorm_sh[*] *u_auto_zoom|zbusy}]]
 
 # ascal input downscaler (framework): the C1..C5 stages including the
 # i_mem line-RAM -> i_pix bilinear cone all advance under i_pce (the

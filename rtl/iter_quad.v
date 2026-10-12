@@ -416,9 +416,25 @@ wire        [7:0]       zr_sq_ovf_w = zrsq_sum_w[95:88];
 wire signed [WIDTH-1:0] zi_sq_w   = zisq_sum_w[87:24];
 wire        [7:0]       zi_sq_ovf_w = zisq_sum_w[95:88];
 wire signed [WIDTH-1:0] zr_zi_w   = zrzi_sum_w[87:24];
+// Signed overflow of the zr*zi product window: the 8.56 result is valid
+// only if bits [95:87] are a pure sign extension.  The cardioid precheck
+// consumes this product as q*(q+x) with q = (cr-1/4)^2 + ci^2, which
+// exceeds +128 once |c| is beyond roughly 3.4 (e.g. a frame corner at
+// (-2.5, -3.0) gives 229) and wrapped to a NEGATIVE window value — which
+// then passed the "< ci^2/4" test and painted the far-outside corner as
+// interior (black arc, found on hardware 2026-10-11).  A genuinely
+// negative q*(q+x) needs q < -x, i.e. |x| < 1 and |value| < 1, so any
+// overflow here is a large positive product: "not inside" is correct.
+// The flag is reduced here to ONE register (a 9-bit equality off the
+// 2a2 adder output; the guard paths showed >= +0.3 ns slack in STA).
+// A variant that registered the 9 raw bits and reduced them in 2b1 made
+// the fitter fail to place the design at three seeds (85% ALM / 97% LAB
+// is the congestion cliff) — keep this form.
+wire zr_zi_ovf_w = ~((zrzi_sum_w[95:87] == 9'h000) | (zrzi_sum_w[95:87] == 9'h1FF));
 
 reg signed [WIDTH-1:0] zr_sq, zi_sq, zr_zi;
 reg [7:0]              zr_sq_ovf, zi_sq_ovf;
+reg                    zr_zi_ovf;
 (* preserve = "true", dont_merge = "true" *) reg [2:0] phase_d3;
 
 always @(posedge clk) begin
@@ -427,6 +443,7 @@ always @(posedge clk) begin
     zr_zi     <= zr_zi_w;
     zr_sq_ovf <= zr_sq_ovf_w;
     zi_sq_ovf <= zi_sq_ovf_w;
+    zr_zi_ovf <= zr_zi_ovf_w;
     phase_d3  <= phase_d2;
 end
 
@@ -469,7 +486,10 @@ wire signed [WIDTH-1:0] s2b1_cardioid_x_w     = ctx_cardioid_x    [phase_d3];
 wire signed [WIDTH-1:0] s2b1_cardioid_ci_sq_w = ctx_cardioid_ci_sq[phase_d3];
 
 wire signed [WIDTH-1:0] s2b1_cardioid_rhs_w = s2b1_cardioid_ci_sq_w >>> 2;
-wire cardioid_check_w = $signed(zr_zi)    < $signed(s2b1_cardioid_rhs_w);
+// Overflow-guarded (see zr_zi_ovf): a wrapped product must never read
+// as "inside the cardioid".
+wire cardioid_check_w = !zr_zi_ovf &&
+                        ($signed(zr_zi)   < $signed(s2b1_cardioid_rhs_w));
 wire bulb_check_w     = $signed(mag_sq_w) < $signed(BULB_THRESHOLD);
 // A3: period-3 bulb precheck.  When the FSM enters S_BULB3, the math
 // pipeline is fed `zr = cr - P3_CX` and `zi = |ci| - P3_CY`.  The

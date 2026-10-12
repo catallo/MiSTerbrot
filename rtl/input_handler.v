@@ -68,13 +68,54 @@ localparam signed [WIDTH-1:0] DEFAULT_CENTER_X = 64'shFF80000000000000; // -0.5
 localparam signed [WIDTH-1:0] DEFAULT_CENTER_Y = 64'sh0000000000000000; //  0.0
 localparam signed [WIDTH-1:0] DEFAULT_STEP     = 64'sh0003333333333333; //  0.0125
 localparam signed [WIDTH-1:0] MIN_STEP         = 64'sh0000000000000010; //  tiny zoom
-localparam signed [WIDTH-1:0] MAX_STEP         = 64'sh0400000000000000; //  4.0
+// Manual view bounds (2026-10-11).  The iterator's interior prechecks are
+// 8.56 fixed-point with no overflow guard on the cardioid product
+// q*(q+x): beyond |c| of about 3.4 it wraps and paints false interior
+// bands, and past |c| >= 11.3 even the z1=c escape test wraps.  So every
+// on-screen pixel must stay inside |cr|,|ci| <= VIEW_LIMIT.  The frame
+// extends 160*step horizontally and 120*step vertically from the centre
+// (coord_generator's half_h_offset / half_v_offset), hence:
+//   MAX_STEP   = 3.0/160 = 0.01875 (1.5x the default view width, which
+//                already shows the whole set with margin)
+//   pan/zoom   = only applied when the resulting frame stays inside the
+//                limit; a move that would leave it is simply ignored.
+// The old MAX_STEP of 4.0 let the edges reach +-640 and center_x/y were
+// never clamped at all.
+localparam signed [WIDTH-1:0] MAX_STEP         = 64'sh0004CCCCCCCCCCCD; //  0.01875
+localparam signed [WIDTH-1:0] VIEW_LIMIT       = 64'sh0300000000000000; //  3.0
 
 // Pan speed: step * 2 (reduced to 1/4 of the previous manual pan speed)
 wire signed [WIDTH-1:0] pan_speed = {step[WIDTH-2:0], 1'b0};
 
 // Manual zoom speed: 2x faster than auto-zoom's step >>> 9
 wire signed [WIDTH-1:0] step_delta = step >>> 8;
+
+// ---- View-bound checks (sampled only on repeat_tick, 50 MHz domain) ----
+// Half extents of the current frame, same shift-adds as coord_generator.
+wire signed [WIDTH-1:0] half_w   = (step <<< 7) + (step <<< 5);   // 160 * step
+wire signed [WIDTH-1:0] half_h   = (step <<< 7) - (step <<< 3);   // 120 * step
+wire signed [WIDTH-1:0] bound_x  = VIEW_LIMIT - half_w;            // max |centre_x|
+wire signed [WIDTH-1:0] bound_y  = VIEW_LIMIT - half_h;            // max |centre_y|
+wire signed [WIDTH-1:0] cx_right = center_x + pan_speed;
+wire signed [WIDTH-1:0] cx_left  = center_x - pan_speed;
+wire signed [WIDTH-1:0] cy_down  = center_y + pan_speed;
+wire signed [WIDTH-1:0] cy_up    = center_y - pan_speed;
+// Each direction is allowed when the NEW centre is inside the bound in
+// that direction only — so a centre that is somehow already outside can
+// still be panned back in, never further out.
+wire pan_right_ok = (cx_right <= bound_x);
+wire pan_left_ok  = (cx_left  >= -bound_x);
+wire pan_down_ok  = (cy_down  <= bound_y);
+wire pan_up_ok    = (cy_up    >= -bound_y);
+// Zoom-out: the larger frame around the current centre must still fit.
+wire signed [WIDTH-1:0] step_out   = step + step_delta;
+wire signed [WIDTH-1:0] half_w_out = (step_out <<< 7) + (step_out <<< 5);
+wire signed [WIDTH-1:0] half_h_out = (step_out <<< 7) - (step_out <<< 3);
+wire signed [WIDTH-1:0] abs_cx     = center_x[WIDTH-1] ? -center_x : center_x;
+wire signed [WIDTH-1:0] abs_cy     = center_y[WIDTH-1] ? -center_y : center_y;
+wire zoom_out_ok = (step_out <= MAX_STEP)
+                && ((abs_cx + half_w_out) <= VIEW_LIMIT)
+                && ((abs_cy + half_h_out) <= VIEW_LIMIT);
 
 // Button edge detection
 reg [15:0] joy_prev;
@@ -289,28 +330,28 @@ always @(posedge clk or negedge rst_n) begin
         else
             repeat_cnt <= 20'd0;
 
-        // ---- Pan ----
-        if (hold_right && repeat_tick) begin
-            center_x <= center_x + pan_speed;
+        // ---- Pan (bounded, see VIEW_LIMIT) ----
+        if (hold_right && repeat_tick && pan_right_ok) begin
+            center_x <= cx_right;
             view_changed <= 1'b1;
         end
-        if (hold_left && repeat_tick) begin
-            center_x <= center_x - pan_speed;
+        if (hold_left && repeat_tick && pan_left_ok) begin
+            center_x <= cx_left;
             view_changed <= 1'b1;
         end
-        if (hold_down && repeat_tick) begin
-            center_y <= center_y + pan_speed;
+        if (hold_down && repeat_tick && pan_down_ok) begin
+            center_y <= cy_down;
             view_changed <= 1'b1;
         end
-        if (hold_up && repeat_tick) begin
-            center_y <= center_y - pan_speed;
+        if (hold_up && repeat_tick && pan_up_ok) begin
+            center_y <= cy_up;
             view_changed <= 1'b1;
         end
 
         // ---- Zoom ----
         if (hold_zoom_out && repeat_tick) begin
-            if (step < MAX_STEP) begin
-                step <= step + step_delta;
+            if (zoom_out_ok) begin
+                step <= step_out;
                 view_changed <= 1'b1;
             end
         end

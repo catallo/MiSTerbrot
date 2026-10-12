@@ -161,7 +161,10 @@ localparam CONF_STR = {
 	"MiSTerbrot;;",
 	"-;",
 	"O[122:121],Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
-	"O[10:4],Palette,Auto,Rainbow,Fire,Ocean,Electric,Neon,Pastel,Oil Slick,Sunset,Aurora,Deep Sea,Candy,Matrix,Toxic,Frozen,Lava,Earth,Indigo,70s Retro,90s Rave,C64,Miami,Gold,Starlight,Nebula,Silver,Akihabara,Colorado,XTC,Psilocybin,HDR,THC,Barbie World,Skittles,Papagaio,Bubblegum,Synthwave,Pop Art,Tropical,Vaporwave,Acid,Morning Sun,Cloudy,Aurora Borealis,Cream,Palladium Silver,Complementary,Migraine Aura,Radioactive Glass,Cathedral Window,CRT Phosphor,Deep Sea Bioluminescence,Rust & Copper,Cyberpunk Noir,Bone & Ink,Solar Flare,Arctic Plasma,Toxic Candy,Old Terminal Amber,Alien Coral Reef,Black Hole Accretion,Infrared Camera,Pearlescent,Data Center Night,Lava Lamp,Monochrome Brutalist,Event Horizon,Psychedelic Circuit,Desert Mirage,Blood Moon,Quantum Foam,Hypernova Candy,Cyber Dragon,Laser Carnival,Glitch Prism,Plasma Rave,Game Boy,NES Castlevania,Embers,ZX Spectrum,CGA Magenta,Strobe Police,Halloween Strobe,Traffic Lights,SMPTE Color Bars,Pixel Sprite,Vintage Poster,Casino Slots,Neon Tubes,Stained Glass Hard,Disco Floor;",
+	// Entry order = color_mapper palette index + 1 (OSD value 0 = Auto).
+	// Entries 4..7 were rotated against the RTL (Electric,Neon,Pastel,Oil Slick
+	// vs indices 3=Oil Slick,4=Electric,5=Neon,6=Pastel) — fixed 2026-10-11.
+	"O[10:4],Palette,Auto,Rainbow,Fire,Ocean,Oil Slick,Electric,Neon,Pastel,Sunset,Aurora,Deep Sea,Candy,Matrix,Toxic,Frozen,Lava,Earth,Indigo,70s Retro,90s Rave,C64,Miami,Gold,Starlight,Nebula,Silver,Akihabara,Colorado,XTC,Psilocybin,HDR,THC,Barbie World,Skittles,Papagaio,Bubblegum,Synthwave,Pop Art,Tropical,Vaporwave,Acid,Morning Sun,Cloudy,Aurora Borealis,Cream,Palladium Silver,Complementary,Migraine Aura,Radioactive Glass,Cathedral Window,CRT Phosphor,Deep Sea Bioluminescence,Rust & Copper,Cyberpunk Noir,Bone & Ink,Solar Flare,Arctic Plasma,Toxic Candy,Old Terminal Amber,Alien Coral Reef,Black Hole Accretion,Infrared Camera,Pearlescent,Data Center Night,Lava Lamp,Monochrome Brutalist,Event Horizon,Psychedelic Circuit,Desert Mirage,Blood Moon,Quantum Foam,Hypernova Candy,Cyber Dragon,Laser Carnival,Glitch Prism,Plasma Rave,Game Boy,NES Castlevania,Embers,ZX Spectrum,CGA Magenta,Strobe Police,Halloween Strobe,Traffic Lights,SMPTE Color Bars,Pixel Sprite,Vintage Poster,Casino Slots,Neon Tubes,Stained Glass Hard,Disco Floor;",
 	"D0O[14:12],Iterations,Auto,512,128,256,1024,2048;",
 	"O[19],Blank Text,On,Off;",
 	"O[20],Always Show FPS,Off,On;",
@@ -194,7 +197,7 @@ localparam CONF_STR = {
 		"-;",
 	"-, Arrows/WASD/D-Pad: Pan;",
 	"-, +/-/PgUp/PgDn: Zoom;",
-	"-, P/B: Cycle Palette;",
+	"-, P / Joy A: Cycle Palette;",
 	"-, I: Cycle Iterations;",
 	"-, C: Color Cycling (On/Off);",
 	"-, Space/Start: Auto-Zoom Toggle;",

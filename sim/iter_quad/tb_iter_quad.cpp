@@ -173,6 +173,20 @@ int main(int argc, char** argv) {
         // EJS CAULI (z=17, where artifact starts appearing)
         {"cauli_ci_tiny",   -1.7487645,    +1e-8,   2048, -1, 0},
         {"cauli_ci_zero",   -1.7487645,     0.0,    2048, -1, 0},
+
+        // ---- Far-outside points (2026-10-11 cardioid overflow guard) ----
+        // q*(q+x) with q=(cr-1/4)^2+ci^2 exceeds +128 here and used to
+        // wrap negative in the 8.56 product window, passing the cardioid
+        // "< ci^2/4" test -> false interior (black corner on hardware
+        // when panning to the manual view limit).  Must escape at z1=c.
+        {"far_corner_nw",   -2.5,  -3.0,   100,   2, 1},
+        {"far_corner_ne",    2.5,   3.0,   100,   2, 1},
+        {"far_left_axis",   -3.3,   0.0,   100,   2, 1},
+        {"far_right_axis",   3.5,   0.0,   100,   2, 1},
+        {"far_top",          0.0,   3.2,   100,   2, 1},
+        // Still-valid region: default view corners must keep escaping.
+        {"dflt_corner_sw",  -2.5,  -1.5,   100,   2, 1},
+        {"dflt_corner_ne",   1.5,   1.5,   100,   2, 1},
     };
 
     int n_cases = sizeof(cases) / sizeof(cases[0]);

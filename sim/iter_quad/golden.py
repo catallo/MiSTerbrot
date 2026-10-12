@@ -75,6 +75,20 @@ def mul_trunc64(a_raw: int, b_raw: int) -> int:
     return abs_result
 
 
+def mul_overflows(a_raw: int, b_raw: int) -> bool:
+    """True when the |a*b| product does not fit the signed 8.56 window —
+    mirrors iter_quad's zr_zi_ovf (bits [95:87] of the product slice are
+    not a pure sign extension).  Same magnitude path as mul_trunc64."""
+    sign_a = (a_raw >> 63) & 1
+    sign_b = (b_raw >> 63) & 1
+    abs_a = ((~a_raw + 1) & MASK64) if sign_a else a_raw
+    abs_b = ((~b_raw + 1) & MASK64) if sign_b else b_raw
+    a_hi, a_lo = (abs_a >> 32) & 0xFFFFFFFF, abs_a & 0xFFFFFFFF
+    b_hi, b_lo = (abs_b >> 32) & 0xFFFFFFFF, abs_b & 0xFFFFFFFF
+    full = (a_hi * b_hi << 64) + ((a_hi * b_lo + a_lo * b_hi) << 32)
+    return (full >> 56) >= (1 << 63)
+
+
 def add_8_56(a: int, b: int) -> int:
     """Signed 8.56 add with two's complement wrap."""
     return (a + b) & MASK64
@@ -122,6 +136,10 @@ def cardioid_precheck(cr_raw: int, ci_raw: int) -> bool:
     ci_sq         = mul_trunc64(ci_raw, ci_raw)
     q             = add_8_56(cr_minus_q_sq, ci_sq)
     inner         = add_8_56(q, cr_minus_q)
+    # Overflow guard (2026-10-11, matches iter_quad zr_zi_ovf): a product
+    # beyond +128 used to wrap negative and read as "inside".
+    if mul_overflows(q, inner):
+        return False
     lhs           = mul_trunc64(q, inner)
     rhs           = mul_trunc64(QUARTER_FIXED, ci_sq)
     diff          = sub_8_56(lhs, rhs)
