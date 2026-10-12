@@ -47,7 +47,7 @@ closed timing with `+0.093 ns` worst-case setup slack.
 After copying the `.rbf` to the MiSTer, reload the running core:
 
 ```bash
-tools/misterclaw-send --host 10.0.0.8 reload
+tools/misterclaw-send --host 100.101.202.25 reload
 ```
 
 ## Controls
@@ -141,9 +141,9 @@ Start benchmark mode, wait for one complete 10-second window, then capture a
 screenshot:
 
 ```bash
-tools/misterclaw-send --host 10.0.0.8 input type B
+tools/misterclaw-send --host 100.101.202.25 input type B
 sleep 12
-tools/misterclaw-send --host 10.0.0.8 screenshot --output /tmp/bench_00.png
+tools/misterclaw-send --host 100.101.202.25 screenshot --output /tmp/bench_00.png
 python3 tools/bench_decode_screenshot.py /tmp/bench_00.png
 ```
 

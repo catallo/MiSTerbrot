@@ -397,16 +397,31 @@ bcd_serial #(.BIN_W(14)) u_bcd_y (
     .d0(coord_y_d0_bcd)
 );
 
-// ---- Target name functions (data from rtl/poi_generated.vh) ----
-function [159:0] target_name_full;
-    input [`POI_IDX_BITS-1:0] idx;
-    begin
-        case (idx)
-            `POI_NAME_CASES
-            default: target_name_full = "                    ";
-        endcase
-    end
-endfunction
+// ---- Target name ROM (block RAM; init from rtl/poi_generated.vh) ----
+// 20-char overlay label per POI, first char in the MSBs (string-literal
+// layout).  Was a 128-way case-statement function — moved into M10K with
+// the POI table in auto_zoom (2026-07-12 timing diet).  The read is
+// synchronous; the label only changes on POI/benchmark-scene advance, so
+// the 1-cycle-late q is invisible (text is re-rendered every frame).
+// ROM word is {len[164:160], label[159:0]} — the trailing-space-stripped
+// length is precomputed by poi_encode.py so no priority scan runs in
+// hardware (the old poi_length_calc chain missed the compose budget).
+localparam NAME_DEPTH = 1 << `POI_IDX_BITS;
+(* ramstyle = "M10K" *) reg [164:0] name_rom [0:NAME_DEPTH-1];
+initial begin
+    `POI_NAME_INIT
+end
+// Two read stages: name_ram_q maps onto the M10K's embedded output
+// register; poi_name_q is a FABRIC register the fitter can place next to
+// the compose/glyph logic. Without it the whole compose cone launched
+// combinationally out of the fixed-location RAM block and blew the video
+// path by ~2.6 ns (first BRAM build, 2026-07-12). Label appears 2 cycles
+// after an index change — still invisible.
+reg [164:0] name_ram_q, poi_name_q;
+always @(posedge clk) begin
+    name_ram_q <= name_rom[benchmark_active ? benchmark_idx : target_idx];
+    poi_name_q <= name_ram_q;
+end
 
 // ---- Zoom calculation ----
 function [1:0] nibble_msb;
@@ -699,14 +714,6 @@ function [199:0] palette_name;
     end
 endfunction
 
-function [255:0] target_line;
-    input [`POI_IDX_BITS-1:0] idx;
-    begin
-        // 20-char POI name + 12-char trailing padding = 32 chars
-        target_line = {target_name_full(idx), "            "};
-    end
-endfunction
-
 // ---- Line data functions ----
 function [255:0] line_data;
     input [2:0] line;
@@ -743,46 +750,17 @@ endfunction
 
 // ---- Combined POI | Palette string (48 chars) ----
 // Pack the palette immediately after the actual POI text — skip the trailing
-// padding spaces inside target_name_full's fixed 20-char field.
-function [4:0] poi_length_calc;
-    input [159:0] name;
-    begin
-        // Scan from the right of the 20-char field; find last non-space.
-        if      (name[7:0]    != 8'h20) poi_length_calc = 5'd20;
-        else if (name[15:8]   != 8'h20) poi_length_calc = 5'd19;
-        else if (name[23:16]  != 8'h20) poi_length_calc = 5'd18;
-        else if (name[31:24]  != 8'h20) poi_length_calc = 5'd17;
-        else if (name[39:32]  != 8'h20) poi_length_calc = 5'd16;
-        else if (name[47:40]  != 8'h20) poi_length_calc = 5'd15;
-        else if (name[55:48]  != 8'h20) poi_length_calc = 5'd14;
-        else if (name[63:56]  != 8'h20) poi_length_calc = 5'd13;
-        else if (name[71:64]  != 8'h20) poi_length_calc = 5'd12;
-        else if (name[79:72]  != 8'h20) poi_length_calc = 5'd11;
-        else if (name[87:80]  != 8'h20) poi_length_calc = 5'd10;
-        else if (name[95:88]  != 8'h20) poi_length_calc = 5'd9;
-        else if (name[103:96] != 8'h20) poi_length_calc = 5'd8;
-        else if (name[111:104]!= 8'h20) poi_length_calc = 5'd7;
-        else if (name[119:112]!= 8'h20) poi_length_calc = 5'd6;
-        else if (name[127:120]!= 8'h20) poi_length_calc = 5'd5;
-        else if (name[135:128]!= 8'h20) poi_length_calc = 5'd4;
-        else if (name[143:136]!= 8'h20) poi_length_calc = 5'd3;
-        else if (name[151:144]!= 8'h20) poi_length_calc = 5'd2;
-        else if (name[159:152]!= 8'h20) poi_length_calc = 5'd1;
-        else                            poi_length_calc = 5'd0;
-    end
-endfunction
-
+// padding spaces inside the fixed 20-char label field. The label length
+// arrives precomputed from the name ROM (poi_encode.py bakes it in); the
+// old 20-byte poi_length_calc priority scan is gone from hardware.
 function [383:0] target_poi_palette;
-    input [`POI_IDX_BITS-1:0] idx;
+    input [159:0] poi;      // 20-char label (from poi_name_q, the name ROM)
+    input [4:0] poi_len;    // trailing-space-stripped length (ROM field)
     input [6:0] pal;
-    reg [159:0] poi;
     reg [199:0] pal_name;
-    reg [4:0] poi_len;
     integer p;
     begin
-        poi = target_name_full(idx);
         pal_name = palette_name(pal);
-        poi_len = poi_length_calc(poi);
 
         // Step 1: initialise all 48 char positions to space.
         for (p = 0; p < 48; p = p + 1)
@@ -809,15 +787,24 @@ function [383:0] target_poi_palette;
 endfunction
 
 
+// Registered compose stage: with the label coming from a register (name
+// ROM) instead of a per-index case mux, poi_length_calc + the barrel
+// muxes no longer constant-fold per POI — evaluated combinationally into
+// the glyph path they overshoot the video budget by ~1.2 ns (2nd BRAM
+// build, 2026-07-12). The composed 48-char line is scan-independent, so
+// it gets its own pipeline register; 1-cycle-stale content is invisible.
+reg [383:0] poi_pal_line_r;
+always @(posedge clk)
+    poi_pal_line_r <= target_poi_palette(poi_name_q[159:0], poi_name_q[164:160], palette_sel);
+
 function [383:0] target_line_data;
     input [2:0] line;
     begin
         case (line)
             3'd0: target_line_data = (overlay_visible || always_show_poi) ?
                   ((auto_zoom_active || benchmark_active) ?
-                  target_poi_palette(benchmark_active ? benchmark_idx
-                                                      : target_idx,
-                                     palette_sel) :
+                  // bench-vs-target idx mux lives at the name-ROM address
+                  poi_pal_line_r :
                   {palette_name(palette_sel), "                       "}) :
                   TARGET_BLANK_LINE;
             3'd1: target_line_data = overlay_visible ?

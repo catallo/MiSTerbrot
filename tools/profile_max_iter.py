@@ -111,7 +111,7 @@ def sweep_one(host: str, rbf: str, label: str, n_presses: int,
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--host", default="10.0.0.8")
+    p.add_argument("--host", default="100.101.202.25")  # MiSTer Tailscale IP; LAN 10.0.0.8
     p.add_argument("--rbf",
                    default=f"MiSTerbrot_{datetime.now().strftime('%Y%m%d')}.rbf")
     p.add_argument("--out-dir",

@@ -875,5 +875,446 @@
     ],
     "note": "Deep zoom into period-3 bulb interior. Visible area ~0.04 wide, all inside the bulb's inscribed circle (r^2=0.005625) -> A3 precheck should fire on every pixel and skip iteration entirely.",
     "max_iter": 128
+  },
+  {
+    "name": "P4 BULB 1-4",
+    "cx": 0.2822713907669139,
+    "cy": 0.5300606175785253,
+    "zoom_level": 3.8,
+    "category": "PERIOD_BULB",
+    "sources": [
+      "https://zenodo.org/records/15527027",
+      "https://www.ibiblio.org/e-notes/MSet/cperiod.htm",
+      "https://mrob.com/pub/muency/r2c14.html"
+    ],
+    "note": "Period-4 bulb nucleus at internal angle 1/4 (Quad Spiral Valley anchor)"
+  },
+  {
+    "name": "P5 BULB 1-5",
+    "cx": 0.3795135880159238,
+    "cy": 0.3349323055974976,
+    "zoom_level": 4.7,
+    "category": "PERIOD_BULB",
+    "sources": [
+      "https://zenodo.org/records/15527027",
+      "https://en.wikibooks.org/wiki/Fractals/mandelbrot-numerics"
+    ],
+    "note": "Period-5 bulb nucleus at internal angle 1/5"
+  },
+  {
+    "name": "P5 BULB 2-5",
+    "cx": -0.504340175446244,
+    "cy": 0.562765761452982,
+    "zoom_level": 4.0,
+    "category": "PERIOD_BULB",
+    "sources": [
+      "https://zenodo.org/records/15527027"
+    ],
+    "note": "Period-5 bulb nucleus at internal angle 2/5"
+  },
+  {
+    "name": "P6 BULB 1-6",
+    "cx": 0.38900684056977125,
+    "cy": 0.21585065087081912,
+    "zoom_level": 5.5,
+    "category": "PERIOD_BULB",
+    "sources": [
+      "https://zenodo.org/records/15527027"
+    ],
+    "note": "Period-6 bulb nucleus at internal angle 1/6"
+  },
+  {
+    "name": "P7 BULB 2-7",
+    "cx": 0.12119278610590649,
+    "cy": 0.6106116922107542,
+    "zoom_level": 5.3,
+    "category": "PERIOD_BULB",
+    "sources": [
+      "https://zenodo.org/records/15527027"
+    ],
+    "note": "Period-7 bulb nucleus at internal angle 2/7, 7-spoked antenna"
+  },
+  {
+    "name": "P7 BULB 3-7",
+    "cx": -0.6224362950412936,
+    "cy": 0.4248784364756292,
+    "zoom_level": 5.0,
+    "category": "PERIOD_BULB",
+    "sources": [
+      "https://zenodo.org/records/15527027"
+    ],
+    "note": "Period-7 bulb nucleus at internal angle 3/7"
+  },
+  {
+    "name": "P8 BULB 3-8",
+    "cx": -0.35910239011244915,
+    "cy": 0.6173534533988269,
+    "zoom_level": 5.4,
+    "category": "PERIOD_BULB",
+    "sources": [
+      "https://zenodo.org/records/15527027"
+    ],
+    "note": "Period-8 bulb nucleus at internal angle 3/8"
+  },
+  {
+    "name": "P9 BULB 2-9",
+    "cx": 0.3289029472964821,
+    "cy": 0.41091259089297016,
+    "zoom_level": 6.3,
+    "category": "PERIOD_BULB",
+    "sources": [
+      "https://zenodo.org/records/15527027"
+    ],
+    "note": "Period-9 bulb nucleus at internal angle 2/9, 9-spoked antenna"
+  },
+  {
+    "name": "P7 BULB 1-7",
+    "cx": 0.37600868184676756,
+    "cy": 0.14474937132163285,
+    "zoom_level": 6.2,
+    "category": "PERIOD_BULB",
+    "sources": [
+      "computed: Newton on f^q(0)=0 seeded from cardioid tangent point w/2-w^2/4",
+      "https://www.ibiblio.org/e-notes/MSet/cperiod.htm"
+    ],
+    "note": "Period-7 bulb nucleus at internal angle 1/7, 7-spoked antenna"
+  },
+  {
+    "name": "P8 BULB 1-8",
+    "cx": 0.35903106283661446,
+    "cy": 0.10093487686429756,
+    "zoom_level": 6.8,
+    "category": "PERIOD_BULB",
+    "sources": [
+      "computed: Newton on f^q(0)=0 seeded from cardioid tangent point w/2-w^2/4",
+      "https://www.ibiblio.org/e-notes/MSet/cperiod.htm"
+    ],
+    "note": "Period-8 bulb nucleus at internal angle 1/8"
+  },
+  {
+    "name": "P10 BULB 3-10",
+    "cx": 0.050271834823355066,
+    "cy": 0.630468552293936,
+    "zoom_level": 6.4,
+    "category": "PERIOD_BULB",
+    "sources": [
+      "computed: Newton on f^q(0)=0 seeded from cardioid tangent point w/2-w^2/4",
+      "https://www.ibiblio.org/e-notes/MSet/cperiod.htm"
+    ],
+    "note": "Period-10 bulb nucleus at internal angle 3/10, 10-spoked antenna"
+  },
+  {
+    "name": "TOPKNOT",
+    "cx": -1.310702641336833,
+    "cy": 0.0,
+    "zoom_level": 4.5,
+    "category": "PERIOD_BULB",
+    "sources": [
+      "https://mrob.com/pub/muency/topknot.html",
+      "https://zenodo.org/records/15527027",
+      "https://en.wikibooks.org/wiki/Fractals/mandelbrot-numerics"
+    ],
+    "note": "Mu-Ency Topknot R2.1/2.1/2a: period-4 disk on the period-2 disk, real axis; z4.5 framing kept deliberately (z5.0 drowns the topknot disk in P2-disk interior; 0.19 frame-IoU with FEIGENBAUM accepted, different subjects)"
+  },
+  {
+    "name": "P5 ISLAND ANTENNA",
+    "cx": -1.6254137251233036,
+    "cy": 0.0,
+    "zoom_level": 6.5,
+    "category": "MINIBROT",
+    "sources": [
+      "https://zenodo.org/records/15527027",
+      "http://mrob.com/pub/mu-data/largest-islands.txt",
+      "https://en.wikiversity.org/wiki/Mandelbrot_set_along_the_real_axis_and_the_orbits"
+    ],
+    "note": "Largest period-5 island, main antenna between Feigenbaum point and P3 island"
+  },
+  {
+    "name": "R2T P5 ISLAND",
+    "cx": -1.9854242530542052,
+    "cy": 0.0,
+    "zoom_level": 12.5,
+    "category": "MINIBROT",
+    "sources": [
+      "https://zenodo.org/records/15527027",
+      "http://www.mrob.com/pub/muency/r2tseries.html",
+      "https://www.ibiblio.org/e-notes/MSet/pscale.htm"
+    ],
+    "note": "Period-5 R2t-series island near antenna tip, fills gap between R2T P6/P7"
+  },
+  {
+    "name": "P7 ISL 2-5 WAKE",
+    "cx": -0.5308278048599427,
+    "cy": 0.6682887255592058,
+    "zoom_level": 7.1,
+    "category": "MINIBROT",
+    "sources": [
+      "https://zenodo.org/records/15527027",
+      "http://mrob.com/pub/mu-data/largest-islands.txt"
+    ],
+    "note": "Largest period-7 island R2F(2/5B2)S in the 2/5-bulb wake"
+  },
+  {
+    "name": "P9 ISL 1-3 WAKE",
+    "cx": -0.10546993816740448,
+    "cy": 0.9239995237753338,
+    "zoom_level": 7.3,
+    "category": "MINIBROT",
+    "sources": [
+      "https://zenodo.org/records/15527027",
+      "http://mrob.com/pub/mu-data/largest-islands.txt"
+    ],
+    "note": "Largest period-9 island R2.1/3F(1/2B1)S in the 1/3-limb wake"
+  },
+  {
+    "name": "P6 ISL 1-4 WAKE",
+    "cx": 0.39653457003241505,
+    "cy": 0.6041818104889889,
+    "zoom_level": 8.0,
+    "category": "MINIBROT",
+    "sources": [
+      "https://zenodo.org/records/15527027",
+      "http://mrob.com/pub/mu-data/largest-islands.txt"
+    ],
+    "note": "Period-6 island R2F(1/4B2)S in the 1/4-bulb wake"
+  },
+  {
+    "name": "P12 MINI ELEPHANT",
+    "cx": 0.32558950955066035,
+    "cy": -0.03804788093475572,
+    "zoom_level": 10.5,
+    "category": "MINIBROT",
+    "sources": [
+      "https://en.wikibooks.org/wiki/Fractals/Iterations_in_the_complex_plane/Mandelbrot_set/centers",
+      "https://zenodo.org/records/15527027"
+    ],
+    "note": "Period-12 distorted minibrot east of Elephant Valley, south side"
+  },
+  {
+    "name": "TIP SIDE ISLAND P6",
+    "cx": -0.21752674703051103,
+    "cy": 1.1144542658732928,
+    "zoom_level": 12.3,
+    "category": "MINIBROT",
+    "sources": [
+      "https://www.ibiblio.org/e-notes/MSet/pscale.htm"
+    ],
+    "note": "Period-6 island on filament approaching the 1/3-limb branch tip (Demidov)"
+  },
+  {
+    "name": "P101 ISLAND",
+    "cx": -1.7686678629886754,
+    "cy": 0.0016455802751463287,
+    "zoom_level": 28.9,
+    "category": "MINIBROT",
+    "sources": [
+      "https://mrob.com/pub/muency/secondorderembeddedjuliase.html"
+    ],
+    "note": "Period-101 island at heart of canonical 2nd-order embedded Julia set"
+  },
+  {
+    "name": "CANTOR DUST CUSP",
+    "cx": -1.74652333,
+    "cy": 0.0,
+    "zoom_level": 18.35,
+    "category": "EMBEDDED_JULIA",
+    "sources": [
+      "https://www.ibiblio.org/e-notes/MSet/embed.htm",
+      "https://www.ibiblio.org/e-notes/MSet/midgets.htm"
+    ],
+    "note": "Cusp of the period-3 midget at -1.7465 with cauliflower Cantor-dust Julia copies (Demidov); renamed to avoid clash with existing EJS CAULI (different midget, 2.2e-3 away)"
+  },
+  {
+    "name": "ANTENNA BAND MERGE",
+    "cx": -1.5436890126920764,
+    "cy": 0.0,
+    "zoom_level": 6.5,
+    "category": "MISIUREWICZ",
+    "sources": [
+      "https://en.wikipedia.org/wiki/Misiurewicz_point",
+      "https://en.wikibooks.org/wiki/Fractals/Iterations_in_the_complex_plane/misiurewicz",
+      "https://mrob.com/pub/muency/misiurewiczpoint.html"
+    ],
+    "note": "Principal Misiurewicz point M(3,1) of the main antenna, band-merging point"
+  },
+  {
+    "name": "DENDRITE AT I",
+    "cx": 0.0,
+    "cy": 1.0,
+    "zoom_level": 4.2,
+    "category": "DENDRITE",
+    "sources": [
+      "https://en.wikipedia.org/wiki/Misiurewicz_point",
+      "https://mrob.com/pub/muency/misiurewiczpoint.html"
+    ],
+    "note": "c=i exactly, M(2,2), branch tip of the 1/3-limb dendrite"
+  },
+  {
+    "name": "P2 SHRUB SPIRAL",
+    "cx": -1.2963551381730363,
+    "cy": 0.4418516057351966,
+    "zoom_level": 10.5,
+    "category": "SPIRAL",
+    "sources": [
+      "https://www.ibiblio.org/e-notes/MSet/cperiod.htm"
+    ],
+    "note": "Misiurewicz M(4,1) above period-2 disk, slow spiral (|L|=3.53 arg -5.7 deg) [verify on hardware: faint in smooth preview]"
+  },
+  {
+    "name": "NE BRANCH M4-1",
+    "cx": 0.3439069959725681,
+    "cy": 0.7006200202350049,
+    "zoom_level": 12.0,
+    "category": "MISIUREWICZ",
+    "sources": [
+      "https://www.ibiblio.org/e-notes/MSet/cperiod.htm"
+    ],
+    "note": "Misiurewicz M(4,1) branch point between 1/3 and 1/4 limbs [verify on hardware: faint in smooth preview]"
+  },
+  {
+    "name": "TIGHT SPIRAL M141",
+    "cx": 0.402439259495344,
+    "cy": 0.34183348912402134,
+    "zoom_level": 16.8,
+    "category": "MISIUREWICZ",
+    "sources": [
+      "https://mathr.co.uk/web/m-describe.html"
+    ],
+    "note": "Misiurewicz preperiod-141 period-1 near 1/5-limb shrub, very tight spiral"
+  },
+  {
+    "name": "WEST DOUBLE SPIRAL",
+    "cx": -0.770231,
+    "cy": 0.115354,
+    "zoom_level": 9.6,
+    "category": "SPIRAL",
+    "sources": [
+      "https://mrob.com/pub/muency/doublespiral.html"
+    ],
+    "note": "Canonical Mu-Ency double spiral, west wall of Seahorse Valley"
+  },
+  {
+    "name": "SHEPHERDS CROOK",
+    "cx": -0.74574,
+    "cy": 0.10996,
+    "zoom_level": 8.7,
+    "category": "FILAMENT",
+    "sources": [
+      "https://mrob.com/pub/muency/shepherdscrook.html"
+    ],
+    "note": "Hooked filament, entry view of Mu-Ency shepherds crook sequence"
+  },
+  {
+    "name": "SEAHORSE WEST",
+    "cx": -1.25709,
+    "cy": 0.025,
+    "zoom_level": 6.3,
+    "category": "SEAHORSE",
+    "sources": [
+      "http://www.mrob.com/pub/muency/r212c12.html"
+    ],
+    "note": "Scepter-bearing seahorses west of the period-2 disk (Mu-Ency figure)"
+  },
+  {
+    "name": "TANTE RENATE",
+    "cx": -0.7746806106269039,
+    "cy": -0.1374168856037867,
+    "zoom_level": 30.0,
+    "category": "SPIRAL",
+    "sources": [
+      "https://paulbourke.net/fractals/mandelbrot/"
+    ],
+    "note": "Bourke deep-zoom location, south Seahorse Valley; published z41.3 capped to 30"
+  },
+  {
+    "name": "BOURKE SPIRALS",
+    "cx": -0.761574,
+    "cy": -0.0847596,
+    "zoom_level": 9.3,
+    "category": "SPIRAL",
+    "sources": [
+      "https://paulbourke.net/fractals/mandelbrot/"
+    ],
+    "note": "Bourke Zoom 4 spirals, south Seahorse Valley wall"
+  },
+  {
+    "name": "WIKI MOVIE POINT",
+    "cx": 0.001643721971153,
+    "cy": -0.822467633298876,
+    "zoom_level": 10.0,
+    "category": "FILAMENT",
+    "sources": [
+      "https://en.wikipedia.org/wiki/Plotting_algorithms_for_the_Mandelbrot_set"
+    ],
+    "note": "Center of Wikipedia magnification movie, structure at all depths"
+  },
+  {
+    "name": "SHRUB NODE M17-1",
+    "cx": 0.3072084787,
+    "cy": 0.4839545719,
+    "zoom_level": 12.0,
+    "category": "MISIUREWICZ",
+    "sources": [
+      "https://downloads.hindawi.com/journals/ddns/2011/837262.pdf"
+    ],
+    "note": "Structural node M(17,1) of shrub (1/4)-(1/5), 4-branch junction, |L|=1.046 tight spiral (Romera et al.)"
+  },
+  {
+    "name": "EJS SOUTH ANTENNA",
+    "cx": -1.8605739600158748,
+    "cy": -9.34374245e-07,
+    "zoom_level": 28.8,
+    "category": "EMBEDDED_JULIA",
+    "sources": [
+      "https://commons.wikimedia.org/wiki/File:Part_of_parameter_plane_with_fragment_of_Mandelbrot_set_,_center_=_-1.8605739600158748e%2B00_%2B_-9.3437424499999996e-07.png",
+      "https://raw.githubusercontent.com/LegalizeAdulthood/fractint-legacy/master/fractint.par"
+    ],
+    "note": "EJS on main antenna at -1.8606 south of axis, around period-124 island; SAME point published independently as Fractint 'Filament' (Ian Adam) and Commons EJS render (Majewski) - merged from both round-2 agents"
+  },
+  {
+    "name": "LANGSTON EYE",
+    "cx": -1.0396579104749,
+    "cy": 0.34832155577314,
+    "zoom_level": 26.8,
+    "category": "MISIUREWICZ",
+    "sources": [
+      "https://raw.githubusercontent.com/xaos-project/XaoS/master/examples/Langston/pretty2.xpf",
+      "https://raw.githubusercontent.com/xaos-project/XaoS/master/examples/Langston/eye.xpf"
+    ],
+    "note": "Langston signature landmark, 6 files center this point z26.8-z53; spiral hub above P2 disk (rescues the dropped Messner-1 region properly)"
+  },
+  {
+    "name": "GF4D DRAGON",
+    "cx": -0.8054856003079394,
+    "cy": -0.1807498169998955,
+    "zoom_level": 14.8,
+    "category": "SPIRAL",
+    "sources": [
+      "https://raw.githubusercontent.com/fract4d/gnofract4d/master/testdata/dragon.fct",
+      "https://raw.githubusercontent.com/fract4d/gnofract4d/master/testdata/dragon2.fct"
+    ],
+    "note": "gnofract4d dragon view, south disk-side shore; cross-validated by dragon2 at z27"
+  },
+  {
+    "name": "XAOS GALAXY",
+    "cx": 0.23616578,
+    "cy": -0.56339523,
+    "zoom_level": 12.8,
+    "category": "DENDRITE",
+    "sources": [
+      "https://raw.githubusercontent.com/xaos-project/XaoS/master/examples/Hubicka/galaxy.xpf"
+    ],
+    "note": "XaoS galaxy example (starfield filter in source; plain dendrites without)"
+  },
+  {
+    "name": "FIERY MANDELBROT",
+    "cx": -0.592262425,
+    "cy": -0.620289525,
+    "zoom_level": 8.7,
+    "category": "DENDRITE",
+    "sources": [
+      "https://raw.githubusercontent.com/LegalizeAdulthood/fractint-legacy/master/fractint.par"
+    ],
+    "note": "Canonical Fractint demo PAR (Coddington), lightning-like south dendrite field"
   }
 ]

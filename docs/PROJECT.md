@@ -259,8 +259,8 @@ auto-hidden. Skipping these costs ~10-20 % of captures to invisible or
 illegible overlays. Canonical opening sequence:
 
 ```bash
-tools/misterclaw-send --host 10.0.0.8 input type G  # dim BG
-tools/misterclaw-send --host 10.0.0.8 input type L  # disable auto-hide timer
+tools/misterclaw-send --host 100.101.202.25 input type G  # dim BG
+tools/misterclaw-send --host 100.101.202.25 input type L  # disable auto-hide timer
 # … then the M-snap / screenshot loop
 ```
 
@@ -324,7 +324,7 @@ A full compile is ~17 minutes.
 
 ### Deploy
 
-The MiSTer (assumed at `10.0.0.8` for this project — adjust to taste) is
+The MiSTer (assumed at `100.101.202.25` for this project — adjust to taste) is
 reached via `tools/misterclaw-send`, a Go binary that wraps SSH/SCP and
 a remote-control protocol on the MiSTer side. Defaults: `root` / `1`.
 
@@ -338,8 +338,8 @@ suffix, the core list shows `--.--.--.` instead of the build date.
 DATE=$(date +%Y%m%d)
 cp output_files/MiSTerbrot.rbf MiSTerbrot_${DATE}.rbf
 sshpass -p 1 scp -o StrictHostKeyChecking=accept-new \
-  MiSTerbrot_${DATE}.rbf root@10.0.0.8:/media/fat/_Other/
-sshpass -p 1 ssh -o StrictHostKeyChecking=accept-new root@10.0.0.8 \
+  MiSTerbrot_${DATE}.rbf root@100.101.202.25:/media/fat/_Other/
+sshpass -p 1 ssh -o StrictHostKeyChecking=accept-new root@100.101.202.25 \
   "echo 'load_core /media/fat/_Other/MiSTerbrot_${DATE}.rbf' > /dev/MiSTer_cmd"
 ```
 
@@ -353,13 +353,13 @@ The build → deploy → verify cycle is fully scriptable once a core is
 running. `tools/misterclaw-send` exposes the parts we use:
 
 ```bash
-tools/misterclaw-send --host 10.0.0.8 status
+tools/misterclaw-send --host 100.101.202.25 status
 # → "Core: MiSTerbrot_20260511" (confirms what's loaded)
 
-tools/misterclaw-send --host 10.0.0.8 screenshot --output shot.png
+tools/misterclaw-send --host 100.101.202.25 screenshot --output shot.png
 # → captures the current frame at native resolution
 
-tools/misterclaw-send --host 10.0.0.8 input type "M"
+tools/misterclaw-send --host 100.101.202.25 input type "M"
 # → sends the M key as a PS/2 event (fires snap_next in auto_zoom.v)
 ```
 
@@ -401,8 +401,8 @@ docker run --rm -v $(pwd):/build ryanfb/quartus-mister bash -c \
    cd /build && quartus_sh --flow compile MiSTerbrot"          # 4. ~20-25 min
 DATE=$(date +%Y%m%d)
 cp output_files/MiSTerbrot.rbf MiSTerbrot_${DATE}.rbf
-sshpass -p 1 scp MiSTerbrot_${DATE}.rbf root@10.0.0.8:/media/fat/_Other/
-sshpass -p 1 ssh root@10.0.0.8 \
+sshpass -p 1 scp MiSTerbrot_${DATE}.rbf root@100.101.202.25:/media/fat/_Other/
+sshpass -p 1 ssh root@100.101.202.25 \
   "echo 'load_core /media/fat/_Other/MiSTerbrot_${DATE}.rbf' > /dev/MiSTer_cmd"   # 5. deploy
 python3 tools/poi_walkthrough.py                             # 6. verify all 67
 ```

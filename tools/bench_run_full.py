@@ -13,7 +13,7 @@ CONDITIONS as future features land:
 
 Usage:
     tools/bench_run_full.py
-    tools/bench_run_full.py --host 10.0.0.8
+    tools/bench_run_full.py --host 100.101.202.25
     tools/bench_run_full.py --rbf MiSTerbrot_20260516.rbf
     tools/bench_run_full.py --conditions ms-off
 """
@@ -28,7 +28,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 MISTERCLAW = ROOT / "tools" / "misterclaw-send"
 BENCH_RUN = ROOT / "tools" / "bench_run.py"
-DEFAULT_HOST = "10.0.0.8"
+DEFAULT_HOST = "100.101.202.25"  # MiSTer Tailscale IP; LAN 10.0.0.8
 DEFAULT_RBF = "MiSTerbrot_" + datetime.now().strftime("%Y%m%d") + ".rbf"
 
 # (label, key_sequence) — keys are sent in order between core reload and

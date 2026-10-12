@@ -37,6 +37,7 @@ Requires the core to be in gallery mode with the target POI rendered
 """
 
 import json
+import os
 import random
 import re
 import subprocess
@@ -48,7 +49,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parent.parent
 MASTER_JSON = ROOT / "tools" / "poi_master.json"
 MISTERCLAW = str(ROOT / "tools" / "misterclaw-send")
-HOST = "10.0.0.8"
+HOST = os.environ.get("MISTER_HOST", "100.101.202.25")  # MiSTer Tailscale IP; LAN 10.0.0.8
 
 BASE = {0: 0x3020_0000, 1: 0x3060_0000}
 STRIDE = 2048

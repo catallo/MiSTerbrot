@@ -187,22 +187,20 @@ hex64 = f"64'sh{raw:016X}"
 
 Roundtrip back to decimal: `from_8_56(raw) = (raw - (1<<64) if raw & (1<<63) else raw) / SCALE`. The encoder verifies roundtrip error stays below `10⁻¹⁴` for every POI — anything worse means the coord is too close to the LSB and won't render meaningfully.
 
-Output is `rtl/poi_generated.vh` — four `` `define `` macros expanding to `case`-statement bodies:
+Output is `rtl/poi_generated.vh` — two `` `define `` macros expanding to block-RAM `initial` bodies (M10K, since the 2026-07-12 timing diet: at 128 POIs the old `case`-statement LUT ROMs cost enough ALMs/routing to break iter-clock closure):
 
 | Macro | Used in | Body |
 |---|---|---|
-| `POI_ROM_CASES` | `auto_zoom.v` | `rom_cx`, `rom_cy` assignments per `target_idx` |
-| `POI_ZOOM_CASES` | `auto_zoom.v` | `target_max_zoom_x10` (10-bit, `zoom_level × 10`) |
-| `POI_ZOOM_INT_CASES` | `auto_zoom.v` | `target_zoom_int` (5-bit, `round(zoom_level)` — used by snap mode) |
-| `POI_NAME_CASES` | `text_overlay.v` | `target_name_full` (20-char overlay string) |
+| `POI_TABLE_INIT` | `auto_zoom.v` | `poi_rom[i] = 155'h…` — packed `{cx[154:91], cy[90:27], zoom_x10[26:17], zoom_int[16:12], max_iter[11:0]}` |
+| `POI_NAME_INIT` | `text_overlay.v` | `name_rom[i] = 160'h…` — 20-char overlay label, first char in the MSBs |
 
 Plus three width constants: `POI_N_TARGETS`, `POI_IDX_BITS`, `POI_LAST_IDX`.
 
-The macros work because Verilog `` `define `` expansion happens before compilation — each include site sees the full body inline.
+Both ROMs are written to the full `2^POI_IDX_BITS` depth (unused slots carry a default entry) so every address is defined. The reads are **synchronous** (1-cycle): `auto_zoom` addresses the ROM from `tp_rdata` during advance phase 2 so `poi_q` is valid in phase 3 — the exact slot the old combinational lookup filled; `text_overlay` latches the label whose index only changes on POI/scene advance. Latency is therefore invisible at both sites.
 
 ## 8. RTL integration
 
-- `target_idx` width comes from `POI_IDX_BITS` macro (currently 7 bits for 74 POIs; expand to 8 if you go past 128).
+- `target_idx` width comes from `POI_IDX_BITS` macro (7 bits — full at the current 128 POIs; expand to 8 if you ever go past 128).
 - `target_playlist[]` storage and `target_playlist_pos` cursor follow the same width.
 - The Fisher-Yates shuffle (`next_shuffle_candidate`) is parameterized — bit-width comes from `IDX_BITS`. With 4 random candidates per attempt at 7 bits each = 28 bits of `rand_state` consumed; ~3% fallback rate for target shuffle (max_idx = 73), ~16% for palette (max_idx = 46).
 - `snap_step = DEFAULT_STEP >>> target_zoom_int` — barrel shift by per-POI integer amount. Snap mode (`S_HOLD`) holds the view at this step indefinitely until another `snap_next` pulses.
@@ -237,13 +235,13 @@ Hardware verification is the gold standard. The `M` key (and gamepad X button) i
 Both are sticky keyboard overrides (see `rtl/input_handler.v`) that hold until core reset. The OSD bits `O[19] Blank Text` and `O[23] Overlay BG` toggle the same flags, but the keys are faster from a script. Always include them:
 
 ```bash
-tools/misterclaw-send --host 10.0.0.8 input type G  # dim BG (overlay readable on any palette)
-tools/misterclaw-send --host 10.0.0.8 input type L  # disable overlay auto-hide
+tools/misterclaw-send --host 100.101.202.25 input type G  # dim BG (overlay readable on any palette)
+tools/misterclaw-send --host 100.101.202.25 input type L  # disable overlay auto-hide
 # then the snap loop:
 for i in $(seq 1 67); do
-    tools/misterclaw-send --host 10.0.0.8 input type M
+    tools/misterclaw-send --host 100.101.202.25 input type M
     sleep 3
-    tools/misterclaw-send --host 10.0.0.8 screenshot --output snap_$i.png
+    tools/misterclaw-send --host 100.101.202.25 screenshot --output snap_$i.png
 done
 ```
 

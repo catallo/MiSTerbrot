@@ -28,7 +28,7 @@ Usage:
   python3 tools/poi_walkthrough.py
 
 Env vars (all optional):
-  MISTER_HOST=10.0.0.8        MiSTer IP (default 10.0.0.8)
+  MISTER_HOST=100.101.202.25  MiSTer IP (default: Tailscale 100.101.202.25; LAN 10.0.0.8)
   PAUSE_SEC=3                 seconds between M-press and screenshot (default 3)
   MAX_PRESSES=200             safety cap on M-presses (default 2*N_POIs)
 
@@ -67,7 +67,7 @@ OUT_DIR = ROOT / "screenshots" / "poi_compare"
 UNMATCHED_DIR = OUT_DIR / "_unmatched"
 MISTERCLAW = str(ROOT / "tools" / "misterclaw-send")
 
-HOST = os.environ.get("MISTER_HOST", "10.0.0.8")
+HOST = os.environ.get("MISTER_HOST", "100.101.202.25")
 PAUSE_SEC = float(os.environ.get("PAUSE_SEC", "3"))
 
 # Mode detection (live, from a probe capture — the CFG only stores

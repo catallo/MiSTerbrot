@@ -11,7 +11,7 @@ presses, and exits benchmark mode at the end.
 
 Usage:
     python3 tools/bench_run.py                          # full suite
-    python3 tools/bench_run.py --host 10.0.0.8          # explicit host
+    python3 tools/bench_run.py --host 100.101.202.25    # explicit host
     python3 tools/bench_run.py --output results.json    # custom output path
     python3 tools/bench_run.py --wait 12                # per-scene wait
     python3 tools/bench_run.py --scenes 0,4,7           # subset
@@ -32,7 +32,7 @@ from bench_decode_screenshot import decode
 ROOT = Path(__file__).resolve().parent.parent
 BENCH_JSON = ROOT / "tools" / "benchmarks.json"
 MISTERCLAW = ROOT / "tools" / "misterclaw-send"
-DEFAULT_HOST = "10.0.0.8"
+DEFAULT_HOST = "100.101.202.25"  # MiSTer Tailscale IP; LAN 10.0.0.8
 DEFAULT_WAIT = 12.0     # > 10s so the F10 window is fully populated
 
 

@@ -150,48 +150,45 @@ reg [IDX_BITS-1:0] shuffle_hi_r;     // mem[i] held across the swap
 reg [IDX_BITS-1:0] fill_idx;
 reg [1:0]          adv_ph;           // S_NEXT / S_SNAP_LOAD subphase
 
-// ---- POI data (rom_cx, rom_cy, target_max_zoom_x10, target_zoom_int) ----
-reg signed [WIDTH-1:0] rom_cx, rom_cy;
-always @(*) begin
-    case (target_idx)
-        `POI_ROM_CASES
-        default: begin rom_cx = 64'shFFD0000000000000; rom_cy = 64'sh0000000000000000; end
-    endcase
+// ---- POI data ROM (block RAM; init from rtl/poi_generated.vh) ----
+// One 155-bit word per POI: {cx[154:91], cy[90:27], zoom_x10[26:17],
+// zoom_int[16:12], max_iter[11:0]} — packing defined by poi_encode.py.
+// Was four combinational case-statement LUT ROMs; at 128 POIs those mux
+// trees cost enough ALMs/routing that the iter-clock MAC path lost 0.7 ns
+// of slack to placement congestion (2026-07-12). M10K leaves the fabric
+// alone (device block RAM sits 41% unused).
+//
+// The read is SYNCHRONOUS (1-cycle). During advance phase 2 the address
+// comes from tp_rdata — the same value target_idx latches on that edge —
+// so poi_q is valid in phase 3 exactly when the old combinational lookup
+// was consumed. Every other consumer (S_IDLE/S_LOAD/S_ZOOM_IN snaps, the
+// zoom-stop compare) reads a target_idx that has been stable for many
+// cycles, where the 1-cycle-late poi_q is indistinguishable.
+localparam POI_W     = 155;
+localparam POI_DEPTH = 1 << IDX_BITS;
+(* ramstyle = "M10K" *) reg [POI_W-1:0] poi_rom [0:POI_DEPTH-1];
+initial begin
+    `POI_TABLE_INIT
 end
+reg  [POI_W-1:0] poi_q;
+wire advance_rd = (state == S_NEXT || state == S_SNAP_LOAD) && (adv_ph == 2'd2);
+always @(posedge clk) poi_q <= poi_rom[advance_rd ? tp_rdata : target_idx];
 
-reg [9:0] target_max_zoom_x10;
-always @(*) begin
-    case (target_idx)
-        `POI_ZOOM_CASES
-        default: target_max_zoom_x10 = 10'd80;
-    endcase
-end
+wire signed [WIDTH-1:0] rom_cx              = poi_q[154:91];
+wire signed [WIDTH-1:0] rom_cy              = poi_q[90:27];
+wire        [9:0]       target_max_zoom_x10 = poi_q[26:17];
+wire        [4:0]       target_zoom_int     = poi_q[16:12];
+wire        [11:0]      target_max_iter     = poi_q[11:0];
 
-reg [4:0] target_zoom_int;
-always @(*) begin
-    case (target_idx)
-        `POI_ZOOM_INT_CASES
-        default: target_zoom_int = 5'd8;
-    endcase
-end
-
-// The ROM lookup itself stays combinational (the generated macro uses
-// blocking assigns on this exact name)...
-reg [11:0] target_max_iter;
-always @(*) begin
-    case (target_idx)
-        `POI_ITER_CASES
-        default: target_max_iter = 12'd1024;
-    endcase
-end
-// ...but the module OUTPUT is REGISTERED: target_idx updates one
-// advance phase BEFORE center/step/view_changed land.  A combinational
-// max_iter output leaked through settings_changed one cycle early and
-// started a render with the not-yet-updated view — need_rerender then
-// repainted it (user-visible in gallery as a double render with a
-// zoom step, the first pass additionally on a stale pitch).  The
-// register delays it by exactly one cycle: it commits on the same
-// edge as view_changed.
+// The module OUTPUT is REGISTERED: target_idx updates one advance phase
+// BEFORE center/step/view_changed land.  A combinational max_iter output
+// leaked through settings_changed one cycle early and started a render
+// with the not-yet-updated view — need_rerender then repainted it
+// (user-visible in gallery as a double render with a zoom step, the
+// first pass additionally on a stale pitch).  The register delays it by
+// exactly one cycle: it commits on the same edge as view_changed (with
+// the synchronous ROM, poi_q lands in phase 3 and this register commits
+// on the phase-3 edge — same alignment as before).
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n) target_max_iter_r <= 12'd1024;
     else        target_max_iter_r <= target_max_iter;
