@@ -4,7 +4,7 @@
 #   tools/devcheck.sh pal    <name-on-device.rbf> <tag> <osd-values>   home view, cycling off, screenshot per palette
 #   tools/devcheck.sh bound  <name-on-device.rbf> <tag>                zoom-out x30 / pan-left x40 / pan-up x40 readouts
 #   tools/devcheck.sh cmp    <tagA> <tagB>                             pixel-exact diff of matching captures
-# The MiSTerbrot.cfg is backed up/restored around palette patches.  Keys sent right after a load are
+# The MiSTerbrot.cfg is restored from a single .orig copy around palette patches (survives a killed run).  Keys sent right after a load are
 # often dropped, so the home view is verified by OCR (ZOOM: X2^00.0) and retried; C (cycling toggle)
 # is only pressed on the first try.
 set -u
@@ -30,13 +30,15 @@ case $cmd in
     (cd $ROOT && python3 -c "import sys; sys.path.insert(0,'tools'); import poi_ocr; print('overlay:', poi_ocr.read_poi_name('/tmp/mb_devcheck/deploy.png'))");;
   pal)
     RBF=$1; TAG=$2; shift 2; OUT=/tmp/mb_devcheck/$TAG; mkdir -p $OUT
-    rsh "cp $CFG $CFG.devcheck_bak"; b1orig=$(rsh "xxd -p -s1 -l1 $CFG")
+    # One pristine copy per device: if a previous run died mid-way, .orig still exists and is
+    # restored FIRST, so a pinned palette can never become the "original" of the next run.
+    rsh "[ -f $CFG.orig ] && cp $CFG.orig $CFG || cp $CFG $CFG.orig"; b1orig=$(rsh "xxd -p -s1 -l1 $CFG")
     for v in "$@"; do
       b0=$(printf '%02x' $(( (v & 15) << 4 ))); b1=$(printf '%02x' $(( (0x$b1orig & ~7) | (v >> 4) )))
       rsh "printf '\\x$b0\\x$b1' | dd of=$CFG bs=1 seek=0 conv=notrunc 2>/dev/null; echo load_core /media/fat/_Other/$RBF > /dev/MiSTer_cmd"; sleep 22
       home $OUT/pal_$v.png && echo "  $TAG palette $v captured"
     done
-    rsh "cp $CFG.devcheck_bak $CFG";;
+    rsh "cp $CFG.orig $CFG && rm -f $CFG.orig";;
   bound)
     RBF=$1; TAG=$2; OUT=/tmp/mb_devcheck/$TAG; mkdir -p $OUT
     rsh "echo load_core /media/fat/_Other/$RBF > /dev/MiSTer_cmd"; sleep 22
