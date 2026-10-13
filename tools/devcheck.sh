@@ -47,6 +47,20 @@ case $cmd in
     for k in r r; do $MC input type $k >/dev/null; sleep 0.4; done; sleep 1
     for i in $(seq 40); do $MC input type a >/dev/null; sleep 0.25; done; sleep 2; $MC screenshot --output $OUT/bound_left.png >/dev/null; echo "  $TAG pan-left x40: $(ocr $OUT/bound_left.png)"
     for i in $(seq 40); do $MC input type w >/dev/null; sleep 0.25; done; sleep 2; $MC screenshot --output $OUT/bound_up.png >/dev/null; echo "  $TAG pan-up x40: $(ocr $OUT/bound_up.png)";;
+  cfgbyte)   # cfgbyte <offset> <hex-byte> [load <rbf>]  — patch one byte of the saved status (see CONF_STR bit map)
+    rsh "printf '\\x$2' | dd of=$CFG bs=1 seek=$1 conv=notrunc 2>/dev/null; xxd -p -l 8 $CFG"
+    [ "${3:-}" = load ] && { rsh "echo load_core /media/fat/_Other/$4 > /dev/MiSTer_cmd"; sleep 22; };;
+  shots)     # shots <tag> <count> <interval-s>  — screenshots of whatever is running, then changed-pixel counts between consecutive shots
+    OUT=/tmp/mb_devcheck/$1; mkdir -p $OUT; for i in $(seq -w 1 $2); do $MC screenshot --output $OUT/shot_$i.png >/dev/null; sleep $3; done
+    python3 - "$OUT" <<'PY'
+import sys, glob
+from PIL import Image, ImageChops
+fs = sorted(glob.glob(sys.argv[1] + "/shot_*.png"))
+for a, b in zip(fs, fs[1:]):
+    d = ImageChops.difference(Image.open(a).convert('RGB'), Image.open(b).convert('RGB'))
+    print(f"{a.split('/')[-1]} -> {b.split('/')[-1]}: changed pixels {sum(1 for p in d.getdata() if p != (0,0,0))}")
+PY
+    ;;
   cmp)
     python3 - "$1" "$2" <<'PY'
 import sys, glob, os

@@ -60,7 +60,7 @@ module fractal_osd #(
     //   1'b1 = 8-bit full (no quantization)
     output wire         color_depth_mode,
     // Color Cycling submenu (status[45:37]):
-    output wire [3:0]   cycle_speed_sel,    // [40:37] 0=Normal(default),1=Glacial,2=Slow,3=Quick,4=Fast,5=VeryFast,6=Strobe,7=Hyper,8=Insane
+    output wire [3:0]   cycle_speed_sel,    // [40:37] raw OSD value: 0=Auto, 1..11 = fixed rate index + 1 (decoded in fractal_top)
     output wire [1:0]   cycle_direction,    // [42:41] 0=Forward(default),1=Reverse,2=Ping-Pong
     output wire         cycle_blend_hard,   // [43]    0=Smooth(default),1=Hard-step
     output wire [1:0]   cycle_band_mode,    // [45:44] 0=Off(default),1=Low Slow,2=Low Fast,3=Counter

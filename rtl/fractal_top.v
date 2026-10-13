@@ -220,7 +220,7 @@ wire       osd_periodicity_enable;
 wire       attract_randomize;
 wire [2:0] osd_res_mode;
 wire       color_depth_mode;
-wire [3:0] cycle_speed_sel;
+wire [3:0] cycle_speed_sel;     // OSD O[40:37]: 0 = Auto, 1..11 = fixed rate index + 1
 wire [1:0] cycle_direction;
 wire       cycle_blend_hard;
 wire [1:0] cycle_band_mode;
@@ -340,6 +340,13 @@ wire                    az_fb_sampling;
 wire [6:0]              az_target_idx;
 wire [11:0]             az_max_iter;
 wire [3:0]              az_rnd_cycle_speed;
+// Colour-cycling speed: OSD 0 = Auto -> the per-POI random draw while
+// auto-zoom drives the view (the Attract Randomizer uses the same draw),
+// 9600 baud in manual mode; OSD 1..11 -> fixed rate 0..10.  Randomize
+// still overrides a fixed OSD rate as before.
+wire       cycle_speed_auto = (cycle_speed_sel == 4'd0);
+wire [3:0] cycle_speed_eff  = ((attract_randomize || cycle_speed_auto) && auto_zoom_active) ? az_rnd_cycle_speed
+                            : cycle_speed_auto ? 4'd0 : (cycle_speed_sel - 4'd1);
 wire [1:0]              az_rnd_cycle_direction;
 reg  [6:0]              az_target_idx_prev;
 reg                     az_enable;
@@ -1414,7 +1421,7 @@ color_mapper u_color_mapper (
     .escaped(fb_escaped),
     .palette_sel(palette_sel),
     .cycle_enable(effective_color_cycle_enable),
-    .cycle_speed_sel((attract_randomize && auto_zoom_active) ? az_rnd_cycle_speed : cycle_speed_sel),
+    .cycle_speed_sel(cycle_speed_eff),
     .cycle_direction((attract_randomize && auto_zoom_active) ? az_rnd_cycle_direction : cycle_direction),
     .cycle_blend_hard(cycle_blend_hard),
     .cycle_band_mode(cycle_band_mode),

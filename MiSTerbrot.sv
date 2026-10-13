@@ -182,7 +182,11 @@ localparam CONF_STR = {
 	"O[51],Periodicity Check,On,Off;",
 	"P2,Color Cycling;",
 	"P2O[24],Color Cycling,On,Off;",
-	"P2O[40:37],Speed,9600 baud (Default),Teletype,300 baud,1200 baud,2400 baud,14.4k,28.8k,33.6k,ISDN,DSL,Fiber;",
+	// Speed value 0 = Auto (per-POI random draw, same source as the Attract
+	// Randomizer); values 1..11 = the fixed rates (fractal_top subtracts 1).
+	// A saved config from before 2026-10-13 holding 0 (= the old 9600 default)
+	// therefore comes up as Auto; explicit saved rates shift one step.
+	"P2O[40:37],Speed,Auto,9600 baud,Teletype,300 baud,1200 baud,2400 baud,14.4k,28.8k,33.6k,ISDN,DSL,Fiber;",
 	"P2O[42:41],Direction,Forward,Reverse,Ping-Pong;",
 	"P2O[43],Blending,Smooth,Hard-step;",
 	"P2O[45:44],Iter Band Mix,Off,Low Slow,Low Fast,Counter;",
