@@ -48,6 +48,9 @@ tools/*
 !tools/poi_compare_score.py
 !tools/fps_poi_measure.py
 !tools/fps_ocr.py
+!tools/palette_names_encode.py
+!tools/palette_names.txt
+!tools/devcheck.sh
 !tools/poi_master.json
 !tools/benchmarks.json
 !tools/bench_encode.py

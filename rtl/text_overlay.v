@@ -11,6 +11,7 @@
 //============================================================================
 
 `include "poi_generated.vh"
+`include "palette_names.vh"
 
 module text_overlay #(
     parameter WIDTH     = 64,
@@ -429,6 +430,21 @@ always @(posedge clk) begin
     poi_name_q <= name_ram_q;
 end
 
+// ---- Palette-name ROM (M10K, init from rtl/palette_names.vh) ----
+// Was a 90-entry constant mux (`palette_name` function) evaluated per
+// pixel in two places; same 2-stage synchronous read as the POI names
+// (ALM diet, 2026-10-12).  The label is 3 clks late after a palette
+// change — invisible.  Source of truth: tools/palette_names.txt.
+(* ramstyle = "M10K" *) reg [`PALETTE_NAME_W-1:0] pal_name_rom [0:127];
+initial begin
+    `PALETTE_NAME_INIT
+end
+reg [`PALETTE_NAME_W-1:0] pal_name_ram_q, pal_name_q;
+always @(posedge clk) begin
+    pal_name_ram_q <= pal_name_rom[palette_sel];
+    pal_name_q     <= pal_name_ram_q;
+end
+
 // ---- Zoom calculation ----
 function [1:0] nibble_msb;
     input [3:0] nibble;
@@ -565,162 +581,7 @@ function [7:0] fps_ones_ascii;
 endfunction
 
 // ---- Text content functions ----
-function [255:0] palette_line;
-    input [6:0] pal;
-    begin
-        case (pal)
-            6'd0:  palette_line = "PAL: RAINBOW                  ";
-            6'd1:  palette_line = "PAL: FIRE                     ";
-            6'd2:  palette_line = "PAL: OCEAN                    ";
-            6'd3:  palette_line = "PAL: OIL SLICK                ";
-            6'd4:  palette_line = "PAL: SMOOTH                   ";
-            6'd5:  palette_line = "PAL: NEON                     ";
-            6'd6:  palette_line = "PAL: EARTH                    ";
-            6'd7:  palette_line = "PAL: ICE                      ";
-            6'd8:  palette_line = "PAL: SUNSET                   ";
-            6'd9:  palette_line = "PAL: ELECTRIC                 ";
-            6'd10: palette_line = "PAL: MATRIX                   ";
-            6'd11: palette_line = "PAL: CAPPUCCINO               ";
-            6'd12: palette_line = "PAL: PSYCHEDELIC              ";
-            6'd13: palette_line = "PAL: MILKY WAY                ";
-            6'd14: palette_line = "PAL: FUNHAUS                  ";
-            6'd15: palette_line = "PAL: BUTTERMILCH              ";
-            6'd16: palette_line = "PAL: INDIGO                   ";
-            6'd17: palette_line = "PAL: 70S DISCO                ";
-            6'd18: palette_line = "PAL: 90S TECHNO               ";
-            6'd19: palette_line = "PAL: C64                      ";
-            6'd20: palette_line = "PAL: MIAMI VICE               ";
-            6'd21: palette_line = "PAL: GOLD SHOWER              ";
-            6'd22: palette_line = "PAL: STARDUST                 ";
-            6'd23: palette_line = "PAL: NEBULA                   ";
-            6'd24: palette_line = "PAL: SILVERADO                ";
-            6'd25: palette_line = "PAL: AKIHABARA                ";
-            6'd26: palette_line = "PAL: COLORADO                 ";
-            6'd27: palette_line = "PAL: XTC                      ";
-            6'd28: palette_line = "PAL: PSILOCYBIN               ";
-            6'd29: palette_line = "PAL: HDR                      ";
-            6'd30: palette_line = "PAL: THC                      ";
-            6'd31: palette_line = "PAL: BARBIE WORLD             ";
-            6'd32: palette_line = "PAL: SKITTLES                 ";
-            6'd33: palette_line = "PAL: PAPAGAIO                  ";
-            6'd34: palette_line = "PAL: BUBBLEGUM                ";
-            6'd35: palette_line = "PAL: SYNTHWAVE                ";
-            6'd36: palette_line = "PAL: POP ART                  ";
-            6'd37: palette_line = "PAL: TROPICAL                 ";
-            6'd38: palette_line = "PAL: VAPORWAVE                ";
-            6'd39: palette_line = "PAL: ACID                     ";
-            6'd40: palette_line = "PAL: MORNING SUN              ";
-            6'd41: palette_line = "PAL: CLOUDY                   ";
-            6'd42: palette_line = "PAL: AURORA BOREALIS          ";
-            6'd43: palette_line = "PAL: CREAM                    ";
-            6'd44: palette_line = "PAL: PALLADIUM SILVER         ";
-            6'd45: palette_line = "PAL: COMPLEMENTARY            ";
-            6'd46: palette_line = "PAL: MIGRAINE AURA            ";
-            default: palette_line = "PAL: UNUSED                   ";
-        endcase
-    end
-endfunction
 
-function [199:0] palette_name;
-    input [6:0] pal;
-    begin
-        case (pal)
-            7'd0:  palette_name = "Rainbow                  ";
-            7'd1:  palette_name = "Fire                     ";
-            7'd2:  palette_name = "Ocean                    ";
-            7'd3:  palette_name = "Oil Slick                ";
-            // Names follow the OSD list (MiSTerbrot.sv CONF_STR) and the
-            // color_mapper arms — entries 4..24 were stale (2026-10-11).
-            7'd4:  palette_name = "Electric                 ";
-            7'd5:  palette_name = "Neon                     ";
-            7'd6:  palette_name = "Pastel                   ";
-            7'd7:  palette_name = "Sunset                   ";
-            7'd8:  palette_name = "Aurora                   ";
-            7'd9:  palette_name = "Deep Sea                 ";
-            7'd10: palette_name = "Candy                    ";
-            7'd11: palette_name = "Matrix                   ";
-            7'd12: palette_name = "Toxic                    ";
-            7'd13: palette_name = "Frozen                   ";
-            7'd14: palette_name = "Lava                     ";
-            7'd15: palette_name = "Earth                    ";
-            7'd16: palette_name = "Indigo                   ";
-            7'd17: palette_name = "70s Retro                ";
-            7'd18: palette_name = "90s Rave                 ";
-            7'd19: palette_name = "C64                      ";
-            7'd20: palette_name = "Miami                    ";
-            7'd21: palette_name = "Gold                     ";
-            7'd22: palette_name = "Starlight                ";
-            7'd23: palette_name = "Nebula                   ";
-            7'd24: palette_name = "Silver                   ";
-            7'd25: palette_name = "Akihabara                ";
-            7'd26: palette_name = "Colorado                 ";
-            7'd27: palette_name = "XTC                      ";
-            7'd28: palette_name = "Psilocybin               ";
-            7'd29: palette_name = "HDR                      ";
-            7'd30: palette_name = "THC                      ";
-            7'd31: palette_name = "Barbie World             ";
-            7'd32: palette_name = "Skittles                 ";
-            7'd33: palette_name = "Papagaio                 ";
-            7'd34: palette_name = "Bubblegum                ";
-            7'd35: palette_name = "Synthwave                ";
-            7'd36: palette_name = "Pop Art                  ";
-            7'd37: palette_name = "Tropical                 ";
-            7'd38: palette_name = "Vaporwave                ";
-            7'd39: palette_name = "Acid                     ";
-            7'd40: palette_name = "Morning Sun              ";
-            7'd41: palette_name = "Cloudy                   ";
-            7'd42: palette_name = "Aurora Borealis          ";
-            7'd43: palette_name = "Cream                    ";
-            7'd44: palette_name = "Palladium Silver         ";
-            7'd45: palette_name = "Complementary            ";
-            7'd46: palette_name = "Migraine Aura            ";
-            7'd47: palette_name = "Radioactive Glass        ";
-            7'd48: palette_name = "Cathedral Window         ";
-            7'd49: palette_name = "CRT Phosphor             ";
-            7'd50: palette_name = "Deep Sea Bioluminescence ";
-            7'd51: palette_name = "Rust & Copper            ";
-            7'd52: palette_name = "Cyberpunk Noir           ";
-            7'd53: palette_name = "Bone & Ink               ";
-            7'd54: palette_name = "Solar Flare              ";
-            7'd55: palette_name = "Arctic Plasma            ";
-            7'd56: palette_name = "Toxic Candy              ";
-            7'd57: palette_name = "Old Terminal Amber       ";
-            7'd58: palette_name = "Alien Coral Reef         ";
-            7'd59: palette_name = "Black Hole Accretion     ";
-            7'd60: palette_name = "Infrared Camera          ";
-            7'd61: palette_name = "Pearlescent              ";
-            7'd62: palette_name = "Data Center Night        ";
-            7'd63: palette_name = "Lava Lamp                ";
-            7'd64: palette_name = "Monochrome Brutalist     ";
-            7'd65: palette_name = "Event Horizon            ";
-            7'd66: palette_name = "Psychedelic Circuit      ";
-            7'd67: palette_name = "Desert Mirage            ";
-            7'd68: palette_name = "Blood Moon               ";
-            7'd69: palette_name = "Quantum Foam             ";
-            7'd70: palette_name = "Hypernova Candy          ";
-            7'd71: palette_name = "Cyber Dragon             ";
-            7'd72: palette_name = "Laser Carnival           ";
-            7'd73: palette_name = "Glitch Prism             ";
-            7'd74: palette_name = "Plasma Rave              ";
-            7'd75: palette_name = "Game Boy                 ";
-            7'd76: palette_name = "NES Castlevania          ";
-            7'd77: palette_name = "Embers                   ";
-            7'd78: palette_name = "ZX Spectrum              ";
-            7'd79: palette_name = "CGA Magenta              ";
-            7'd80: palette_name = "Strobe Police            ";
-            7'd81: palette_name = "Halloween Strobe         ";
-            7'd82: palette_name = "Traffic Lights           ";
-            7'd83: palette_name = "SMPTE Color Bars         ";
-            7'd84: palette_name = "Pixel Sprite             ";
-            7'd85: palette_name = "Vintage Poster           ";
-            7'd86: palette_name = "Casino Slots             ";
-            7'd87: palette_name = "Neon Tubes               ";
-            7'd88: palette_name = "Stained Glass Hard       ";
-            7'd89: palette_name = "Disco Floor              ";
-            default: palette_name = "Unused                   ";
-        endcase
-    end
-endfunction
 
 // ---- Line data functions ----
 function [255:0] line_data;
@@ -764,11 +625,9 @@ endfunction
 function [383:0] target_poi_palette;
     input [159:0] poi;      // 20-char label (from poi_name_q, the name ROM)
     input [4:0] poi_len;    // trailing-space-stripped length (ROM field)
-    input [6:0] pal;
-    reg [199:0] pal_name;
+    input [199:0] pal_name;   // 25-char palette label (pal_name_q, the name ROM)
     integer p;
     begin
-        pal_name = palette_name(pal);
 
         // Step 1: initialise all 48 char positions to space.
         for (p = 0; p < 48; p = p + 1)
@@ -803,7 +662,7 @@ endfunction
 // it gets its own pipeline register; 1-cycle-stale content is invisible.
 reg [383:0] poi_pal_line_r;
 always @(posedge clk)
-    poi_pal_line_r <= target_poi_palette(poi_name_q[`POI_NAME_LABEL_W-1:0], poi_name_q[`POI_NAME_LEN_LSB +: 5], palette_sel);
+    poi_pal_line_r <= target_poi_palette(poi_name_q[`POI_NAME_LABEL_W-1:0], poi_name_q[`POI_NAME_LEN_LSB +: 5], pal_name_q);
 
 function [383:0] target_line_data;
     input [2:0] line;
@@ -813,7 +672,7 @@ function [383:0] target_line_data;
                   ((auto_zoom_active || benchmark_active) ?
                   // bench-vs-target idx mux lives at the name-ROM address
                   poi_pal_line_r :
-                  {palette_name(palette_sel), "                       "}) :
+                  {pal_name_q, "                       "}) :
                   TARGET_BLANK_LINE;
             3'd1: target_line_data = overlay_visible ?
                   {"X:", coord_x_sign, coord_x_int, ".", coord_x_d3, coord_x_d2, coord_x_d1, coord_x_d0,

@@ -165,15 +165,15 @@ Top-level and build files:
 RTL:
 
 - `rtl/fractal_top.v`: top-level core datapath and control integration.  Hosts the A2 mirror-write FIFO, the A3 p3_precheck_enable derivation (OSD + per-POI bench flag), the render FSM, the bank-swap state machine, and the benchmark telemetry strip generator.
-- `rtl/input_handler.v`: joystick/keyboard/manual state
+- `rtl/input_handler.v`: joystick/keyboard/manual state.  View-bound checks (pan/zoom-out stay inside |cr|,|ci| <= 3.0) run on the top 24 bits of the 8.56 values (ALM diet 2026-10-13, −340 ALMs, pixel-identical bound behaviour on silicon).
 - `rtl/coord_generator.v`: pixel-to-complex coordinate generation (mode-aware) with per-frame snapshot of step/mode_640/symmetry to prevent mid-frame drift; half-step ci grid shift to avoid the real-axis sampling artifact
-- `rtl/pixel_pipeline.v`: dual-clock dispatch/collect wrapper around `iter_quad` instances.  Includes the `p3_precheck_enable` passthrough CDC sync.
+- `rtl/pixel_pipeline.v`: dual-clock dispatch/collect wrapper around `iter_quad` instances.  (Per-quad coordinate staging was tried 2026-10-13 and reverted: it cut the pipeline's own logic by ~390 ALMs but physical synthesis duplicated the new high-fanout per-quad bus inside the quads, net +370 ALMs.)  Includes the `p3_precheck_enable` passthrough CDC sync.
 - `rtl/iter_quad.v`: 5-stage / 6-context iterator engine with cardioid + period-2 + period-3 interior prechecks
 - `rtl/mul_trunc64.v`: truncated 64×64 multiply primitive
 - `rtl/framebuffer.v`: double-buffered on-chip framebuffer (sized for 640×240)
 - `rtl/color_mapper.v`: 90 procedural palettes and color cycling
 - `rtl/video_timing.v`: native 240p timing generator (mode-aware)
-- `rtl/text_overlay.v`: in-frame text overlay
+- `rtl/text_overlay.v`: in-frame text overlay.  Palette names come from an M10K ROM (`tools/palette_names.txt` → `tools/palette_names_encode.py` → `rtl/palette_names.vh`, 2-stage sync read like the POI names; ALM diet 2026-10-13, −440 ALMs).  NOTE: adding that ROM made Quartus silently demote three small inferred RAMs (auto_zoom playlists, framework shadowmask LUT) to ~1.7k ALMs of logic — they are now pinned `(* ramstyle = "MLAB" *)`; after any change that adds block RAM, diff the per-entity ALM table of the fit report.
 - `rtl/bcd_serial.v`: serial BCD converter for overlay coordinates
 - `rtl/auto_zoom.v`: screensaver / playlist-driven auto-zoom controller (90 POIs, snap-mode S_HOLD/S_SNAP_LOAD states).  **ALM diet (2026-07-08):** (1) the two 90-entry playlists are synchronous-read arrays (MLAB-inferred) instead of register files with 90:1 muxes — the Fisher-Yates shuffle runs a 5-cycle-per-swap subphase FSM (fill + shuffle ≈ 1.2k cycles at reset), and POI advance takes 4 cycles in S_NEXT/S_SNAP_LOAD; (2) the step→zoom-level conversion is computed serially (1 bit/clk normalization, ≤64 cycles per step change) instead of a combinational 16-nibble priority tree + 64-bit barrel shifter — consumers are frame-cadence, so the ≤1.3 µs recompute is invisible.  Both verified: serial zoom math bit-equivalent over a 2.5k-value sweep; behavioral TB proves playlist permutation validity, snap hold/advance, and free-run POI cycling.
 - `rtl/poi_generated.vh`: auto-generated POI data (rom_cx/cy, target_max_zoom_x10, target_zoom_int, target_name_full case bodies). Source: `tools/poi_master.json` via `tools/poi_encode.py`. Do not hand-edit.

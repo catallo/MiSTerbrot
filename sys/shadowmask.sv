@@ -24,7 +24,7 @@ reg  [7:0] mask_idx;
 reg        mask_2x;
 reg        mask_rotate;
 reg        mask_enable;
-reg [10:0] mask_lut[256];
+(* ramstyle = "MLAB" *) reg [10:0] mask_lut[256];  // MiSTerbrot: pinned (synthesis demoted it to logic once the core's M10K ROMs grew)
 
 always @(posedge clk) begin
 	reg [4:0] hcount;

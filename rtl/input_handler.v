@@ -91,31 +91,47 @@ wire signed [WIDTH-1:0] pan_speed = {step[WIDTH-2:0], 1'b0};
 wire signed [WIDTH-1:0] step_delta = step >>> 8;
 
 // ---- View-bound checks (sampled only on repeat_tick, 50 MHz domain) ----
-// Half extents of the current frame, same shift-adds as coord_generator.
-wire signed [WIDTH-1:0] half_w   = (step <<< 7) + (step <<< 5);   // 160 * step
-wire signed [WIDTH-1:0] half_h   = (step <<< 7) - (step <<< 3);   // 120 * step
-wire signed [WIDTH-1:0] bound_x  = VIEW_LIMIT - half_w;            // max |centre_x|
-wire signed [WIDTH-1:0] bound_y  = VIEW_LIMIT - half_h;            // max |centre_y|
+// The new centre / step values are exact 64-bit; the BOUND arithmetic
+// runs on the top 24 bits (8 integer + 16 fraction bits, 1.5e-5
+// resolution) — a +/-3.0 limit does not need 56 fraction bits, and the
+// 64-bit version cost ~500 ALMs (ALM diet 2026-10-12).  Truncation makes
+// a check at most 1.5e-5 permissive, invisible at the limit.
+localparam BW = 24;
+localparam signed [BW-1:0] VIEW_LIMIT_B = VIEW_LIMIT[WIDTH-1 -: BW];
+localparam signed [BW-1:0] MAX_STEP_B   = MAX_STEP[WIDTH-1 -: BW];
 wire signed [WIDTH-1:0] cx_right = center_x + pan_speed;
 wire signed [WIDTH-1:0] cx_left  = center_x - pan_speed;
 wire signed [WIDTH-1:0] cy_down  = center_y + pan_speed;
 wire signed [WIDTH-1:0] cy_up    = center_y - pan_speed;
+wire signed [WIDTH-1:0] step_out = step + step_delta;
+wire signed [BW-1:0] step_b     = step[WIDTH-1 -: BW];
+wire signed [BW-1:0] step_out_b = step_out[WIDTH-1 -: BW];
+// Half extents of the current / zoomed-out frame (160 * step, 120 * step).
+wire signed [BW-1:0] half_w     = (step_b <<< 7) + (step_b <<< 5);
+wire signed [BW-1:0] half_h     = (step_b <<< 7) - (step_b <<< 3);
+wire signed [BW-1:0] half_w_out = (step_out_b <<< 7) + (step_out_b <<< 5);
+wire signed [BW-1:0] half_h_out = (step_out_b <<< 7) - (step_out_b <<< 3);
+wire signed [BW-1:0] bound_x    = VIEW_LIMIT_B - half_w;            // max |centre_x|
+wire signed [BW-1:0] bound_y    = VIEW_LIMIT_B - half_h;            // max |centre_y|
+wire signed [BW-1:0] cx_right_b = cx_right[WIDTH-1 -: BW];
+wire signed [BW-1:0] cx_left_b  = cx_left [WIDTH-1 -: BW];
+wire signed [BW-1:0] cy_down_b  = cy_down [WIDTH-1 -: BW];
+wire signed [BW-1:0] cy_up_b    = cy_up   [WIDTH-1 -: BW];
 // Each direction is allowed when the NEW centre is inside the bound in
 // that direction only — so a centre that is somehow already outside can
 // still be panned back in, never further out.
-wire pan_right_ok = (cx_right <= bound_x);
-wire pan_left_ok  = (cx_left  >= -bound_x);
-wire pan_down_ok  = (cy_down  <= bound_y);
-wire pan_up_ok    = (cy_up    >= -bound_y);
+wire pan_right_ok = (cx_right_b <= bound_x);
+wire pan_left_ok  = (cx_left_b  >= -bound_x);
+wire pan_down_ok  = (cy_down_b  <= bound_y);
+wire pan_up_ok    = (cy_up_b    >= -bound_y);
 // Zoom-out: the larger frame around the current centre must still fit.
-wire signed [WIDTH-1:0] step_out   = step + step_delta;
-wire signed [WIDTH-1:0] half_w_out = (step_out <<< 7) + (step_out <<< 5);
-wire signed [WIDTH-1:0] half_h_out = (step_out <<< 7) - (step_out <<< 3);
-wire signed [WIDTH-1:0] abs_cx     = center_x[WIDTH-1] ? -center_x : center_x;
-wire signed [WIDTH-1:0] abs_cy     = center_y[WIDTH-1] ? -center_y : center_y;
-wire zoom_out_ok = (step_out <= MAX_STEP)
-                && ((abs_cx + half_w_out) <= VIEW_LIMIT)
-                && ((abs_cy + half_h_out) <= VIEW_LIMIT);
+wire signed [BW-1:0] cx_b    = center_x[WIDTH-1 -: BW];
+wire signed [BW-1:0] cy_b    = center_y[WIDTH-1 -: BW];
+wire signed [BW-1:0] abs_cx  = cx_b[BW-1] ? -cx_b : cx_b;
+wire signed [BW-1:0] abs_cy  = cy_b[BW-1] ? -cy_b : cy_b;
+wire zoom_out_ok = (step_out_b <= MAX_STEP_B)
+                && ((abs_cx + half_w_out) <= VIEW_LIMIT_B)
+                && ((abs_cy + half_h_out) <= VIEW_LIMIT_B);
 
 // Button edge detection
 reg [15:0] joy_prev;

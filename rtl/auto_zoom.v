@@ -117,8 +117,12 @@ reg                seed_pending;
 // — both are reset-time / once-per-POI paths where cycles are free.
 // NOTE: contents are NOT reset (that would block RAM inference); the
 // identity fill happens in the SSUB_FILL shuffle subphase instead.
-reg [IDX_BITS-1:0] target_playlist  [0:N_TARGETS-1];
-reg [PAL_BITS-1:0] palette_playlist [0:N_PALETTES-1];
+// MLAB pinned (2026-10-13): once the 200-bit palette-name ROM joined the
+// M10K pool, synthesis silently demoted these two small inferred RAMs (and
+// the framework shadowmask LUT) to ~600 ALMs of registers+muxes.  MLABs
+// are the natural home for 7-bit x 90/128 tables and cost ~10 ALMs each.
+(* ramstyle = "MLAB" *) reg [IDX_BITS-1:0] target_playlist  [0:N_TARGETS-1];
+(* ramstyle = "MLAB" *) reg [PAL_BITS-1:0] palette_playlist [0:N_PALETTES-1];
 reg [IDX_BITS-1:0] tp_raddr, tp_waddr, tp_wdata;
 reg [IDX_BITS-1:0] tp_rdata;
 reg                tp_we;
