@@ -1,44 +1,46 @@
 //============================================================================
-// Iterator Quad — Five Mandelbrot/Julia iterators sharing
-// seven truncated 64×64 multiplies via 5-context DSP time-multiplexing.
+// Iterator Quad — eight Mandelbrot iterators sharing one set of truncated
+// 64x64 multiplies (27-bit limb split, 15 DSP blocks) by 8-context
+// time-multiplexing.
 //
-// Note: name retained for historical reasons; this version has 5 contexts
-// (A..E) per instance, not 4.
+// 2026-10-14 rewrite ("context store in MLAB"):
+//   * Per-context 64-bit values (z, c, ci^2, the Brent snapshot) live in
+//     small RAM arrays indexed by the phase counter instead of register
+//     files selected by 6:1 muxes.  The operand mux that failed timing on
+//     every 100 MHz seed since July is now an MLAB read.
+//   * One shared writeback stage (S6) owns the single write port; the
+//     per-context state machines are reduced to a few flag registers.
+//   * A pixel load is performed in the context's own writeback slot from
+//     the (stable) per-slot coordinate ports, so no pass is ever wasted on
+//     "priming": the pass right after any writeback already sees the new
+//     operands.  (The old design spent one full pass per state transition.)
+//   * The evaluation stage is split: S4 = clamp + magnitude add, S5 =
+//     compares + next-z adds, S6 = decision + writeback.  Every stage
+//     carries at most one 64-bit adder/comparator.
 //
-// 6-stage pipeline (vs. 2-stage in iter_pair.v):
-//   Stage 0   : operand input register (mux output -> DSP input reg packing)
-//   Stage 1   : DSP partial products (registered)
-//   Stage 2a1 : lower-half 32-bit adds + carry → registered
-//   Stage 2a2 : upper-half 32-bit adds + assemble → registered
-//                {zr_sq, zi_sq, zr_zi, ovf}
-//   Stage 2b1 : mag_sq, escape, compares, phase_d3 4:1-style mux → registered
-//   Stage 2b2 : final adds + state machine writeback at phase_d4
+// Pipeline (read at phase == k, writeback at phase_d5 == k, 7-cycle loop,
+// 8-cycle context period; the spare cycle covers an MLAB write->read turn):
+//   S0  : RAM read z[phase] -> DSP input registers
+//   S1  : DSP partial products (registered)
+//   S2a1: lower-half 32-bit adds + carry
+//   S2a2: upper-half 32-bit adds + assemble {zr_sq, zi_sq, zr_zi, ovf}
+//   S4  : clamp, mag_sq / zr_diff adds, context reads (c, ci^2, snap, flags)
+//   S5  : escape / precheck compares, z_next and precheck-operand adds
+//   S6  : state decision, RAM + flag writeback
 //
-// Each context iterates every 6 clocks. Six-stage pipeline requires
-// N_contexts ≥ N_stages to avoid the iteration loop hazard (same-cycle
-// read while writeback for the same context is happening) — hence the
-// 6 contexts. Total iterators per quad: 6 (was 5).
-// NOTE: phase_d4 (the same gate name used in the OLD 5-context design)
-// is correct here too — adding Stage 0 lengthens the phase delay chain
-// by ONE cycle, so phase_d4 now lags phase by 5 cycles, exactly matching
-// the data age in Stage 2b2's source registers.
-//
-// DSP usage per iter_quad: ~14 DSP blocks (7 multiply ops × ~2 DSPs each).
-// Same multiplier count as iter_pair.v / earlier 4-context iter_quad,
-// but serves 6 logical iterators instead.
-// 12-bit iteration count supports max_iter up to 2048.
-//
-// Mandelbrot mode reuses the multiplier pipeline for an interior precheck
-// before entering the main iteration loop:
-//   1. Compute q = (cr − 0.25)^2 + ci^2
-//   2. Test q · (q + (cr − 0.25)) < 0.25 · ci^2     (main cardioid)
-//   3. Test (cr + 1)^2 + ci^2 < 1/16                (period-2 bulb)
-// Points inside either region return done immediately with iter_count=max_iter.
+// Results are bit-identical to the 6-context design: same multiplier
+// split, same clamps, same escape and precheck arithmetic, same Brent
+// periodicity schedule.
 //============================================================================
 
+// AUTO_SHIFT_REGISTER_RECOGNITION OFF: Quartus 17.0 folded a quad's delay
+// chains into an M10K altshift_taps (despite preserve/dont_merge), whose
+// read path missed 100 MHz.  Keep every pipeline delay register in logic.
+(* altera_attribute = "-name AUTO_SHIFT_REGISTER_RECOGNITION OFF" *)
 module iter_quad #(
     parameter WIDTH     = 64,
-    parameter FRAC_BITS = 56
+    parameter FRAC_BITS = 56,
+    parameter NCTX      = 8     // fixed: the phase counter is 3 bits wide
 )(
     input  wire                    clk,
     input  wire                    rst_n,
@@ -47,79 +49,25 @@ module iter_quad #(
 
     // A3 (period-3 bulb precheck) per-frame enable.  Slow-changing on
     // clk_sys; settling glitches harmless because view_changed forces a
-    // frame restart that flushes all in-flight contexts.  When 0, the
-    // S_BULB exit goes straight to S_ITER (original behaviour) — no
-    // extra cycles paid for non-period-3 scenes.
+    // frame restart that flushes all in-flight contexts.
     input  wire                    p3_precheck_enable,
 
-    // P2 (Brent periodicity detection) enable.  Same CDC treatment as
-    // p3_precheck_enable.  When 1, interior orbits that settle into an
-    // exact repeating cycle are detected and classified as interior
-    // (iter_count = max_iter, escaped = 0 — identical to the geometric
-    // prechecks) without burning the remaining iterations.  Fixed-point
-    // arithmetic is deterministic, so a captured cycle repeats exactly;
-    // the 48-bit {zr[23:0], zi[23:0]} snapshot subset can never miss a
-    // true cycle; a false positive (~2^-48 per compare, roughly one
-    // single-frame single-pixel blemish per days of continuous deep-zoom
-    // runtime) is invisible.  48 bits rather than 64 keeps 384 FF out of
-    // the congested quad placement regions.
+    // P2 (Brent periodicity detection) enable.  Same CDC treatment.  A
+    // 48-bit {zr[23:0], zi[23:0]} snapshot can never miss a true cycle;
+    // a false positive (~2^-48 per compare) is invisible.
     input  wire                    periodicity_enable,
 
-    // Context A
-    input  wire                    start_a,
-    input  wire signed [WIDTH-1:0] cr_a,
-    input  wire signed [WIDTH-1:0] ci_a,
-    output wire                    done_a,
-    output wire [11:0]             iter_count_a,
-    output wire                    escaped_a,
-    output wire signed [WIDTH-1:0] final_mag_sq_a,
-
-    // Context B
-    input  wire                    start_b,
-    input  wire signed [WIDTH-1:0] cr_b,
-    input  wire signed [WIDTH-1:0] ci_b,
-    output wire                    done_b,
-    output wire [11:0]             iter_count_b,
-    output wire                    escaped_b,
-    output wire signed [WIDTH-1:0] final_mag_sq_b,
-
-    // Context C
-    input  wire                    start_c,
-    input  wire signed [WIDTH-1:0] cr_c,
-    input  wire signed [WIDTH-1:0] ci_c,
-    output wire                    done_c,
-    output wire [11:0]             iter_count_c,
-    output wire                    escaped_c,
-    output wire signed [WIDTH-1:0] final_mag_sq_c,
-
-    // Context D
-    input  wire                    start_d,
-    input  wire signed [WIDTH-1:0] cr_d,
-    input  wire signed [WIDTH-1:0] ci_d,
-    output wire                    done_d,
-    output wire [11:0]             iter_count_d,
-    output wire                    escaped_d,
-    output wire signed [WIDTH-1:0] final_mag_sq_d,
-
-    // Context E
-    input  wire                    start_e,
-    input  wire signed [WIDTH-1:0] cr_e,
-    input  wire signed [WIDTH-1:0] ci_e,
-    output wire                    done_e,
-    output wire [11:0]             iter_count_e,
-    output wire                    escaped_e,
-    output wire signed [WIDTH-1:0] final_mag_sq_e,
-
-    // Context f (6th context, added to fill the new Stage 0 input-register
-    // pipeline slot so the operand mux can pack into the DSP input registers
-    // without throughput loss).
-    input  wire                    start_f,
-    input  wire signed [WIDTH-1:0] cr_f,
-    input  wire signed [WIDTH-1:0] ci_f,
-    output wire                    done_f,
-    output wire [11:0]             iter_count_f,
-    output wire                    escaped_f,
-    output wire signed [WIDTH-1:0] final_mag_sq_f
+    // Per-context slot ports.  cr/ci are pixel_pipeline's per-slot
+    // registers: written at dispatch, stable until the slot is collected,
+    // and (CDC contract, see MiSTerbrot.sdc) stable >= 2 clk cycles
+    // before the synchronized start pulse.  The quad samples them in the
+    // context's own slot after the pulse.
+    input  wire [NCTX-1:0]         start,
+    input  wire [NCTX*WIDTH-1:0]   cr_flat,
+    input  wire [NCTX*WIDTH-1:0]   ci_flat,
+    output wire [NCTX-1:0]         done,
+    output wire [NCTX*12-1:0]      iter_count_flat,
+    output wire [NCTX-1:0]         escaped
 );
 
 localparam signed [WIDTH-1:0] ESCAPE_THRESHOLD = {{(WIDTH-FRAC_BITS-3){1'b0}}, 1'b1, {(FRAC_BITS+2){1'b0}}};
@@ -128,173 +76,135 @@ localparam signed [WIDTH-1:0] QUARTER_FIXED    = {{(WIDTH-FRAC_BITS+1){1'b0}}, 1
 localparam signed [WIDTH-1:0] BULB_THRESHOLD   = {{(WIDTH-FRAC_BITS+3){1'b0}}, 1'b1, {(FRAC_BITS-4){1'b0}}};
 
 // A3: period-3 bulb precheck constants (8.56 fixed-point).
-//   Upper bulb center: (-0.1225611669, +0.7448617666) — non-real root of c^3+2c^2+c+1=0
-//   Lower bulb center: complex conjugate; tested via |ci|.
-//   Inscribed-circle radius r = 0.075 → r^2 = 0.005625.
-//   Multiplier max ~0.81 inside the circle, comfortably interior, no false positives.
-// Constants computed once via Python: hex literals are the int(round(v * 2^56)) form.
+//   Upper bulb center: (-0.1225611669, +0.7448617666); lower: conjugate (via |ci|).
+//   Inscribed-circle radius r = 0.075 -> r^2 = 0.005625.
 localparam signed [WIDTH-1:0] P3_CX_FIXED   = 64'shFFE09FD4D467A7AD;  // -0.1225611669
 localparam signed [WIDTH-1:0] P3_CY_FIXED   = 64'sh00BEAF42BF967918;  // +0.7448617666
 localparam signed [WIDTH-1:0] P3_R_SQ_FIXED = 64'sh000170A3D70A3D71;  //  0.0056250000
 
 localparam [2:0] S_IDLE     = 3'd0,
-                 S_PREP_Q   = 3'd1,
-                 S_CARDIOID = 3'd2,
-                 S_BULB     = 3'd3,
-                 S_BULB3    = 3'd4,  // A3: period-3 bulb precheck
-                 S_ITER     = 3'd5,
-                 S_DONE     = 3'd6;
+                 S_LOAD     = 3'd1,  // start seen; load in the next own slot
+                 S_PREP_Q   = 3'd2,
+                 S_CARDIOID = 3'd3,
+                 S_BULB     = 3'd4,
+                 S_BULB3    = 3'd5,  // A3: period-3 bulb precheck
+                 S_ITER     = 3'd6,
+                 S_DONE     = 3'd7;
 
-localparam [2:0] PHASE_MAX = 3'd5;  // 6 contexts: phase counts 0..5
+function range_ok;              // value in (-4, 4): bits [63:58] a pure sign extension
+    input signed [WIDTH-1:0] v;
+    range_ok = (v[WIDTH-1:58] == 6'b000000) || (v[WIDTH-1:58] == 6'b111111);
+endfunction
 
-// ---- Per-context state arrays ----
-reg [2:0]              ctx_state          [0:5];
-reg signed [WIDTH-1:0] ctx_zr             [0:5];
-reg signed [WIDTH-1:0] ctx_zi             [0:5];
-reg signed [WIDTH-1:0] ctx_c_real         [0:5];
-reg signed [WIDTH-1:0] ctx_c_imag         [0:5];
-reg [11:0]             ctx_iter           [0:5];
-reg                    ctx_primed         [0:5];
-reg signed [WIDTH-1:0] ctx_cardioid_x     [0:5];
-reg signed [WIDTH-1:0] ctx_cardioid_ci_sq [0:5];
-reg                    ctx_done           [0:5];
-reg [11:0]             ctx_iter_count     [0:5];
-reg                    ctx_escaped        [0:5];
-reg signed [WIDTH-1:0] ctx_final_mag_sq   [0:5];
+// ---- Per-context flag registers (the only per-context state in FFs) ----
+reg [2:0]  ctx_state      [0:NCTX-1];
+reg        ctx_done       [0:NCTX-1];
+reg        ctx_escaped    [0:NCTX-1];
+reg [11:0] ctx_iter_count [0:NCTX-1];
+reg [11:0] ctx_iter       [0:NCTX-1];
+reg        ctx_zbig       [0:NCTX-1];  // current z/precheck operands outside (-4, 4)
+reg        ctx_pre_bad    [0:NCTX-1];  // the (cr-1/4, ci) load was out of range: q invalid
+reg        ctx_qok        [0:NCTX-1];  // cardioid product operands valid (q < 2, q itself valid)
+reg        ctx_snap_ok    [0:NCTX-1];  // a Brent snapshot has been taken for this pixel
+reg        ctx_phit       [0:NCTX-1];  // current z equals the snapshot (evaluated at writeback)
 
-// P2 Brent periodicity state.  ctx_snap holds {zr[23:0], zi[23:0]} of the
-// orbit point captured when the iteration count last hit a power of two
-// (Brent's schedule — no extra counter needed).  ctx_snap_new suppresses
-// the compare for one firing after a snapshot so the fresh snapshot can't
-// match itself; ctx_phit is the compare result, registered in its own
-// always block off the critical path (ctx_zr/zi are stable between
-// firings, so the one-cycle lag is invisible).
-reg [47:0]             ctx_snap           [0:5];
-reg                    ctx_snap_ok        [0:5];
-reg                    ctx_snap_new       [0:5];
-reg                    ctx_phit           [0:5];
+// ---- Per-context values in RAM (one shared write port, S6) ----
+(* ramstyle = "MLAB" *) reg [WIDTH-1:0] mem_zr   [0:NCTX-1];
+(* ramstyle = "MLAB" *) reg [WIDTH-1:0] mem_zi   [0:NCTX-1];
+(* ramstyle = "MLAB" *) reg [WIDTH-1:0] mem_cr   [0:NCTX-1];  // c real
+(* ramstyle = "MLAB" *) reg [WIDTH-1:0] mem_ci   [0:NCTX-1];  // c imag
+(* ramstyle = "MLAB" *) reg [WIDTH-1:0] mem_cisq [0:NCTX-1];  // ci^2 (clamped), cardioid rhs source
+(* ramstyle = "MLAB" *) reg [47:0]      mem_snap [0:NCTX-1];  // Brent snapshot {zr[23:0], zi[23:0]}
 
-// ---- Connect output ports ----
-assign done_a         = ctx_done[0];
-assign iter_count_a   = ctx_iter_count[0];
-assign escaped_a      = ctx_escaped[0];
-assign final_mag_sq_a = ctx_final_mag_sq[0];
-assign done_b         = ctx_done[1];
-assign iter_count_b   = ctx_iter_count[1];
-assign escaped_b      = ctx_escaped[1];
-assign final_mag_sq_b = ctx_final_mag_sq[1];
-assign done_c         = ctx_done[2];
-assign iter_count_c   = ctx_iter_count[2];
-assign escaped_c      = ctx_escaped[2];
-assign final_mag_sq_c = ctx_final_mag_sq[2];
-assign done_d         = ctx_done[3];
-assign iter_count_d   = ctx_iter_count[3];
-assign escaped_d      = ctx_escaped[3];
-assign final_mag_sq_d = ctx_final_mag_sq[3];
-assign done_e         = ctx_done[4];
-assign iter_count_e   = ctx_iter_count[4];
-assign escaped_e      = ctx_escaped[4];
-assign final_mag_sq_e = ctx_final_mag_sq[4];
-assign done_f         = ctx_done[5];
-assign iter_count_f   = ctx_iter_count[5];
-assign escaped_f      = ctx_escaped[5];
-assign final_mag_sq_f = ctx_final_mag_sq[5];
+// ---- Port fan-in / fan-out ----
+wire signed [WIDTH-1:0] ctx_cr_in [0:NCTX-1];
+wire signed [WIDTH-1:0] ctx_ci_in [0:NCTX-1];
+genvar gp;
+generate
+for (gp = 0; gp < NCTX; gp = gp + 1) begin : ports
+    assign ctx_cr_in[gp]                 = cr_flat[gp*WIDTH +: WIDTH];
+    assign ctx_ci_in[gp]                 = ci_flat[gp*WIDTH +: WIDTH];
+    assign done[gp]                      = ctx_done[gp];
+    assign escaped[gp]                   = ctx_escaped[gp];
+    assign iter_count_flat[gp*12 +: 12]  = ctx_iter_count[gp];
+end
+endgenerate
 
-// ---- Per-context input fan-in ----
-wire                    ctx_start [0:5];
-assign ctx_start[0] = start_a;
-assign ctx_start[1] = start_b;
-assign ctx_start[2] = start_c;
-assign ctx_start[3] = start_d;
-assign ctx_start[4] = start_e;
-assign ctx_start[5] = start_f;
-wire signed [WIDTH-1:0] ctx_cr_in [0:5];
-assign ctx_cr_in[0] = cr_a;
-assign ctx_cr_in[1] = cr_b;
-assign ctx_cr_in[2] = cr_c;
-assign ctx_cr_in[3] = cr_d;
-assign ctx_cr_in[4] = cr_e;
-assign ctx_cr_in[5] = cr_f;
-wire signed [WIDTH-1:0] ctx_ci_in [0:5];
-assign ctx_ci_in[0] = ci_a;
-assign ctx_ci_in[1] = ci_b;
-assign ctx_ci_in[2] = ci_c;
-assign ctx_ci_in[3] = ci_d;
-assign ctx_ci_in[4] = ci_e;
-assign ctx_ci_in[5] = ci_f;
-
-// ---- 3-bit phase counter (5 contexts; wraps at 5) ----
-// Replicate per operand mux. Quartus auto-DUPLICATEs `phase` to relieve fanout
-// across the seven DSPs, but after the benchmarking refactor changed nearby
-// placement, the auto-duplicates ended up far from the operand muxes and the
-// `phase[1] -> mux -> DSP -> zrsq_cross` path crossed 10 ns at 100 MHz. By
-// giving each of the two operand muxes its own preserved+dont_merge counter,
-// the placer is free to put each adjacent to its 5:1 mux LUT cluster. The
-// original `phase` is kept as the source for downstream `phase_d1` tracking.
-// `phase` and the phase_d* delay chain carry the same protection,
-// defensively: congested fits have shown cross-quad phase→multiplier
-// routes in the timing report (gen_quad[3]|phase feeding gen_quad[2]
-// logic).  Verified inert on the current netlist (bit-identical fit with
-// and without), so this guards against future netlist-optimization
-// regressions rather than fixing a present one.
+// ---- Phase counter and delay chain ----
+// phase addresses the operand read (S0); phase_d3 the context reads in S4;
+// phase_d5 the writeback (S6).  preserve/dont_merge: these are the RAM
+// address registers and the writeback decode — never let the fitter
+// share them across quads (congested fits have routed one quad's phase
+// into another quad's logic).
 (* preserve = "true", dont_merge = "true" *) reg [2:0] phase;
-// Four operand-mux select replicas — one per 32-bit half of each operand
-// mux (2026-07-08: was one per operand).  Halves each counter's select
-// fanout so the placer can nestle each replica against its own 32-bit
-// mux slice; the phase->mux->mul_z*_r Stage-0 path is the perennial
-// clk_iter closure blocker.
-(* preserve = "true", dont_merge = "true" *) reg [2:0] phase_zr_h;
-(* preserve = "true", dont_merge = "true" *) reg [2:0] phase_zr_l;
-(* preserve = "true", dont_merge = "true" *) reg [2:0] phase_zi_h;
-(* preserve = "true", dont_merge = "true" *) reg [2:0] phase_zi_l;
+(* preserve = "true", dont_merge = "true" *) reg [2:0] phase_d0;
+(* preserve = "true", dont_merge = "true" *) reg [2:0] phase_d1;
+(* preserve = "true", dont_merge = "true" *) reg [2:0] phase_d2;
+(* preserve = "true", dont_merge = "true" *) reg [2:0] phase_d3;
+(* preserve = "true", dont_merge = "true" *) reg [2:0] phase_d4;
+(* preserve = "true", dont_merge = "true" *) reg [2:0] phase_d5;
 
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
-        phase      <= 3'd0;
-        phase_zr_h <= 3'd0;
-        phase_zr_l <= 3'd0;
-        phase_zi_h <= 3'd0;
-        phase_zi_l <= 3'd0;
+        phase    <= 3'd0;
+        phase_d0 <= 3'd0; phase_d1 <= 3'd0; phase_d2 <= 3'd0;
+        phase_d3 <= 3'd0; phase_d4 <= 3'd0; phase_d5 <= 3'd0;
     end else begin
-        phase      <= (phase      == PHASE_MAX) ? 3'd0 : phase      + 3'd1;
-        phase_zr_h <= (phase_zr_h == PHASE_MAX) ? 3'd0 : phase_zr_h + 3'd1;
-        phase_zr_l <= (phase_zr_l == PHASE_MAX) ? 3'd0 : phase_zr_l + 3'd1;
-        phase_zi_h <= (phase_zi_h == PHASE_MAX) ? 3'd0 : phase_zi_h + 3'd1;
-        phase_zi_l <= (phase_zi_l == PHASE_MAX) ? 3'd0 : phase_zi_l + 3'd1;
+        phase    <= phase + 3'd1;   // NCTX == 8: wraps naturally
+        phase_d0 <= phase;
+        phase_d1 <= phase_d0;
+        phase_d2 <= phase_d1;
+        phase_d3 <= phase_d2;
+        phase_d4 <= phase_d3;
+        phase_d5 <= phase_d4;
     end
 end
 
-// ---- Multiplier input mux (selects active context's z based on phase) ----
-// Use the dedicated counter replicas so each mux can be placed near its DSPs.
-wire signed [WIDTH-1:0] mul_zr_w = {ctx_zr[phase_zr_h][63:32], ctx_zr[phase_zr_l][31:0]};
-wire signed [WIDTH-1:0] mul_zi_w = {ctx_zi[phase_zi_h][63:32], ctx_zi[phase_zi_l][31:0]};
+// Per-quad registered copy of max_iter: pixel_pipeline's single register
+// fanned out to every context compare of five quads (82% interconnect on
+// the worst path).  Quasi-static, already two-flop synced upstream.
+(* preserve = "true", dont_merge = "true" *) reg [11:0] max_iter_q;
+always @(posedge clk) max_iter_q <= max_iter;
 
 // ============================================================
-// Stage 0: register the muxed operands so Quartus can pack these regs into
-// the DSP's clk0/clk1 INPUT registers. Splits the long mux->DSP combinational
-// path into two pipeline stages, giving the critical `phase[1] -> Mux6 -> Mult1
-// -> zrsq_cross` path several ns of slack. The total pipeline depth grows
-// from 5 to 6 stages; the context count was grown from 5 to 6 in tandem so
-// the pipeline still fires one iter per cycle per quad.
+// S0: operand read.  The registered read of a phase-indexed array is
+// the MLAB template; the registers pack into the DSP input stage.
 // ============================================================
 reg signed [WIDTH-1:0] mul_zr_r, mul_zi_r;
-(* preserve = "true", dont_merge = "true" *) reg [2:0] phase_d0;
+// Writeback signals (driven in S6 below).
+reg                    wr_z_en;
+reg signed [WIDTH-1:0] wr_zr, wr_zi;
 always @(posedge clk) begin
-    mul_zr_r <= mul_zr_w;
-    mul_zi_r <= mul_zi_w;
-    phase_d0 <= phase;
+    if (wr_z_en) mem_zr[phase_d5] <= wr_zr;
+    mul_zr_r <= mem_zr[phase];
+end
+always @(posedge clk) begin
+    if (wr_z_en) mem_zi[phase_d5] <= wr_zi;
+    mul_zi_r <= mem_zi[phase];
 end
 
-// ---- Split registered operands into 32-bit halves ----
-wire signed [31:0] zr_hi = mul_zr_r[63:32];
+// ---- Split registered operands: 27-bit signed high limb + 32-bit low limb ----
+// The high limb is bits [58:32] (sign + 2 integer bits + 24 fraction bits),
+// i.e. the operand must lie in (-4, 4).  Every value this pipeline multiplies
+// does, by construction or by guard:
+//   * iteration operands z_n: not escaped => |z_n|^2 <= 4;
+//   * a freshly formed z_{n+1} outside (-4, 4) is flagged (ctx_zbig) and
+//     treated as escaped on its pass — exactly what the full-width square
+//     would have concluded (|z|^2 >= 16 > 4);
+//   * precheck operands out of range mark the precheck "not inside", which
+//     is what the true value gives too; the cardioid product q*(q+x) is
+//     additionally gated on q < 2 (inside needs q < 1, and q < 2 bounds
+//     |q+x| < 3.42).
+// 27x27 signed = one Cyclone V DSP block, 27x33 = two: 15 blocks per quad.
+wire signed [26:0] zr_hi = mul_zr_r[58:32];
 wire        [31:0] zr_lo = mul_zr_r[31:0];
-wire signed [31:0] zi_hi = mul_zi_r[63:32];
+wire signed [26:0] zi_hi = mul_zi_r[58:32];
 wire        [31:0] zi_lo = mul_zi_r[31:0];
 wire signed [32:0] zr_lo_s = {1'b0, zr_lo};
 wire signed [32:0] zi_lo_s = {1'b0, zi_lo};
 
 // ============================================================
-// Stage 1: DSP partial products (registered)
+// S1: DSP partial products (registered)
 // ============================================================
 reg signed [63:0] zrsq_hh;     // zr_hi * zr_hi
 reg signed [64:0] zrsq_cross;  // zr_hi * zr_lo_s (doubled in 2a1)
@@ -303,37 +213,34 @@ reg signed [64:0] zisq_cross;
 reg signed [63:0] zrzi_hh;
 reg signed [64:0] zrzi_hl;
 reg signed [64:0] zrzi_lh;
-(* preserve = "true", dont_merge = "true" *) reg [2:0] phase_d1;
 
+wire signed [53:0] zrsq_hh_p    = zr_hi   * zr_hi;    // 27x27 -> 1 DSP
+wire signed [59:0] zrsq_cross_p = zr_hi   * zr_lo_s;  // 27x33 -> 2 DSP
+wire signed [53:0] zisq_hh_p    = zi_hi   * zi_hi;
+wire signed [59:0] zisq_cross_p = zi_hi   * zi_lo_s;
+wire signed [53:0] zrzi_hh_p    = zr_hi   * zi_hi;
+wire signed [59:0] zrzi_hl_p    = zr_hi   * zi_lo_s;
+wire signed [59:0] zrzi_lh_p    = zr_lo_s * zi_hi;
 always @(posedge clk) begin
-    zrsq_hh    <= zr_hi * zr_hi;
-    zrsq_cross <= zr_hi * zr_lo_s;
-    zisq_hh    <= zi_hi * zi_hi;
-    zisq_cross <= zi_hi * zi_lo_s;
-    zrzi_hh    <= zr_hi * zi_hi;
-    zrzi_hl    <= zr_hi * zi_lo_s;
-    zrzi_lh    <= zr_lo_s * zi_hi;
-    phase_d1   <= phase_d0;  // was `<= phase`; new Stage 0 input-register sits between
+    zrsq_hh    <= {{10{zrsq_hh_p[53]}},    zrsq_hh_p};
+    zrsq_cross <= {{ 5{zrsq_cross_p[59]}}, zrsq_cross_p};
+    zisq_hh    <= {{10{zisq_hh_p[53]}},    zisq_hh_p};
+    zisq_cross <= {{ 5{zisq_cross_p[59]}}, zisq_cross_p};
+    zrzi_hh    <= {{10{zrzi_hh_p[53]}},    zrzi_hh_p};
+    zrzi_hl    <= {{ 5{zrzi_hl_p[59]}},    zrzi_hl_p};
+    zrzi_lh    <= {{ 5{zrzi_lh_p[59]}},    zrzi_lh_p};
 end
 
 // ============================================================
-// Stage 2a1: Lower-half 32-bit add of the (formerly 96-bit) accumulation
-//
-// The accumulation slice [95:0] for each square or cross product is
-// effectively split as:
-//   bits [31:0] = passthrough (zrsq_cross_2_w[31:0] etc.; zrsq_hh has 0 here)
-//   bits [95:32] = zrsq_hh + sign_extended(zrsq_cross_2_w[65:32])
-//
-// We split that 64-bit upper-half add into two 32-bit halves with carry.
-// Stage 2a1 computes the lower 32-bit add (slice bits [63:32]) and
-// registers the result, the carry-out, and the upper-32-bit operands for
-// Stage 2a2 to finish.
+// S2a1: lower-half 32-bit add of the 96-bit accumulation
+//   bits [31:0]  = passthrough (cross_2[31:0]; hh has 0 here)
+//   bits [95:32] = hh + sign_extended(cross_2[65:32]), split 32/32 with carry
 // ============================================================
 wire signed [65:0] zrsq_cross_2_w = {zrsq_cross, 1'b0};
 wire signed [65:0] zisq_cross_2_w = {zisq_cross, 1'b0};
 
-// zr*zi has two cross terms. Keep the lower-word accumulation out of the
-// top-word carry chain so Stage 2a1 does not become two serial 32-bit adders.
+// zr*zi has two cross terms; keep the lower-word accumulation out of the
+// top-word carry chain so 2a1 is not two serial 32-bit adders.
 wire [32:0] zrzi_mid_lo_sum_w = {1'b0, zrzi_hl[31:0]} + {1'b0, zrzi_lh[31:0]};
 wire signed [33:0] zrzi_mid_hi_sum_w =
     $signed({zrzi_hl[64], zrzi_hl[64:32]}) +
@@ -350,22 +257,17 @@ wire [32:0] zrzi_word_total_w = {1'b0, zrzi_word_sum_w} +
                                 zrzi_word_carry_w +
                                 {32'd0, zrzi_mid_lo_sum_w[32]};
 
-// Lower-half adds: 32-bit + 32-bit → 33-bit (low result + carry)
 wire [32:0] zrsq_lo_sum_w = {1'b0, zrsq_hh[31:0]} + {1'b0, zrsq_cross_2_w[63:32]};
 wire [32:0] zisq_lo_sum_w = {1'b0, zisq_hh[31:0]} + {1'b0, zisq_cross_2_w[63:32]};
 wire [32:0] zrzi_lo_sum_w = {zrzi_word_total_w[32] ^ zrzi_mid_word_sum_w[32],
                              zrzi_word_total_w[31:0]};
 
-reg [31:0] zrsq_lo_r,    zisq_lo_r,    zrzi_lo_r;     // lower 32 bits of upper-half sum (slice [63:32])
-reg        zrsq_carry_r, zisq_carry_r, zrzi_carry_r;  // carry into upper-half (slice bit 64)
-reg signed [31:0] zrsq_hh_hi_r, zisq_hh_hi_r, zrzi_hh_hi_r;  // zrsq_hh[63:32] etc, queued for 2a2
-// Sign-extension source for the upper add: bit 65 of the original cross
+reg [31:0] zrsq_lo_r,    zisq_lo_r,    zrzi_lo_r;
+reg        zrsq_carry_r, zisq_carry_r, zrzi_carry_r;
+reg signed [31:0] zrsq_hh_hi_r, zisq_hh_hi_r, zrzi_hh_hi_r;
 reg        zrsq_cross_sign_r, zisq_cross_sign_r, zrzi_mid_sign_r;
-// Actual cross-bits feeding into the upper-half add: bits [65:64] of cross_2 (only 2 actual bits)
 reg [1:0]  zrsq_cross_top_r, zisq_cross_top_r, zrzi_mid_top_r;
-// Passthrough: bits [31:0] of slice
 reg [31:0] zrsq_pass_r, zisq_pass_r, zrzi_pass_r;
-(* preserve = "true", dont_merge = "true" *) reg [2:0] phase_d2;
 
 always @(posedge clk) begin
     zrsq_lo_r         <= zrsq_lo_sum_w[31:0];
@@ -388,16 +290,11 @@ always @(posedge clk) begin
     zrzi_mid_sign_r   <= zrzi_mid_hi_sum_w[33];
     zrzi_mid_top_r    <= zrzi_mid_hi_sum_w[33:32];
     zrzi_pass_r       <= zrzi_mid_lo_sum_w[31:0];
-
-    phase_d2          <= phase_d1;
 end
 
 // ============================================================
-// Stage 2a2: Upper-half 32-bit add (with carry from 2a1) + slice assemble
-// → registered {zr_sq, zi_sq, zr_zi, ovf}
+// S2a2: upper-half 32-bit add (with carry) + slice assemble
 // ============================================================
-// Reconstruct upper-half operand B (32 bits): top 30 bits are sign-extension
-// from cross_sign, bottom 2 bits are cross_top.
 wire signed [31:0] zrsq_b_hi = $signed({{30{zrsq_cross_sign_r}}, zrsq_cross_top_r});
 wire signed [31:0] zisq_b_hi = $signed({{30{zisq_cross_sign_r}}, zisq_cross_top_r});
 wire signed [31:0] zrzi_b_hi = $signed({{30{zrzi_mid_sign_r}},   zrzi_mid_top_r});
@@ -406,368 +303,301 @@ wire [32:0] zrsq_hi_sum_w = {1'b0, zrsq_hh_hi_r} + {1'b0, zrsq_b_hi} + {32'd0, z
 wire [32:0] zisq_hi_sum_w = {1'b0, zisq_hh_hi_r} + {1'b0, zisq_b_hi} + {32'd0, zisq_carry_r};
 wire [32:0] zrzi_hi_sum_w = {1'b0, zrzi_hh_hi_r} + {1'b0, zrzi_b_hi} + {32'd0, zrzi_carry_r};
 
-// Reassemble full 96-bit slice: {hi_sum[31:0], lo_r[31:0], pass_r[31:0]}
 wire [95:0] zrsq_sum_w = {zrsq_hi_sum_w[31:0], zrsq_lo_r, zrsq_pass_r};
 wire [95:0] zisq_sum_w = {zisq_hi_sum_w[31:0], zisq_lo_r, zisq_pass_r};
 wire [95:0] zrzi_sum_w = {zrzi_hi_sum_w[31:0], zrzi_lo_r, zrzi_pass_r};
 
-wire signed [WIDTH-1:0] zr_sq_w   = zrsq_sum_w[87:24];
-wire        [7:0]       zr_sq_ovf_w = zrsq_sum_w[95:88];
-wire signed [WIDTH-1:0] zi_sq_w   = zisq_sum_w[87:24];
-wire        [7:0]       zi_sq_ovf_w = zisq_sum_w[95:88];
-wire signed [WIDTH-1:0] zr_zi_w   = zrzi_sum_w[87:24];
-// Signed overflow of the zr*zi product window: the 8.56 result is valid
-// only if bits [95:87] are a pure sign extension.  The cardioid precheck
-// consumes this product as q*(q+x) with q = (cr-1/4)^2 + ci^2, which
-// exceeds +128 once |c| is beyond roughly 3.4 (e.g. a frame corner at
-// (-2.5, -3.0) gives 229) and wrapped to a NEGATIVE window value — which
-// then passed the "< ci^2/4" test and painted the far-outside corner as
-// interior (black arc, found on hardware 2026-10-11).  A genuinely
-// negative q*(q+x) needs q < -x, i.e. |x| < 1 and |value| < 1, so any
-// overflow here is a large positive product: "not inside" is correct.
-// The flag is reduced here to ONE register (a 9-bit equality off the
-// 2a2 adder output; the guard paths showed >= +0.3 ns slack in STA).
-// A variant that registered the 9 raw bits and reduced them in 2b1 made
-// the fitter fail to place the design at three seeds (85% ALM / 97% LAB
-// is the congestion cliff) — keep this form.
-wire zr_zi_ovf_w = ~((zrzi_sum_w[95:87] == 9'h000) | (zrzi_sum_w[95:87] == 9'h1FF));
-
 reg signed [WIDTH-1:0] zr_sq, zi_sq, zr_zi;
 reg [7:0]              zr_sq_ovf, zi_sq_ovf;
-reg                    zr_zi_ovf;
-(* preserve = "true", dont_merge = "true" *) reg [2:0] phase_d3;
-
 always @(posedge clk) begin
-    zr_sq     <= zr_sq_w;
-    zi_sq     <= zi_sq_w;
-    zr_zi     <= zr_zi_w;
-    zr_sq_ovf <= zr_sq_ovf_w;
-    zi_sq_ovf <= zi_sq_ovf_w;
-    zr_zi_ovf <= zr_zi_ovf_w;
-    phase_d3  <= phase_d2;
+    zr_sq     <= zrsq_sum_w[87:24];
+    zi_sq     <= zisq_sum_w[87:24];
+    zr_zi     <= zrzi_sum_w[87:24];
+    zr_sq_ovf <= zrsq_sum_w[95:88];
+    zi_sq_ovf <= zisq_sum_w[95:88];
 end
 
 // ============================================================
-// Stage 2b1: pre-decision combinational + per-context mux, registered
-//
-// Now keyed on phase_d3 (since we inserted Stage 2a1, phase_d3 is the
-// new "the partials are for context k"-aligned signal).
+// S4: clamp + magnitude adds; context reads for context phase_d3
 // ============================================================
-// Squared values should always be non-negative.  The truncated multiplier
-// (skips a_lo*b_lo in the 64x64 product) can produce a tiny negative
-// result for very small squares — when this happens the 96-bit sum
-// reassembly sign-extends through the upper bits, making both
-// zr_sq[WIDTH-1] (sign) AND zr_sq_ovf (upper 8 bits) appear set.  That
-// false-positive triggers spurious escape detection at iter=1..2, which
-// painted cy=0 deep-zoom POIs (e.g. MERCATOR P189) uniformly pink in
-// palette[1..2].  Fix: clamp negative squared results to zero before
-// using them in mag_sq / overflow detection.  See
-// sim/iter_quad/tb_debug.cpp for the reproduction.
-wire signed [WIDTH-1:0] zr_sq_c = zr_sq[WIDTH-1] ? {WIDTH{1'b0}} : zr_sq;
-wire signed [WIDTH-1:0] zi_sq_c = zi_sq[WIDTH-1] ? {WIDTH{1'b0}} : zi_sq;
+// The truncated multiplier can produce a tiny negative square; a negative
+// square sign-extends through the overflow bits and would fire a spurious
+// escape at iter 1..2 (pink cy=0 deep-zoom POIs).  Clamp to zero first.
+wire signed [WIDTH-1:0] zr_sq_c     = zr_sq[WIDTH-1] ? {WIDTH{1'b0}} : zr_sq;
+wire signed [WIDTH-1:0] zi_sq_c     = zi_sq[WIDTH-1] ? {WIDTH{1'b0}} : zi_sq;
 wire [7:0]              zr_sq_ovf_c = zr_sq[WIDTH-1] ? 8'b0 : zr_sq_ovf;
 wire [7:0]              zi_sq_ovf_c = zi_sq[WIDTH-1] ? 8'b0 : zi_sq_ovf;
 
-wire signed [WIDTH-1:0] mag_sq_w    = zr_sq_c + zi_sq_c;
-wire signed [WIDTH-1:0] two_zr_zi_w = {zr_zi[WIDTH-2:0], 1'b0};
-wire signed [WIDTH-1:0] zr_diff_w   = zr_sq_c - zi_sq_c;
-
-wire zr_sq_overflow_w = |zr_sq_ovf_c;
-wire zi_sq_overflow_w = |zi_sq_ovf_c;
-// Sum-overflow check: both clamped operands are non-negative, so if
-// mag_sq's sign bit is set, the sum genuinely overflowed.
-wire sum_overflow_w   = mag_sq_w[WIDTH-1];
-wire escape_w = zr_sq_overflow_w | zi_sq_overflow_w | sum_overflow_w |
-                ($signed(mag_sq_w) > ESCAPE_THRESHOLD);
-
-wire signed [WIDTH-1:0] s2b1_c_real_w         = ctx_c_real        [phase_d3];
-wire signed [WIDTH-1:0] s2b1_c_imag_w         = ctx_c_imag        [phase_d3];
-wire signed [WIDTH-1:0] s2b1_cardioid_x_w     = ctx_cardioid_x    [phase_d3];
-wire signed [WIDTH-1:0] s2b1_cardioid_ci_sq_w = ctx_cardioid_ci_sq[phase_d3];
-
-wire signed [WIDTH-1:0] s2b1_cardioid_rhs_w = s2b1_cardioid_ci_sq_w >>> 2;
-// Overflow-guarded (see zr_zi_ovf): a wrapped product must never read
-// as "inside the cardioid".
-wire cardioid_check_w = !zr_zi_ovf &&
-                        ($signed(zr_zi)   < $signed(s2b1_cardioid_rhs_w));
-wire bulb_check_w     = $signed(mag_sq_w) < $signed(BULB_THRESHOLD);
-// A3: period-3 bulb precheck.  When the FSM enters S_BULB3, the math
-// pipeline is fed `zr = cr - P3_CX` and `zi = |ci| - P3_CY`.  The
-// pipeline computes mag_sq = zr_sq + zi_sq = squared distance to the
-// nearest period-3 bulb center (upper or lower, by symmetry).  If
-// mag_sq < r^2 the point is inside the inscribed circle of the bulb.
-wire period3_check_w  = $signed(mag_sq_w) < $signed(P3_R_SQ_FIXED);
-
-reg signed [WIDTH-1:0] mag_sq_r;
-reg signed [WIDTH-1:0] two_zr_zi_r;
-reg signed [WIDTH-1:0] zr_zi_pl;
-reg signed [WIDTH-1:0] zi_sq_pl;
-reg signed [WIDTH-1:0] zr_diff_r;
-reg                    escape_pl;
-reg                    cardioid_check_pl;
-reg                    bulb_check_pl;
-reg                    period3_check_pl;
-reg signed [WIDTH-1:0] s2_c_real;
-reg signed [WIDTH-1:0] s2_c_imag;
-reg signed [WIDTH-1:0] s2_cardioid_x;
-reg signed [WIDTH-1:0] s2_cardioid_ci_sq;
-(* preserve = "true", dont_merge = "true" *) reg [2:0] phase_d4;
-// The Stage 0 operand-input register adds a stage at the START of the pipe.
-// phase_d4 (4 chained registers from `phase`) is now 5 cycles behind phase,
-// which matches the data age in Stage 2b2 (Stage 0 -> Stage 2b1 = 5 stages).
-// No phase_d5 needed — the writeback gating stays on phase_d4.
+reg signed [WIDTH-1:0] s4_mag_sq;      // zr_sq_c + zi_sq_c (bit 63 = sum overflow)
+reg signed [WIDTH-1:0] s4_zr_diff;     // zr_sq_c - zi_sq_c
+reg signed [WIDTH-1:0] s4_two_zr_zi;
+reg signed [WIDTH-1:0] s4_zr_zi;
+reg signed [WIDTH-1:0] s4_zi_sq_c;
+reg                    s4_sq_ovf;      // either square overflowed its window
+reg signed [WIDTH-1:0] s4_c_real, s4_c_imag, s4_ci_sq;
+reg [47:0]             s4_snap;
+reg signed [WIDTH-1:0] s4_ld_cr, s4_ld_ci;
+reg [2:0]              s4_state;
+reg                    s4_zbig, s4_qok, s4_pre_bad, s4_snap_ok, s4_phit;
+reg [11:0]             s4_iter;
 
 always @(posedge clk) begin
-    mag_sq_r          <= mag_sq_w;
-    two_zr_zi_r       <= two_zr_zi_w;
-    zr_zi_pl          <= zr_zi;
-    zi_sq_pl          <= zi_sq;
-    zr_diff_r         <= zr_diff_w;
-    escape_pl         <= escape_w;
-    cardioid_check_pl <= cardioid_check_w;
-    bulb_check_pl     <= bulb_check_w;
-    period3_check_pl  <= period3_check_w;
-    s2_c_real         <= s2b1_c_real_w;
-    s2_c_imag         <= s2b1_c_imag_w;
-    s2_cardioid_x     <= s2b1_cardioid_x_w;
-    s2_cardioid_ci_sq <= s2b1_cardioid_ci_sq_w;
-    phase_d4          <= phase_d3;
+    s4_mag_sq    <= zr_sq_c + zi_sq_c;
+    s4_zr_diff   <= zr_sq_c - zi_sq_c;
+    s4_two_zr_zi <= {zr_zi[WIDTH-2:0], 1'b0};
+    s4_zr_zi     <= zr_zi;
+    s4_zi_sq_c   <= zi_sq_c;
+    s4_sq_ovf    <= (|zr_sq_ovf_c) | (|zi_sq_ovf_c);
+    s4_ld_cr     <= ctx_cr_in[phase_d3];
+    s4_ld_ci     <= ctx_ci_in[phase_d3];
+    s4_state     <= ctx_state[phase_d3];
+    s4_zbig      <= ctx_zbig[phase_d3];
+    s4_qok       <= ctx_qok[phase_d3];
+    s4_pre_bad   <= ctx_pre_bad[phase_d3];
+    s4_snap_ok   <= ctx_snap_ok[phase_d3];
+    s4_phit      <= ctx_phit[phase_d3];
+    s4_iter      <= ctx_iter[phase_d3];
+end
+// RAM reads (one always block per array, registered read = MLAB template).
+reg                    wr_c_en, wr_cisq_en, wr_snap_en;
+reg signed [WIDTH-1:0] wr_cr, wr_ci, wr_cisq;
+reg [47:0]             wr_snap;
+always @(posedge clk) begin
+    if (wr_c_en) mem_cr[phase_d5] <= wr_cr;
+    s4_c_real <= mem_cr[phase_d3];
+end
+always @(posedge clk) begin
+    if (wr_c_en) mem_ci[phase_d5] <= wr_ci;
+    s4_c_imag <= mem_ci[phase_d3];
+end
+always @(posedge clk) begin
+    if (wr_cisq_en) mem_cisq[phase_d5] <= wr_cisq;
+    s4_ci_sq <= mem_cisq[phase_d3];
+end
+always @(posedge clk) begin
+    if (wr_snap_en) mem_snap[phase_d5] <= wr_snap;
+    s4_snap <= mem_snap[phase_d3];
 end
 
 // ============================================================
-// Stage 2b2: Decision and writeback (final adds + state machine)
-// Operates on Stage 2b1 registered outputs at phase_d4.
+// S5: compares and the adds whose results S6 may write back
 // ============================================================
-wire signed [WIDTH-1:0] mag_sq_eff = mag_sq_r;
-wire signed [WIDTH-1:0] two_zr_zi  = two_zr_zi_r;
-wire signed [WIDTH-1:0] zr_zi_eff  = zr_zi_pl;
-wire signed [WIDTH-1:0] zi_sq_eff  = zi_sq_pl;
-wire                    escape_eff = escape_pl;
+wire signed [WIDTH-1:0] s5_zr_next_w = s4_zr_diff   + s4_c_real;
+wire signed [WIDTH-1:0] s5_zi_next_w = s4_two_zr_zi + s4_c_imag;
+wire signed [WIDTH-1:0] s5_c_plus1_w = s4_c_real + ONE_FIXED;
+wire signed [WIDTH-1:0] s5_p3_zr_w   = s4_c_real - P3_CX_FIXED;
+wire signed [WIDTH-1:0] s5_p3_zi_w   = s4_c_imag[WIDTH-1] ? ((-s4_c_imag) - P3_CY_FIXED)
+                                                           : (  s4_c_imag  - P3_CY_FIXED);
+wire signed [WIDTH-1:0] s5_ld_zr_w   = s4_ld_cr - QUARTER_FIXED;
 
-wire signed [WIDTH-1:0] zr_next_std = zr_diff_r + s2_c_real;
-wire signed [WIDTH-1:0] zi_next_std = two_zr_zi  + s2_c_imag;
-wire signed [WIDTH-1:0] zi_next     = zi_next_std;
+reg                    s5_escape, s5_cardioid, s5_bulb, s5_p3;
+reg signed [WIDTH-1:0] s5_zr_next, s5_zi_next;
+reg signed [WIDTH-1:0] s5_q, s5_q_plus_x;
+reg                    s5_q_small;     // q < 2: cardioid product operands valid
+reg signed [WIDTH-1:0] s5_zi_sq_c;
+reg signed [WIDTH-1:0] s5_c_plus1, s5_c_imag, s5_p3_zr, s5_p3_zi;
+reg                    s5_bulb_bad, s5_p3_bad;
+reg signed [WIDTH-1:0] s5_ld_zr, s5_ld_cr, s5_ld_ci;
+reg                    s5_ld_bad;
+reg [2:0]              s5_state;
+reg                    s5_pre_bad, s5_snap_ok, s5_phit, s5_limit, s5_snap_sched;
+reg [11:0]             s5_iter, s5_iter_inc;
+reg [47:0]             s5_snap;
+
+always @(posedge clk) begin
+    // ctx_zbig: this pass's operands were outside (-4, 4) => products are
+    // meaningless, but |z| >= 4 has certainly escaped.
+    s5_escape     <= s4_zbig | s4_sq_ovf | s4_mag_sq[WIDTH-1] |
+                     ($signed(s4_mag_sq) > ESCAPE_THRESHOLD);
+    s5_cardioid   <= s4_qok && ($signed(s4_zr_zi) < $signed(s4_ci_sq >>> 2));
+    s5_bulb       <= !s4_zbig && ($signed(s4_mag_sq) < $signed(BULB_THRESHOLD));
+    s5_p3         <= !s4_zbig && ($signed(s4_mag_sq) < $signed(P3_R_SQ_FIXED));
+    s5_zr_next    <= s5_zr_next_w;
+    s5_zi_next    <= s5_zi_next_w;
+    s5_q          <= s4_mag_sq;
+    s5_q_small    <= (s4_mag_sq[WIDTH-1:57] == 7'd0);
+    s5_q_plus_x   <= s4_mag_sq + (s4_c_real - QUARTER_FIXED);   // q + (cr - 1/4)
+    s5_zi_sq_c    <= s4_zi_sq_c;
+    s5_c_plus1    <= s5_c_plus1_w;
+    s5_c_imag     <= s4_c_imag;
+    s5_bulb_bad   <= !(range_ok(s5_c_plus1_w) && range_ok(s4_c_imag));
+    s5_p3_zr      <= s5_p3_zr_w;
+    s5_p3_zi      <= s5_p3_zi_w;
+    s5_p3_bad     <= !(range_ok(s5_p3_zr_w) && range_ok(s5_p3_zi_w));
+    s5_ld_zr      <= s5_ld_zr_w;
+    s5_ld_cr      <= s4_ld_cr;
+    s5_ld_ci      <= s4_ld_ci;
+    s5_ld_bad     <= !(range_ok(s5_ld_zr_w) && range_ok(s4_ld_ci));
+    s5_state      <= s4_state;
+    s5_pre_bad    <= s4_pre_bad;
+    s5_snap_ok    <= s4_snap_ok;
+    s5_phit       <= s4_phit;
+    s5_limit      <= (s4_iter >= max_iter_q);
+    s5_iter       <= s4_iter;
+    s5_iter_inc   <= s4_iter + 12'd1;
+    // Brent schedule: re-capture when the NEW count (iter+1) is a power
+    // of two: (x+1) & x == 0.
+    s5_snap_sched <= periodicity_enable && (((s4_iter + 12'd1) & s4_iter) == 12'd0);
+    s5_snap       <= s4_snap;
+end
 
 // ============================================================
-// Per-context state machines (replicated via generate, 6 contexts)
+// S6: decision + writeback for context phase_d5 (shared logic)
 // ============================================================
+wire       s6_next_bad = !(range_ok(s5_zr_next) && range_ok(s5_zi_next));
+wire [47:0] s6_snap_new = {s5_zr_next[23:0], s5_zi_next[23:0]};
+
+// Decision outputs (combinational, consumed by the RAM ports and the
+// per-context flag registers below).
+reg        wb_act;          // this slot's state is active: apply the writeback
+reg [2:0]  wb_state;
+reg        wb_done, wb_escaped;
+reg [11:0] wb_iter_count, wb_iter;
+reg        wb_zbig, wb_pre_bad, wb_qok, wb_snap_ok, wb_phit;
+
+always @(*) begin
+    // defaults: keep flags, no RAM writes
+    wb_act        = 1'b0;
+    wb_state      = s5_state;
+    wb_done       = 1'b0;
+    wb_escaped    = 1'b0;
+    wb_iter_count = 12'd0;
+    wb_iter       = s5_iter;
+    wb_zbig       = 1'b0;
+    wb_pre_bad    = s5_pre_bad;
+    wb_qok        = 1'b0;
+    wb_snap_ok    = s5_snap_ok;
+    wb_phit       = 1'b0;
+    wr_z_en    = 1'b0; wr_zr = s5_zr_next; wr_zi = s5_zi_next;
+    wr_c_en    = 1'b0; wr_cr = s5_ld_cr;   wr_ci = s5_ld_ci;
+    wr_cisq_en = 1'b0; wr_cisq = s5_zi_sq_c;
+    wr_snap_en = 1'b0; wr_snap = s6_snap_new;
+
+    case (s5_state)
+    S_LOAD: begin
+        // Load the pixel: z = (cr - 1/4, ci) for the q pass.  q is only
+        // meaningful if both operands fit the 27-bit high limb; otherwise
+        // every precheck is skipped (the point is far outside).
+        wb_act     = 1'b1;
+        wb_state   = S_PREP_Q;
+        wb_iter    = 12'd0;
+        wb_pre_bad = s5_ld_bad;
+        wb_zbig    = s5_ld_bad;
+        wb_qok     = 1'b0;
+        wb_snap_ok = 1'b0;
+        wr_z_en    = 1'b1; wr_zr = s5_ld_zr; wr_zi = s5_ld_ci;
+        wr_c_en    = 1'b1;
+    end
+    S_PREP_Q: begin
+        // q = (cr-1/4)^2 + ci^2 (= mag_sq); next pass multiplies q*(q+x).
+        wb_act     = 1'b1;
+        wb_state   = S_CARDIOID;
+        wb_qok     = !s5_pre_bad && s5_q_small;
+        wb_zbig    = s5_pre_bad || !s5_q_small;
+        wr_z_en    = 1'b1; wr_zr = s5_q; wr_zi = s5_q_plus_x;
+        wr_cisq_en = 1'b1;              // ci^2, clamped (cardioid rhs = ci^2/4)
+    end
+    S_CARDIOID: begin
+        wb_act = 1'b1;
+        if (s5_cardioid) begin
+            wb_state = S_DONE; wb_done = 1'b1; wb_iter_count = max_iter_q;
+        end else begin
+            wb_state = S_BULB;
+            wb_zbig  = s5_bulb_bad;
+            wr_z_en  = 1'b1; wr_zr = s5_c_plus1; wr_zi = s5_c_imag;
+        end
+    end
+    S_BULB: begin
+        wb_act = 1'b1;
+        if (s5_bulb) begin
+            wb_state = S_DONE; wb_done = 1'b1; wb_iter_count = max_iter_q;
+        end else if (p3_precheck_enable) begin
+            // A3: next pass computes (cr - P3_CX)^2 + (|ci| - P3_CY)^2.
+            wb_state = S_BULB3;
+            wb_zbig  = s5_p3_bad;
+            wr_z_en  = 1'b1; wr_zr = s5_p3_zr; wr_zi = s5_p3_zi;
+        end else begin
+            wb_state = S_ITER;
+            wb_iter  = 12'd0;
+            wr_z_en  = 1'b1; wr_zr = {WIDTH{1'b0}}; wr_zi = {WIDTH{1'b0}};
+        end
+    end
+    S_BULB3: begin
+        wb_act = 1'b1;
+        if (s5_p3) begin
+            wb_state = S_DONE; wb_done = 1'b1; wb_iter_count = max_iter_q;
+        end else begin
+            wb_state = S_ITER;
+            wb_iter  = 12'd0;
+            wr_z_en  = 1'b1; wr_zr = {WIDTH{1'b0}}; wr_zi = {WIDTH{1'b0}};
+        end
+    end
+    S_ITER: begin
+        wb_act = 1'b1;
+        if (s5_escape || s5_limit) begin
+            wb_state = S_DONE; wb_done = 1'b1;
+            wb_escaped = s5_escape; wb_iter_count = s5_iter;
+        end else if (s5_phit) begin
+            // P2: the orbit revisited the Brent snapshot exactly — periodic,
+            // therefore interior (same classification as the prechecks).
+            wb_state = S_DONE; wb_done = 1'b1; wb_iter_count = max_iter_q;
+        end else begin
+            wb_state = S_ITER;
+            wb_iter  = s5_iter_inc;
+            wb_zbig  = s6_next_bad;
+            wr_z_en  = 1'b1;            // wr_zr/zi default to z_next
+            if (s5_snap_sched) begin
+                wr_snap_en = 1'b1;
+                wb_snap_ok = 1'b1;
+            end
+            // Periodicity flag for the NEXT pass: the z being written equals
+            // the snapshot.  A snapshot taken this pass would match itself,
+            // so it is excluded (the old design's ctx_snap_new suppression).
+            wb_phit = periodicity_enable & s5_snap_ok & ~s5_snap_sched &
+                      (s5_snap == s6_snap_new);
+        end
+    end
+    default: ;   // S_IDLE, S_DONE: nothing in flight for this slot
+    endcase
+end
+
+// ---- Per-context flag registers ----
+// The start pulse (any cycle) moves IDLE/DONE -> LOAD; the shared
+// writeback updates the slot's flags when its state is active.  The two
+// never collide: the writeback acts only on active states and the pulse
+// only on IDLE/DONE, and a slot's state changes only through one of them.
 genvar k;
 generate
-for (k = 0; k < 6; k = k + 1) begin : ctx_sm
+for (k = 0; k < NCTX; k = k + 1) begin : ctx_sm
     localparam [2:0] CTX_K = k[2:0];
-
-    // P2: registered periodicity compare, deliberately in its own always
-    // block so the 64-bit equality never lands in the writeback decision
-    // cone.  ctx_zr/zi only change on this context's firing (every 6
-    // clks), so the one-cycle register lag is absorbed before the next
-    // firing consumes the flag.
-    always @(posedge clk or negedge rst_n) begin
-        if (!rst_n) ctx_phit[k] <= 1'b0;
-        else        ctx_phit[k] <= periodicity_enable & ctx_snap_ok[k] &
-                                   (ctx_snap[k] == {ctx_zr[k][23:0], ctx_zi[k][23:0]});
-    end
-
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            ctx_state[k]          <= S_IDLE;
-            ctx_done[k]           <= 1'b0;
-            ctx_escaped[k]        <= 1'b0;
-            ctx_iter_count[k]     <= 12'd0;
-            ctx_final_mag_sq[k]   <= {WIDTH{1'b0}};
-            ctx_zr[k]             <= {WIDTH{1'b0}};
-            ctx_zi[k]             <= {WIDTH{1'b0}};
-            ctx_c_real[k]         <= {WIDTH{1'b0}};
-            ctx_c_imag[k]         <= {WIDTH{1'b0}};
-            ctx_iter[k]           <= 12'd0;
-            ctx_primed[k]         <= 1'b0;
-            ctx_cardioid_x[k]     <= {WIDTH{1'b0}};
-            ctx_cardioid_ci_sq[k] <= {WIDTH{1'b0}};
-            ctx_snap[k]           <= 48'd0;
-            ctx_snap_ok[k]        <= 1'b0;
-            ctx_snap_new[k]       <= 1'b0;
-        end else begin
-            case (ctx_state[k])
-
-            S_IDLE: if (ctx_start[k]) begin
-                ctx_done[k]         <= 1'b0;
-                ctx_escaped[k]      <= 1'b0;
-                ctx_iter_count[k]   <= 12'd0;
-                ctx_final_mag_sq[k] <= {WIDTH{1'b0}};
-                ctx_iter[k]         <= 12'd0;
-                ctx_primed[k]       <= 1'b0;
-                ctx_snap_ok[k]      <= 1'b0;
-                ctx_snap_new[k]     <= 1'b0;
-                ctx_c_real[k]         <= ctx_cr_in[k];
-                ctx_c_imag[k]         <= ctx_ci_in[k];
-                ctx_cardioid_x[k]     <= ctx_cr_in[k] - QUARTER_FIXED;
-                ctx_cardioid_ci_sq[k] <= {WIDTH{1'b0}};
-                ctx_zr[k]             <= ctx_cr_in[k] - QUARTER_FIXED;
-                ctx_zi[k]             <= ctx_ci_in[k];
-                ctx_state[k]          <= S_PREP_Q;
-            end
-
-            S_PREP_Q: if (phase_d4 == CTX_K) begin
-                if (!ctx_primed[k]) begin
-                    ctx_primed[k] <= 1'b1;
-                end else begin
-                    // Clamp negative zi_sq → 0 before storing (same
-                    // truncated-multiplier quirk that motivated the escape
-                    // clamp above).  Without this, deep cy=0 POIs get a
-                    // tiny-negative ci_sq stored, which makes cardioid_rhs
-                    // (= ci_sq >>> 2) negative, which makes the cardioid
-                    // precheck fire LESS often than it should — pixels
-                    // that are actually interior end up iterating to
-                    // max_iter (correct result, wasted cycles).  Same
-                    // sign-bit test, no extra ALMs vs the unclamped form.
-                    ctx_cardioid_ci_sq[k] <= zi_sq_eff[WIDTH-1]
-                                             ? {WIDTH{1'b0}}
-                                             : zi_sq_eff;
-                    ctx_zr[k]             <= mag_sq_eff;
-                    ctx_zi[k]             <= mag_sq_eff + ctx_cardioid_x[k];
-                    ctx_primed[k]         <= 1'b0;
-                    ctx_state[k]          <= S_CARDIOID;
-                end
-            end
-
-            S_CARDIOID: if (phase_d4 == CTX_K) begin
-                if (!ctx_primed[k]) begin
-                    ctx_primed[k] <= 1'b1;
-                end else begin
-                    if (cardioid_check_pl) begin
-                        ctx_escaped[k]      <= 1'b0;
-                        ctx_iter_count[k]   <= max_iter;
-                        ctx_final_mag_sq[k] <= {WIDTH{1'b0}};
-                        ctx_done[k]         <= 1'b1;
-                        ctx_state[k]        <= S_DONE;
-                    end else begin
-                        ctx_zr[k]     <= ctx_c_real[k] + ONE_FIXED;
-                        ctx_zi[k]     <= ctx_c_imag[k];
-                        ctx_primed[k] <= 1'b0;
-                        ctx_state[k]  <= S_BULB;
-                    end
-                end
-            end
-
-            S_BULB: if (phase_d4 == CTX_K) begin
-                if (!ctx_primed[k]) begin
-                    ctx_primed[k] <= 1'b1;
-                end else begin
-                    if (bulb_check_pl) begin
-                        ctx_escaped[k]      <= 1'b0;
-                        ctx_iter_count[k]   <= max_iter;
-                        ctx_final_mag_sq[k] <= {WIDTH{1'b0}};
-                        ctx_done[k]         <= 1'b1;
-                        ctx_state[k]        <= S_DONE;
-                    end else if (p3_precheck_enable) begin
-                        // A3: prepare the period-3 bulb check.  Load operands
-                        // so the next pipeline pass computes
-                        //   (cr - P3_CX)^2 + (|ci| - P3_CY)^2
-                        // The |ci| handling is what lets one test catch both
-                        // upper and lower bulbs (symmetric across the real axis).
-                        ctx_zr[k]     <= ctx_c_real[k] - P3_CX_FIXED;
-                        ctx_zi[k]     <= (ctx_c_imag[k][WIDTH-1]
-                                          ? (-ctx_c_imag[k])
-                                          : ctx_c_imag[k]) - P3_CY_FIXED;
-                        ctx_primed[k] <= 1'b0;
-                        ctx_state[k]  <= S_BULB3;
-                    end else begin
-                        // A3 disabled for this frame — original S_BULB
-                        // exit (zero z, jump to S_ITER).
-                        ctx_zr[k]     <= {WIDTH{1'b0}};
-                        ctx_zi[k]     <= {WIDTH{1'b0}};
-                        ctx_iter[k]   <= 12'd0;
-                        ctx_primed[k] <= 1'b0;
-                        ctx_state[k]  <= S_ITER;
-                    end
-                end
-            end
-
-            S_BULB3: if (phase_d4 == CTX_K) begin
-                if (!ctx_primed[k]) begin
-                    ctx_primed[k] <= 1'b1;
-                end else begin
-                    if (period3_check_pl) begin
-                        // Inside the inscribed circle of a period-3 bulb.
-                        // Declare interior, skip the iteration loop entirely.
-                        ctx_escaped[k]      <= 1'b0;
-                        ctx_iter_count[k]   <= max_iter;
-                        ctx_final_mag_sq[k] <= {WIDTH{1'b0}};
-                        ctx_done[k]         <= 1'b1;
-                        ctx_state[k]        <= S_DONE;
-                    end else begin
-                        // Not in a period-3 bulb either — proceed with the
-                        // full iteration loop (original S_BULB-exit behaviour).
-                        ctx_zr[k]     <= {WIDTH{1'b0}};
-                        ctx_zi[k]     <= {WIDTH{1'b0}};
-                        ctx_iter[k]   <= 12'd0;
-                        ctx_primed[k] <= 1'b0;
-                        ctx_state[k]  <= S_ITER;
-                    end
-                end
-            end
-
-            S_ITER: if (phase_d4 == CTX_K) begin
-                if (!ctx_primed[k]) begin
-                    ctx_primed[k] <= 1'b1;
-                end else begin
-                    if (escape_eff || (ctx_iter[k] >= max_iter)) begin
-                        ctx_escaped[k]      <= escape_eff;
-                        ctx_iter_count[k]   <= ctx_iter[k];
-                        ctx_final_mag_sq[k] <= mag_sq_eff;
-                        ctx_done[k]         <= 1'b1;
-                        ctx_state[k]        <= S_DONE;
-                    end else if (ctx_phit[k] && !ctx_snap_new[k]) begin
-                        // P2: the orbit revisited the Brent snapshot
-                        // exactly — periodic, therefore interior.  Same
-                        // classification as the geometric prechecks.
-                        // ctx_snap_new suppresses the one firing right
-                        // after a snapshot (it would match itself).
-                        ctx_escaped[k]      <= 1'b0;
-                        ctx_iter_count[k]   <= max_iter;
-                        ctx_final_mag_sq[k] <= {WIDTH{1'b0}};
-                        ctx_done[k]         <= 1'b1;
-                        ctx_state[k]        <= S_DONE;
-                    end else begin
-                        ctx_zr[k]   <= zr_next_std;
-                        ctx_zi[k]   <= zi_next;
-                        ctx_iter[k] <= ctx_iter[k] + 12'd1;
-                        // Brent snapshot schedule: re-capture whenever
-                        // the NEW iteration count (ctx_iter+1) is a power
-                        // of two.  (x+1) is a power of two iff
-                        // (x+1) & x == 0.  FF-write only — nothing added
-                        // to the writeback logic cone.
-                        if (periodicity_enable &&
-                            (((ctx_iter[k] + 12'd1) & ctx_iter[k]) == 12'd0)) begin
-                            ctx_snap[k]     <= {zr_next_std[23:0], zi_next[23:0]};
-                            ctx_snap_ok[k]  <= 1'b1;
-                            ctx_snap_new[k] <= 1'b1;
-                        end else begin
-                            ctx_snap_new[k] <= 1'b0;
-                        end
-                    end
-                end
-            end
-
-            S_DONE: if (ctx_start[k]) begin
-                ctx_done[k]         <= 1'b0;
-                ctx_escaped[k]      <= 1'b0;
-                ctx_iter_count[k]   <= 12'd0;
-                ctx_final_mag_sq[k] <= {WIDTH{1'b0}};
-                ctx_iter[k]         <= 12'd0;
-                ctx_primed[k]       <= 1'b0;
-                ctx_snap_ok[k]      <= 1'b0;
-                ctx_snap_new[k]     <= 1'b0;
-                ctx_c_real[k]         <= ctx_cr_in[k];
-                ctx_c_imag[k]         <= ctx_ci_in[k];
-                ctx_cardioid_x[k]     <= ctx_cr_in[k] - QUARTER_FIXED;
-                ctx_cardioid_ci_sq[k] <= {WIDTH{1'b0}};
-                ctx_zr[k]             <= ctx_cr_in[k] - QUARTER_FIXED;
-                ctx_zi[k]             <= ctx_ci_in[k];
-                ctx_state[k]          <= S_PREP_Q;
-            end
-
-            default: ctx_state[k] <= S_IDLE;
-            endcase
+            ctx_state[k]      <= S_IDLE;
+            ctx_done[k]       <= 1'b0;
+            ctx_escaped[k]    <= 1'b0;
+            ctx_iter_count[k] <= 12'd0;
+            ctx_iter[k]       <= 12'd0;
+            ctx_zbig[k]       <= 1'b0;
+            ctx_pre_bad[k]    <= 1'b0;
+            ctx_qok[k]        <= 1'b0;
+            ctx_snap_ok[k]    <= 1'b0;
+            ctx_phit[k]       <= 1'b0;
+        end else if (wb_act && (phase_d5 == CTX_K)) begin
+            ctx_state[k]      <= wb_state;
+            ctx_done[k]       <= wb_done;
+            ctx_escaped[k]    <= wb_escaped;
+            ctx_iter_count[k] <= wb_iter_count;
+            ctx_iter[k]       <= wb_iter;
+            ctx_zbig[k]       <= wb_zbig;
+            ctx_pre_bad[k]    <= wb_pre_bad;
+            ctx_qok[k]        <= wb_qok;
+            ctx_snap_ok[k]    <= wb_snap_ok;
+            ctx_phit[k]       <= wb_phit;
+        end else if (start[k] && (ctx_state[k] == S_IDLE || ctx_state[k] == S_DONE)) begin
+            ctx_state[k]      <= S_LOAD;
+            ctx_done[k]       <= 1'b0;
+            ctx_escaped[k]    <= 1'b0;
+            ctx_iter_count[k] <= 12'd0;
         end
     end
 end

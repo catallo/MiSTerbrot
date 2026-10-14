@@ -21,7 +21,7 @@
 //============================================================================
 
 module pixel_pipeline #(
-    parameter N_ITERATORS = 24,  // 4 quads x 6 contexts/quad
+    parameter N_ITERATORS = 40,  // quads x 8 contexts/quad (fractal_top passes 40 = 5 quads)
     parameter WIDTH       = 64,
     parameter FRAC_BITS   = 56,
     parameter RID_W       = 2    // region_id tag width (Mariani-Silver v2)
@@ -129,7 +129,6 @@ endgenerate
 wire                    iter_done_level [0:N_ITERATORS-1]; // from iter_quad (clk_iter)
 wire [11:0]             iter_count_level [0:N_ITERATORS-1];
 wire                    iter_escaped_level [0:N_ITERATORS-1];
-wire signed [WIDTH-1:0] iter_mag_sq_level [0:N_ITERATORS-1];
 
 reg                     iter_done_prev_iter [0:N_ITERATORS-1]; // edge detect (clk_iter)
 reg                     iter_done_toggle    [0:N_ITERATORS-1]; // toggle in clk_iter
@@ -160,64 +159,35 @@ generate
 endgenerate
 
 // =====================================================================
-// iter_quad instances (clk_iter), 5 contexts each
+// iter_quad instances (clk_iter), 8 contexts each (2026-10-14 rewrite:
+// flat per-quad slot buses; N_ITERATORS must be a multiple of 8)
 // =====================================================================
-genvar gq;
+genvar gq, gc;
 generate
-    for (gq = 0; gq < N_ITERATORS/6; gq = gq + 1) begin : gen_quad
+    for (gq = 0; gq < N_ITERATORS/8; gq = gq + 1) begin : gen_quad
+        wire [7:0]         q_start;
+        wire [8*WIDTH-1:0] q_cr, q_ci;
+        wire [7:0]         q_done, q_escaped;
+        wire [8*12-1:0]    q_iter_count;
+        for (gc = 0; gc < 8; gc = gc + 1) begin : gen_slot
+            assign q_start[gc]                 = iter_start_pulse_iter[8*gq+gc];
+            assign q_cr[gc*WIDTH +: WIDTH]     = iter_cr[8*gq+gc];
+            assign q_ci[gc*WIDTH +: WIDTH]     = iter_ci[8*gq+gc];
+            assign iter_done_level[8*gq+gc]    = q_done[gc];
+            assign iter_escaped_level[8*gq+gc] = q_escaped[gc];
+            assign iter_count_level[8*gq+gc]   = q_iter_count[gc*12 +: 12];
+        end
         iter_quad #(.WIDTH(WIDTH), .FRAC_BITS(FRAC_BITS)) u_quad (
             .clk(clk_iter), .rst_n(rst_n),
             .max_iter(max_iter_iter),
             .p3_precheck_enable(p3_precheck_enable_iter),
             .periodicity_enable(periodicity_enable_iter),
-
-            .start_a       (iter_start_pulse_iter [6*gq+0]),
-            .cr_a          (iter_cr               [6*gq+0]),
-            .ci_a          (iter_ci               [6*gq+0]),
-            .done_a        (iter_done_level       [6*gq+0]),
-            .iter_count_a  (iter_count_level      [6*gq+0]),
-            .escaped_a     (iter_escaped_level    [6*gq+0]),
-            .final_mag_sq_a(iter_mag_sq_level     [6*gq+0]),
-
-            .start_b       (iter_start_pulse_iter [6*gq+1]),
-            .cr_b          (iter_cr               [6*gq+1]),
-            .ci_b          (iter_ci               [6*gq+1]),
-            .done_b        (iter_done_level       [6*gq+1]),
-            .iter_count_b  (iter_count_level      [6*gq+1]),
-            .escaped_b     (iter_escaped_level    [6*gq+1]),
-            .final_mag_sq_b(iter_mag_sq_level     [6*gq+1]),
-
-            .start_c       (iter_start_pulse_iter [6*gq+2]),
-            .cr_c          (iter_cr               [6*gq+2]),
-            .ci_c          (iter_ci               [6*gq+2]),
-            .done_c        (iter_done_level       [6*gq+2]),
-            .iter_count_c  (iter_count_level      [6*gq+2]),
-            .escaped_c     (iter_escaped_level    [6*gq+2]),
-            .final_mag_sq_c(iter_mag_sq_level     [6*gq+2]),
-
-            .start_d       (iter_start_pulse_iter [6*gq+3]),
-            .cr_d          (iter_cr               [6*gq+3]),
-            .ci_d          (iter_ci               [6*gq+3]),
-            .done_d        (iter_done_level       [6*gq+3]),
-            .iter_count_d  (iter_count_level      [6*gq+3]),
-            .escaped_d     (iter_escaped_level    [6*gq+3]),
-            .final_mag_sq_d(iter_mag_sq_level     [6*gq+3]),
-
-            .start_e       (iter_start_pulse_iter [6*gq+4]),
-            .cr_e          (iter_cr               [6*gq+4]),
-            .ci_e          (iter_ci               [6*gq+4]),
-            .done_e        (iter_done_level       [6*gq+4]),
-            .iter_count_e  (iter_count_level      [6*gq+4]),
-            .escaped_e     (iter_escaped_level    [6*gq+4]),
-            .final_mag_sq_e(iter_mag_sq_level     [6*gq+4]),
-
-            .start_f       (iter_start_pulse_iter [6*gq+5]),
-            .cr_f          (iter_cr               [6*gq+5]),
-            .ci_f          (iter_ci               [6*gq+5]),
-            .done_f        (iter_done_level       [6*gq+5]),
-            .iter_count_f  (iter_count_level      [6*gq+5]),
-            .escaped_f     (iter_escaped_level    [6*gq+5]),
-            .final_mag_sq_f(iter_mag_sq_level     [6*gq+5])
+            .start(q_start),
+            .cr_flat(q_cr),
+            .ci_flat(q_ci),
+            .done(q_done),
+            .iter_count_flat(q_iter_count),
+            .escaped(q_escaped)
         );
     end
 endgenerate

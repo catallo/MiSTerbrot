@@ -56,6 +56,140 @@ with `tools/bench_diff.py <before.json> <after.json>`.
 
 ---
 
+## 2026-10-14 · `quad8-mlab` — 8-context iter_quad with the context store in MLAB (fifth quad at 100 MHz)
+
+Builds (same tree, deepthought sweep of six seeds each): baseline =
+`bench_collect_20261012.json` (four 6-context quads, priority collect);
+after = five 8-context quads (`N_ITERATORS=40`), bench seed 1 (HDMI
++0.528 ns, clk_iter +0.570 ns, 25,868 ALMs / 62%).  Release build: seed 5,
+**+0.495 ns HDMI / +1.212 ns clk_iter, 25,230 ALMs (60%), 108/112 DSP** —
+pinned in `MiSTerbrot.qsf`.  Verilator: bit-identical checksums on every
+`tb_pp` scene and the 46-case iter_quad bench; device captures pixel-exact
+vs the 2026-10-13 build apart from the overlay date glyph.
+
+What changed (`rtl/iter_quad.v` rewrite, see docs/PROJECT.md): the fifth
+quad fitted on 2026-10-13 (27-bit DSP limbs, 108/112 blocks) but no seed of
+three sweeps closed 100 MHz — and a four-quad control sweep showed the same
+1-in-6 lottery at 73% ALMs, i.e. the fill level was never the cause.  Every
+failing cone was inside the quad: the 6:1 operand mux into the DSP input
+registers, the shared max_iter compare, the 64-bit add+compare evaluation
+stage, the state→z writeback mux.  The rewrite moves the per-context 64-bit
+values (z, c, ci², Brent snapshot) into MLAB arrays addressed by the phase
+counter (the operand mux becomes a RAM read), uses one shared writeback
+stage with the single write port, loads pixels in the context's own slot,
+drops the priming pass the old engine spent on every state transition
+(2–6% of frame cycles by itself), and splits the evaluation into
+clamp/add → compare/next-z → decision stages.  3,312 → 1,383 ALMs per quad;
+core 35.0k → 25.2k.  **clk_iter closes on 12/12 seeds (+0.48 … +1.21 ns).**
+The only remaining misses (4 of 12 builds, −0.06 … −0.28 ns) are on the
+framework's 148.5 MHz HDMI pixel clock inside ascal/shadowmask — routing-only
+paths between framework registers (0 logic levels, 5.5 ns of interconnect),
+not core RTL.
+
+**Geomean 1.18x (+18.4%)**, 52 of 90 scenes faster, none slower beyond
+F10 window noise.  Raw engine gain is the expected ~25% (five quads at the
+same clock plus no priming): the unquantized ~1–3 fps satellites read
++20…30% (SAT DBL SPIRAL 1.0 → 1.3, SAT SEAHORSE 1.1 → 1.4, JULIA ISLANDS
+2.2 → 2.8, BEYER STEP 13 2.3 → 2.9); scenes on a 60/N floor move only when
+they cross a harmonic (P7/P8 ISLAND, P3 LIMB FULL, M(7,7) WAKE 30 → 60;
+EJS BRANCH, ELEPHANT P16/P19, SEAHORSE TAIL, TRIPLE MEDALLION 20 → 30;
+MERCATOR P189 9.5 → 14.3).
+
+| idx | scene | F10 before | F10 after | ratio |
+|----:|-------|-----------:|----------:|------:|
+| 0 | P6 SUB BULB | 596 | 596 | 1.00x |
+| 1 | P3 ISLAND | 596 | 596 | 1.00x |
+| 2 | P3 ISLAND TIP | 597 | 596 | 1.00x |
+| 3 | P4 ISLAND | 596 | 597 | 1.00x |
+| 4 | P5 ISLAND | 596 | 596 | 1.00x |
+| 5 | P6 ISLAND | 596 | 597 | 1.00x |
+| 6 | P7 ISLAND | 299 | 596 | 1.99x |
+| 7 | P8 ISLAND | 299 | 595 | 1.99x |
+| 8 | P9 ISLAND | 298 | 299 | 1.00x |
+| 9 | P11 ISLAND | 298 | 298 | 1.00x |
+| 10 | P22 ISLAND | 199 | 199 | 1.00x |
+| 11 | ELEPHANT TRUNK | 596 | 596 | 1.00x |
+| 12 | ELEPHANT HEADS | 119 | 149 | 1.25x |
+| 13 | ELEPHANT ISLAND | 40 | 50 | 1.25x |
+| 14 | ELEPHANT P19 | 198 | 297 | 1.50x |
+| 15 | ELEPHANT P16 | 199 | 298 | 1.50x |
+| 16 | SEAHORSE BODY | 86 | 119 | 1.38x |
+| 17 | SEAHORSE TAIL | 198 | 297 | 1.50x |
+| 18 | SEAHORSE DEEP | 67 | 86 | 1.28x |
+| 19 | SEAHORSE TAIL2 | 199 | 199 | 1.00x |
+| 20 | DOUBLE HOOK | 150 | 199 | 1.33x |
+| 21 | SH SATELLITE | 86 | 100 | 1.16x |
+| 22 | SAT ANTENNA | 20 | 24 | 1.20x |
+| 23 | SAT HEAD | 12 | 15 | 1.25x |
+| 24 | SAT SEAHORSE | 11 | 14 | 1.27x |
+| 25 | SAT DBL SPIRAL | 10 | 13 | 1.30x |
+| 26 | JULIA ISLANDS | 22 | 28 | 1.27x |
+| 27 | TRIPLE WEST | 46 | 54 | 1.17x |
+| 28 | TRIPLE DEEP | 100 | 119 | 1.19x |
+| 29 | FEIGENBAUM | 298 | 297 | 1.00x |
+| 30 | FEIGENBAUM ZOOM | 149 | 198 | 1.33x |
+| 31 | FEIGENBAUM DEEP | 59 | 75 | 1.27x |
+| 32 | GEN FEIGENBAUM | 594 | 596 | 1.00x |
+| 33 | MISIUREWICZ M4 | 597 | 597 | 1.00x |
+| 34 | MISIUREWICZ M4-2 | 299 | 298 | 1.00x |
+| 35 | MISIUREWICZ SPIR | 199 | 298 | 1.50x |
+| 36 | MISIUREWICZ -1.94 | 596 | 597 | 1.00x |
+| 37 | MISIUREWICZ -1.84 | 596 | 597 | 1.00x |
+| 38 | DBL SPIRAL P4 | 596 | 596 | 1.00x |
+| 39 | SINGLE SPIRAL | 597 | 596 | 1.00x |
+| 40 | TRIPLE MEDALLION | 199 | 298 | 1.50x |
+| 41 | DBL SPIRAL ISLE | 100 | 119 | 1.19x |
+| 42 | TRIPLE ISLE MED | 100 | 119 | 1.19x |
+| 43 | CAULIFLOWER MED | 149 | 198 | 1.33x |
+| 44 | EJS CAULI | 596 | 595 | 1.00x |
+| 45 | EJS DBL SPIRAL | 199 | 199 | 1.00x |
+| 46 | EJS BRANCH | 199 | 298 | 1.50x |
+| 47 | EJS NUCLEUS | 14 | 17 | 1.21x |
+| 48 | LOVE CANAL | 39 | 49 | 1.26x |
+| 49 | P5 ISLAND DEEP | 198 | 198 | 1.00x |
+| 50 | ELEPHANT MED | 149 | 198 | 1.33x |
+| 51 | STARFISH | 149 | 199 | 1.34x |
+| 52 | M3,1 WAKE 3/7 | 199 | 199 | 1.00x |
+| 53 | M11,1 WAKE 5/11 | 100 | 120 | 1.20x |
+| 54 | CONCHA APPROACH | 594 | 595 | 1.00x |
+| 55 | M7,1 WAKE 1/7 | 149 | 199 | 1.34x |
+| 56 | SH CUSP DEEP | 22 | 26 | 1.18x |
+| 57 | EJS PERIOD 44 | 294 | 295 | 1.00x |
+| 58 | JEWEL BOX | 100 | 119 | 1.19x |
+| 59 | R2T P6 ISLAND | 298 | 299 | 1.00x |
+| 60 | SH CUSP FINE | 10 | 13 | 1.30x |
+| 61 | R2 HALF ISLE | 24 | 29 | 1.21x |
+| 62 | R2T P7 ISLAND | 594 | 595 | 1.00x |
+| 63 | SCEPTER MED | 119 | 149 | 1.25x |
+| 64 | BRANCH MED | 298 | 298 | 1.00x |
+| 65 | EJS P3 DEEP | 85 | 100 | 1.18x |
+| 66 | NEEDLE MED | 298 | 298 | 1.00x |
+| 67 | M3,1 1/3 LIMB TIP | 597 | 596 | 1.00x |
+| 68 | M_4,2 CASCADE 1 | 596 | 597 | 1.00x |
+| 69 | M_8,4 CASCADE 2 | 596 | 596 | 1.00x |
+| 70 | M_16,8 CASCADE 3 | 298 | 299 | 1.00x |
+| 71 | EJS P47 ALPHA | 199 | 198 | 0.99x |
+| 72 | EJS P50 BETA | 199 | 198 | 0.99x |
+| 73 | EJS WAKE 1/4 | 199 | 298 | 1.50x |
+| 74 | SH SPIRAL CONT | 199 | 298 | 1.50x |
+| 75 | SH TAIL SPIRAL | 150 | 199 | 1.33x |
+| 76 | ELEPHANT MED 2 | 149 | 198 | 1.33x |
+| 77 | R2T 1/2 ISLE STEP | 119 | 149 | 1.25x |
+| 78 | BEYER STEP 13 | 23 | 29 | 1.26x |
+| 79 | BEYER STEP 14 | 20 | 25 | 1.25x |
+| 80 | TRIPLE SPIRAL P4 | 19 | 24 | 1.26x |
+| 81 | MERCATOR P189 | 95 | 143 | 1.51x |
+| 82 | MERCATOR P38 | 297 | 299 | 1.01x |
+| 83 | M(3,3) WAKE 1/3 DP | 595 | 595 | 1.00x |
+| 84 | M(7,7) WAKE 1/4 DP | 299 | 596 | 1.99x |
+| 85 | EJS P47 GAMMA | 199 | 199 | 1.00x |
+| 86 | P3 BULB UPPER | 149 | 199 | 1.34x |
+| 87 | P3 BULB LOWER | 149 | 199 | 1.34x |
+| 88 | P3 LIMB FULL | 298 | 595 | 2.00x |
+| 89 | P3 BULB DEEP | 597 | 597 | 1.00x |
+
+---
+
 ## 2026-10-12 · `priority-collect` — first-pending collect in pixel_pipeline (+ MISTERBROT_NO_AUDIO)
 
 Builds (same day, same tree, bench engine enabled, framework audio path

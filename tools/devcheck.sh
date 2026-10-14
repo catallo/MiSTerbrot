@@ -61,6 +61,15 @@ for a, b in zip(fs, fs[1:]):
     print(f"{a.split('/')[-1]} -> {b.split('/')[-1]}: changed pixels {sum(1 for p in d.getdata() if p != (0,0,0))}")
 PY
     ;;
+  bench)     # bench <name-on-device.rbf> <label> — fresh load, enter benchmark mode (verified, retried), run all 90 scenes
+    RBF=$1; LABEL=$2; OUT=$ROOT/bench_${LABEL}_$(date +%Y%m%d).json
+    rsh "echo load_core /media/fat/_Other/$RBF > /dev/MiSTer_cmd"; sleep 25
+    for try in 1 2 3; do
+      $MC input type b >/dev/null; sleep 13; mkdir -p /tmp/mb_devcheck; $MC screenshot --output /tmp/mb_devcheck/benchcheck.png >/dev/null
+      if (cd $ROOT && python3 tools/bench_decode_screenshot.py /tmp/mb_devcheck/benchcheck.png 2>/dev/null | grep -q "scene=0"); then echo "  bench mode entered (try $try)"; break; fi
+      echo "  bench mode not entered (try $try)"; [ $try = 3 ] && exit 1
+    done
+    (cd $ROOT && python3 tools/bench_run.py --host $H --no-toggle --output "$OUT" --label "$LABEL" 2>&1 | tail -4); echo "  results: $OUT";;
   cmp)
     python3 - "$1" "$2" <<'PY'
 import sys, glob, os

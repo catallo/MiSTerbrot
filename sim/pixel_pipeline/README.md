@@ -28,3 +28,15 @@ checksums identical on all five scenes):
 | 4 | 943,820 | 895,543 | 5.1% |
 
 Scene 1 checksum: `74fe0134ce1a4d66` — any dispatch/collect change must keep it.
+
+Five quads (2026-10-13, `verilator -GNI=30 ...`): same checksums, cycles
+715,451 → 572,625 / 1,975,041 → 1,580,312 / 600,099 → 481,700 /
+895,543 → 717,128 (−20% on every scene).  Enabled by the 27-bit DSP limbs in
+iter_quad (21 → 15 DSP blocks per quad, 108 of 112 in use with five).
+
+Eight-context quad (2026-10-14, the default `NI = 40`): same checksums,
+cycles 1,580,312 → 1,533,597 / 481,700 → 448,051 / 12,569,831 → 12,509,275 /
+717,128 → 661,547.  The extra gain is the end of the "priming" passes — the
+old quad discarded one full pass after every state transition (load,
+cardioid, bulb, period-3) although the pass already read the new operands;
+`NI` must now be a multiple of 8.

@@ -7,6 +7,7 @@
 //              4: ANTENNA BAND MERGE z3
 `timescale 1ns/1ps
 module tb_pp;
+parameter NI = 40;   // iterators under test (5 quads x 8 contexts); override with verilator -GNI=<multiple of 8>
 reg clk = 0, clk_iter = 0, rst_n = 0;
 always #10 clk = ~clk;        // 50 MHz
 always #5  clk_iter = ~clk_iter;   // 100 MHz
@@ -23,7 +24,7 @@ wire [11:0] result_iter;
 wire [1:0]  result_rid;
 reg  [11:0] max_iter = 12'd1024;
 
-pixel_pipeline dut (
+pixel_pipeline #(.N_ITERATORS(NI)) dut (
     .clk(clk), .clk_iter(clk_iter), .rst_n(rst_n),
     .frame_done(frame_done), .max_iter(max_iter),
     .p3_precheck_enable(1'b0), .periodicity_enable(1'b1),
@@ -74,7 +75,7 @@ initial begin
     coord_valid <= 0; coord_frame_done <= 1;
     while (!frame_done) @(posedge clk);
     repeat (3) @(posedge clk);   // let the last collected result land in the counters
-    $display("scene=%0d results=%0d cycles=%0d chk=%h", scene, results, cycles, chk);
+    $display("scene=%0d iterators=%0d results=%0d cycles=%0d chk=%h", scene, NI, results, cycles, chk);
     if (results != W*H) begin $display("FAIL: result count"); $fatal; end
     $finish;
 end

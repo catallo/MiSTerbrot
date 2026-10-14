@@ -49,12 +49,10 @@ static void reset(Viter_quad* dut) {
     // golden.py models. (When this enable is 0 the FSM skips S_BULB3 and
     // the period3_bulb_precheck cases would diverge from golden.)
     dut->p3_precheck_enable = 1;
-    dut->start_a = 0; dut->cr_a = 0; dut->ci_a = 0;
-    dut->start_b = 0; dut->cr_b = 0; dut->ci_b = 0;
-    dut->start_c = 0; dut->cr_c = 0; dut->ci_c = 0;
-    dut->start_d = 0; dut->cr_d = 0; dut->ci_d = 0;
-    dut->start_e = 0; dut->cr_e = 0; dut->ci_e = 0;
-    dut->start_f = 0; dut->cr_f = 0; dut->ci_f = 0;
+    // 8-context flat ports (2026-10-14): start[7:0], cr_flat/ci_flat
+    // [8*64-1:0] as 16 x 32-bit words; context A = bit 0 / words 0..1.
+    dut->start = 0;
+    for (int w = 0; w < 16; w++) { dut->cr_flat[w] = 0; dut->ci_flat[w] = 0; }
     for (int i = 0; i < 4; i++) tick(dut);
     dut->rst_n = 1;
     for (int i = 0; i < 4; i++) tick(dut);
@@ -197,15 +195,17 @@ int main(int argc, char** argv) {
 
         // Drive context A
         dut->max_iter = tc.max_iter;
-        dut->cr_a = (uint64_t)to_8_56(tc.cr);
-        dut->ci_a = (uint64_t)to_8_56(tc.ci);
-        dut->start_a = 1;
+        uint64_t cr_fx = (uint64_t)to_8_56(tc.cr);
+        uint64_t ci_fx = (uint64_t)to_8_56(tc.ci);
+        dut->cr_flat[0] = (uint32_t)cr_fx; dut->cr_flat[1] = (uint32_t)(cr_fx >> 32);
+        dut->ci_flat[0] = (uint32_t)ci_fx; dut->ci_flat[1] = (uint32_t)(ci_fx >> 32);
+        dut->start = 1;
         tick(dut);
-        dut->start_a = 0;
+        dut->start = 0;
 
-        // Wait for done_a (or timeout)
+        // Wait for done[0] (or timeout)
         int timeout = 200000;
-        while (!dut->done_a && timeout-- > 0) {
+        while (!(dut->done & 1) && timeout-- > 0) {
             tick(dut);
         }
 
@@ -216,8 +216,8 @@ int main(int argc, char** argv) {
             continue;
         }
 
-        int got_iter = (int)dut->iter_count_a;
-        int got_esc  = (int)dut->escaped_a;
+        int got_iter = (int)(dut->iter_count_flat[0] & 0xfff);
+        int got_esc  = (int)(dut->escaped & 1);
         int delta    = got_iter - tc.expected_iter;
 
         // PASS: matches exactly
