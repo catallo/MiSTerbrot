@@ -9,7 +9,8 @@ module pll (
 		input  wire  refclk,   //  refclk.clk
 		input  wire  rst,      //   reset.reset
 		output wire  outclk_0, // outclk0.clk (50 MHz, clk_sys)
-		output wire  outclk_1, // outclk1.clk (75 MHz, clk_iter)
+		output wire  outclk_1, // outclk1.clk (100 MHz, clk_vid: display path)
+		output wire  outclk_2, // outclk2.clk (108.33 MHz, clk_iter: iter_quad math; 2026-10-14)
 		output wire  locked    //  locked.export
 	);
 
@@ -18,6 +19,7 @@ module pll (
 		.rst      (rst),      //   reset.reset
 		.outclk_0 (outclk_0), // outclk0.clk
 		.outclk_1 (outclk_1), // outclk1.clk
+		.outclk_2 (outclk_2), // outclk2.clk
 		.locked   (locked)    //  locked.export
 	);
 

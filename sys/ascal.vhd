@@ -1035,6 +1035,18 @@ ARCHITECTURE rtl OF ascal IS
 	SIGNAL o_h_poly_t,o_h_poly_t2,o_v_poly_t   : type_poly_t;
 
 	SIGNAL o_v_poly_adaptive, o_h_poly_adaptive, o_v_poly_use_adaptive, o_h_poly_use_adaptive : std_logic;
+	-- MiSTerbrot 2026-10-14: the two *_use_adaptive registers select the
+	-- polyphase records (C3..C8) and drive ~150 mux inputs each; on a
+	-- 60%-full device the fitter routed one of them 5.5 ns across the chip
+	-- and the 148.5 MHz HDMI clock missed by 0.28 ns on a third of the
+	-- seeds.  maxfan lets synthesis duplicate them per placement region
+	-- (5 SynDup copies in the fit report; that path is gone).  The HDMI
+	-- clock still misses by ≤0.35 ns on ~1 seed in 12 on other ascal
+	-- paths (o_div→o_hfrac divider, o_vacpt→o_vpixq_pre); that residue is
+	-- the scaler itself at 148.5 MHz and is handled by seed choice.
+	ATTRIBUTE maxfan : natural;
+	ATTRIBUTE maxfan OF o_v_poly_use_adaptive : SIGNAL IS 24;
+	ATTRIBUTE maxfan OF o_h_poly_use_adaptive : SIGNAL IS 24;
 	SIGNAL poly_wr_mode : std_logic_vector(2 DOWNTO 0);
 	SIGNAL poly_tdw : unsigned(39 DOWNTO 0);
 	SIGNAL poly_a2 : unsigned(FRAC-1 DOWNTO 0);

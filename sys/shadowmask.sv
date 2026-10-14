@@ -1,3 +1,8 @@
+// MiSTerbrot 2026-10-14: the 4-deep {vs,hs,de} delay line `vid` was being
+// folded into an altshift_taps block RAM whose read path into the OSD's
+// line divider missed the HDMI clock by 0.08 ns on some seeds.  Keep the
+// delay line in registers.
+(* altera_attribute = "-name AUTO_SHIFT_REGISTER_RECOGNITION OFF" *)
 module shadowmask
 (
 	input             clk,

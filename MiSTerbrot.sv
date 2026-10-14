@@ -134,7 +134,7 @@ assign VGA_DISABLE = 0;
 // core_rendering is clk_sys; the framework consumes HDMI_FREEZE in the
 // video clock domain — 2FF since the 100 MHz video move.
 reg [1:0] freeze_sync;
-always @(posedge clk_iter) freeze_sync <= {freeze_sync[0], core_rendering};
+always @(posedge clk_vid) freeze_sync <= {freeze_sync[0], core_rendering};
 assign HDMI_FREEZE = freeze_sync[1];
 assign HDMI_BLACKOUT = 0;
 // 480i ships with the field flag suppressed (former Deinterlace=Off,
@@ -251,13 +251,19 @@ hps_io #(.CONF_STR(CONF_STR)) hps_io
 );
 
 wire clk_sys;
-wire clk_iter;
+wire clk_vid;   // 100 MHz: the whole display path (video_timing .. dvid)
+wire clk_iter;  // 108.33 MHz: iter_quad math only (2026-10-14 PLL split).  The
+                // iterator domain talks to clk_sys alone, through the toggle
+                // synchronizers + set_net_delay contracts in pixel_pipeline;
+                // nothing crosses between clk_iter and clk_vid.  VCO 1300 MHz:
+                // 50 / 100 / 108.33 are exact divides (26 / 13 / 12).
 pll pll
 (
 	.refclk(CLK_50M),
 	.rst(0),
 	.outclk_0(clk_sys),
-	.outclk_1(clk_iter)
+	.outclk_1(clk_vid),
+	.outclk_2(clk_iter)
 );
 
 wire reset = RESET | status[0] | buttons[1];
@@ -281,7 +287,7 @@ fractal_top #(
 ) u_fractal_top (
 	.clk(clk_sys),
 	.clk_iter(clk_iter),
-	.clk_vid(clk_iter),
+	.clk_vid(clk_vid),
 	.rst_n(rst_n),
 	.joystick(joystick_0),
 	.ps2_key(ps2_key),
@@ -329,10 +335,10 @@ fractal_top #(
 );
 
 // WIDTH sized for max resolution (640) — line buffer absorbs unused space in 320 mode.
-// Video runs in the 100 MHz domain since the 480p domain move (clk_iter output).
+// Video runs in the 100 MHz clk_vid domain since the 480p domain move.
 arcade_video #(.WIDTH(640), .DW(24)) u_arcade_video
 (
-	.clk_video(clk_iter),
+	.clk_video(clk_vid),
 	.ce_pix(ce_pix),
 	.RGB_in({core_r, core_g, core_b}),
 	.HBlank(core_hblank),
@@ -367,7 +373,7 @@ reg        dvid_ce;
 reg [7:0]  dvid_r, dvid_g, dvid_b;
 reg        dvid_hs, dvid_vs, dvid_de;
 reg        d_oldvid_ce;
-always @(posedge clk_iter) begin
+always @(posedge clk_vid) begin
 	d_oldvid_ce <= ce_pix;
 	dvid_ce     <= ce_pix & ~d_oldvid_ce;
 	if (ce_pix) begin

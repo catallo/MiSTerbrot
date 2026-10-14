@@ -2,11 +2,14 @@ derive_pll_clocks
 derive_clock_uncertainty
 
 # core specific constraints
-# clk_sys (PLL outclk_0, 50 MHz) and clk_iter (PLL outclk_1, 100 MHz)
-# are independent. CDC at the iter_quad boundary uses toggle synchronizers.
+# clk_sys (PLL outclk_0, 50 MHz), clk_vid (outclk_1, 100 MHz) and clk_iter
+# (outclk_2, 108.33 MHz; separate output since 2026-10-14) are independent.
+# CDC at the iter_quad boundary uses toggle synchronizers; nothing crosses
+# between clk_iter and clk_vid.
 set_clock_groups -asynchronous \
     -group [get_clocks {emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk}] \
-    -group [get_clocks {emu|pll|pll_inst|altera_pll_i|general[1].gpll~PLL_OUTPUT_COUNTER|divclk}]
+    -group [get_clocks {emu|pll|pll_inst|altera_pll_i|general[1].gpll~PLL_OUTPUT_COUNTER|divclk}] \
+    -group [get_clocks {emu|pll|pll_inst|altera_pll_i|general[2].gpll~PLL_OUTPUT_COUNTER|divclk}]
 
 # Bound routing delay on the quasi-static CDC data buses.  The async clock
 # groups above cut ALL cross-domain timing analysis, so without these the
@@ -105,7 +108,7 @@ set_multicycle_path -hold  1 -from [get_registers {*u_color_mapper|color_*}] -to
 
 # ---- 100 MHz video-domain move (docs/480P_DESIGN.md) ----
 # The display path (video_timing, fb read, color_mapper, text_overlay,
-# arcade_video, dvid) now lives in clk_iter's clock group.  The former
+# arcade_video, dvid) now lives in clk_vid's clock group (general[1]).  The former
 # quasi-static multicycles from clk_sys sources became CROSS-DOMAIN
 # paths, cut entirely by the async clock groups above — so they get
 # net-delay routing bounds instead (same CDC contract as the iter
