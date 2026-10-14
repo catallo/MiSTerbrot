@@ -40,3 +40,10 @@ cycles 1,580,312 → 1,533,597 / 481,700 → 448,051 / 12,569,831 → 12,509,275
 old quad discarded one full pass after every state transition (load,
 cardioid, bulb, period-3) although the pass already read the new operands;
 `NI` must now be a multiple of 8.
+
+118 MHz pipeline (2026-10-14 b: extra limb-combine stage S2a0, cr-1/4 in
+its own context RAM, flag writeback registered in S7): same checksums,
+cycles 1,533,597 → 1,542,818 / 448,051 → 456,931 / 12,509,275 → 12,517,056 /
+661,547 → 672,013 (+0.1…2%: two more cycles of latency per pixel slot, the
+iteration rate per context is unchanged) — paid back many times by the
+108.33 → 118.18 MHz clock.

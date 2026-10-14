@@ -125,8 +125,8 @@ closure) remains the documented escalation if field reports ever
 suggest heat-related artifacts.
 *(2026-10-14: the split happened in the other direction — after the
 8-context MLAB iter_quad closed 100 MHz on every seed with ≥0.5 ns to
-spare, clk_iter moved to its own PLL output at 108.33 MHz while clk_vid
-stays at 100 MHz; see docs/PERF_BASELINE_TRACK_A.md.)*
+spare, clk_iter moved to its own PLL output at 108.33 MHz, then 118.18 MHz
+the same day, while clk_vid stays at 100 MHz; see docs/PERF_BASELINE_TRACK_A.md.)*
 
 ## Stage 2 verification (2026-07-10)  [sim PASS]
 

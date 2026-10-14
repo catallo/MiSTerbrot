@@ -3,7 +3,7 @@ derive_clock_uncertainty
 
 # core specific constraints
 # clk_sys (PLL outclk_0, 50 MHz), clk_vid (outclk_1, 100 MHz) and clk_iter
-# (outclk_2, 108.33 MHz; separate output since 2026-10-14) are independent.
+# (outclk_2, 118.18 MHz; separate output since 2026-10-14) are independent.
 # CDC at the iter_quad boundary uses toggle synchronizers; nothing crosses
 # between clk_iter and clk_vid.
 set_clock_groups -asynchronous \
