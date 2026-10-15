@@ -3,7 +3,7 @@ derive_clock_uncertainty
 
 # core specific constraints
 # clk_sys (PLL outclk_0, 50 MHz), clk_vid (outclk_1, 100 MHz) and clk_iter
-# (outclk_2, 118.18 MHz; separate output since 2026-10-14) are independent.
+# (outclk_2, 130 MHz; separate output since 2026-10-14) are independent.
 # CDC at the iter_quad boundary uses toggle synchronizers; nothing crosses
 # between clk_iter and clk_vid.
 set_clock_groups -asynchronous \
@@ -217,3 +217,13 @@ set_multicycle_path -hold  1 -from [get_registers {*u_video_timing|pixel_x[*] *u
 # mux and gallery_palette's enable — all tick-sampled consumers.)
 set_multicycle_path -setup 3 -from [get_registers {*u_fractal_top|m480p_vs* *u_fractal_top|ddr_mode_vs* *u_fractal_top|bank_sel_vs* *u_fractal_top|single_buf_vs* *u_fractal_top|gallery_vs* *u_fractal_top|fade_vs*}] -to [get_registers {*u_arcade_video|* *|dvid_* *ascal|i_pix* *u_color_mapper|* *u_text_overlay|* *u_framebuffer|* *u_fb_ddr3|* *u_gallery_palette|*}]
 set_multicycle_path -hold  2 -from [get_registers {*u_fractal_top|m480p_vs* *u_fractal_top|ddr_mode_vs* *u_fractal_top|bank_sel_vs* *u_fractal_top|single_buf_vs* *u_fractal_top|gallery_vs* *u_fractal_top|fade_vs*}] -to [get_registers {*u_arcade_video|* *|dvid_* *ascal|i_pix* *u_color_mapper|* *u_text_overlay|* *u_framebuffer|* *u_fb_ddr3|* *u_gallery_palette|*}]
+
+# ---- 130 MHz iterator clock (2026-10-15) ----
+# max_iter is quasi-static (2-FF synced in pixel_pipeline, changes only with
+# a parameter edit that restarts the frame; a torn sample paints a few wrong
+# pixels for one frame, see docs/PROJECT.md).  Its fan-out to the five quads'
+# per-quad copies gets two clk_iter cycles instead of one.
+set_multicycle_path -setup 2 -from [get_registers {*u_pipeline|max_iter_iter[*]}] -to [get_registers {*u_quad|max_iter_q[*]}]
+set_multicycle_path -hold  1 -from [get_registers {*u_pipeline|max_iter_iter[*]}] -to [get_registers {*u_quad|max_iter_q[*]}]
+set_multicycle_path -setup 2 -from [get_registers {*u_pipeline|p3_precheck_enable_iter *u_pipeline|periodicity_enable_iter}] -to [get_registers {*u_quad|p3_en_q *u_quad|per_en_q}]
+set_multicycle_path -hold  1 -from [get_registers {*u_pipeline|p3_precheck_enable_iter *u_pipeline|periodicity_enable_iter}] -to [get_registers {*u_quad|p3_en_q *u_quad|per_en_q}]

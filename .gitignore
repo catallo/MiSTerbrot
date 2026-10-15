@@ -29,6 +29,8 @@ timing_report.tcl
 
 # Test/deploy artifacts
 MiSTerbrot_*.rbf
+# Device captures + bench RBFs (tools/devcheck.sh): regenerable, persistent, never in /tmp
+captures/
 screenshots/archive/
 # Iter-profile raw per-setting sweeps (intermediate data, ~50 MB per
 # run, regenerable).  Keep the composed per-POI grids (per_poi/)

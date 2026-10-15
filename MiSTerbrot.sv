@@ -252,13 +252,15 @@ hps_io #(.CONF_STR(CONF_STR)) hps_io
 
 wire clk_sys;
 wire clk_vid;   // 100 MHz: the whole display path (video_timing .. dvid)
-wire clk_iter;  // 118.18 MHz: iter_quad math only (2026-10-14 PLL split).  The
+wire clk_iter;  // 130 MHz: iter_quad math only (2026-10-14 PLL split).  The
                 // iterator domain talks to clk_sys alone, through the toggle
                 // synchronizers + set_net_delay contracts in pixel_pipeline;
                 // nothing crosses between clk_iter and clk_vid.  VCO 1300 MHz:
-                // 50 / 100 / 118.18 are exact divides (26 / 13 / 11).  108.33
-                // (/12) was the first step; the 2026-10-14 (b) quad pipeline
-                // (S2a0, cr-1/4 RAM, S7 flags) made /11 close.
+                // 50 / 100 / 130 are exact divides (26 / 13 / 10).  108.33 (/12)
+                // was the first step, the 2026-10-14 (b) quad pipeline (S2a0,
+                // cr-1/4 RAM, S7 flags) made /11 close, the 2026-10-15 round
+                // (per-RAM address copies, split compares, one-hot write mux,
+                // registered flag enables) made /10 close.
 pll pll
 (
 	.refclk(CLK_50M),

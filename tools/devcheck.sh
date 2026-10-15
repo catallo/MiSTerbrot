@@ -1,5 +1,7 @@
 #!/bin/bash
-# Device checks for a MiSTerbrot build (run under tools/mister-lock).  Outputs under /tmp/mb_devcheck/<tag>.
+# Device checks for a MiSTerbrot build (run under tools/mister-lock).  Outputs under
+# $MISTERBROT_CAPTURES/devcheck/<tag> (default <repo>/captures, gitignored, persistent —
+# /tmp got wiped on 2026-10-15 and took every reference capture with it).
 #   tools/devcheck.sh deploy <local.rbf> <name-on-device.rbf>        copy + load + overlay OCR boot check
 #   tools/devcheck.sh pal    <name-on-device.rbf> <tag> <osd-values>   home view, cycling off, screenshot per palette
 #   tools/devcheck.sh bound  <name-on-device.rbf> <tag>                zoom-out x30 / pan-left x40 / pan-up x40 readouts
@@ -10,6 +12,7 @@
 set -u
 ROOT=$(cd "$(dirname "$0")/.." && pwd); H=${MISTER_HOST:-100.101.202.25}
 MC="$ROOT/tools/misterclaw-send --host $H"; CFG=/media/fat/config/MiSTerbrot.cfg
+CAP=${MISTERBROT_CAPTURES:-$ROOT/captures}; DC=$CAP/devcheck; mkdir -p $DC
 rsh() { sshpass -p 1 ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR root@$H "$@"; }
 ocr() { (cd $ROOT && python3 -c "import sys; sys.path.insert(0,'tools'); import poi_ocr; print(poi_ocr.read_target_line('$1', line_idx=1)[:44])" 2>/dev/null); }
 home() { # $1 = out png ; reach the home view with verification
@@ -26,10 +29,10 @@ case $cmd in
   deploy)
     sshpass -p 1 scp -o StrictHostKeyChecking=no -o LogLevel=ERROR "$1" root@$H:/media/fat/_Other/$2
     rsh "sha256sum /media/fat/_Other/$2 | cut -c1-16; echo load_core /media/fat/_Other/$2 > /dev/MiSTer_cmd"; sleep 22
-    mkdir -p /tmp/mb_devcheck; $MC screenshot --output /tmp/mb_devcheck/deploy.png >/dev/null
-    (cd $ROOT && python3 -c "import sys; sys.path.insert(0,'tools'); import poi_ocr; print('overlay:', poi_ocr.read_poi_name('/tmp/mb_devcheck/deploy.png'))");;
+    $MC screenshot --output $DC/deploy.png >/dev/null
+    (cd $ROOT && python3 -c "import sys; sys.path.insert(0,'tools'); import poi_ocr; print('overlay:', poi_ocr.read_poi_name('$DC/deploy.png'))");;
   pal)
-    RBF=$1; TAG=$2; shift 2; OUT=/tmp/mb_devcheck/$TAG; mkdir -p $OUT
+    RBF=$1; TAG=$2; shift 2; OUT=$DC/$TAG; mkdir -p $OUT
     # One pristine copy per device: if a previous run died mid-way, .orig still exists and is
     # restored FIRST, so a pinned palette can never become the "original" of the next run.
     rsh "[ -f $CFG.orig ] && cp $CFG.orig $CFG || cp $CFG $CFG.orig"; b1orig=$(rsh "xxd -p -s1 -l1 $CFG")
@@ -40,7 +43,7 @@ case $cmd in
     done
     rsh "cp $CFG.orig $CFG && rm -f $CFG.orig";;
   bound)
-    RBF=$1; TAG=$2; OUT=/tmp/mb_devcheck/$TAG; mkdir -p $OUT
+    RBF=$1; TAG=$2; OUT=$DC/$TAG; mkdir -p $OUT
     rsh "echo load_core /media/fat/_Other/$RBF > /dev/MiSTer_cmd"; sleep 22
     home $OUT/bound_home.png; echo "  $TAG home: $(ocr $OUT/bound_home.png)"
     for i in $(seq 30); do $MC input type / >/dev/null; sleep 0.25; done; sleep 2; $MC screenshot --output $OUT/bound_zoomout.png >/dev/null; echo "  $TAG zoom-out x30: $(ocr $OUT/bound_zoomout.png)"
@@ -51,7 +54,7 @@ case $cmd in
     rsh "printf '\\x$2' | dd of=$CFG bs=1 seek=$1 conv=notrunc 2>/dev/null; xxd -p -l 8 $CFG"
     [ "${3:-}" = load ] && { rsh "echo load_core /media/fat/_Other/$4 > /dev/MiSTer_cmd"; sleep 22; };;
   shots)     # shots <tag> <count> <interval-s>  — screenshots of whatever is running, then changed-pixel counts between consecutive shots
-    OUT=/tmp/mb_devcheck/$1; mkdir -p $OUT; for i in $(seq -w 1 $2); do $MC screenshot --output $OUT/shot_$i.png >/dev/null; sleep $3; done
+    OUT=$DC/$1; mkdir -p $OUT; for i in $(seq -w 1 $2); do $MC screenshot --output $OUT/shot_$i.png >/dev/null; sleep $3; done
     python3 - "$OUT" <<'PY'
 import sys, glob
 from PIL import Image, ImageChops
@@ -65,18 +68,18 @@ PY
     RBF=$1; LABEL=$2; OUT=$ROOT/bench_${LABEL}_$(date +%Y%m%d).json
     rsh "echo load_core /media/fat/_Other/$RBF > /dev/MiSTer_cmd"; sleep 25
     for try in 1 2 3; do
-      $MC input type b >/dev/null; sleep 13; mkdir -p /tmp/mb_devcheck; $MC screenshot --output /tmp/mb_devcheck/benchcheck.png >/dev/null
-      if (cd $ROOT && python3 tools/bench_decode_screenshot.py /tmp/mb_devcheck/benchcheck.png 2>/dev/null | grep -q "scene=0"); then echo "  bench mode entered (try $try)"; break; fi
+      $MC input type b >/dev/null; sleep 13; $MC screenshot --output $DC/benchcheck.png >/dev/null
+      if (cd $ROOT && python3 tools/bench_decode_screenshot.py $DC/benchcheck.png 2>/dev/null | grep -q "scene=0"); then echo "  bench mode entered (try $try)"; break; fi
       echo "  bench mode not entered (try $try)"; [ $try = 3 ] && exit 1
     done
-    (cd $ROOT && python3 tools/bench_run.py --host $H --no-toggle --output "$OUT" --label "$LABEL" 2>&1 | tail -4); echo "  results: $OUT";;
+    (cd $ROOT && python3 tools/bench_run.py --host $H --no-toggle --output "$OUT" --label "$LABEL" --keep-screenshots --screenshots-dir "$CAP/bench_${LABEL}_$(date +%Y%m%d)" 2>&1 | tail -4); echo "  results: $OUT";;
   cmp)
-    python3 - "$1" "$2" <<'PY'
+    python3 - "$1" "$2" "$DC" <<'PY'
 import sys, glob, os
 from PIL import Image, ImageChops
-a, b = sys.argv[1:3]
-for f in sorted(glob.glob(f"/tmp/mb_devcheck/{a}/*.png")):
-    g = f"/tmp/mb_devcheck/{b}/{os.path.basename(f)}"
+a, b, dc = sys.argv[1:4]
+for f in sorted(glob.glob(f"{dc}/{a}/*.png")):
+    g = f"{dc}/{b}/{os.path.basename(f)}"
     if not os.path.exists(g): print(f"{os.path.basename(f)}: missing in {b}"); continue
     d = ImageChops.difference(Image.open(f).convert('RGB'), Image.open(g).convert('RGB'))
     print(f"{os.path.basename(f)}: differing pixels {sum(1 for p in d.getdata() if p != (0,0,0))}")

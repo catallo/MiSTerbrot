@@ -56,6 +56,150 @@ with `tools/bench_diff.py <before.json> <after.json>`.
 
 ---
 
+## 2026-10-15 · `clk-iter-130` — quad timing round two, 130 MHz (VCO 1300 / 10)
+
+Builds (same tree, 12-seed sweeps on the new scm host): baseline =
+`bench_q12_20261014.json` (clk_iter 118.18 MHz); after =
+`bench_q15_20261015.json`, bench seed 5 (HDMI +0.623 ns, clk_iter +0.876 ns,
+clk_vid +1.186 ns, 25,946 ALMs / 62%).  Release build: seed 3, **HDMI +0.416 /
+clk_iter +0.836 / clk_vid +0.982 / clk_sys +4.267 ns, 25,553 ALMs (61%),
+108/112 DSP** — pinned in `MiSTerbrot.qsf`, deployed as
+`MiSTerbrot_20261015.rbf`.  Device captures (4 palettes, home / zoom-out /
+pan-left / pan-up) pixel-identical to the 118 MHz build.  Verilator: all 11
+benches pass, every `tb_pp` checksum and cycle count and the 46-case
+iter_quad bench unchanged (bit-identical engine, identical schedule).
+
+Why: a plain 130 MHz sweep of the 118 MHz quad missed clk_iter on 6/6 seeds
+(−0.13 … −1.03 ns).  Every cone was routing or a decode, no arithmetic stage
+was long any more, so this round added no pipeline stage (the 8-cycle loop
+on the 8-slot period stays).  `rtl/iter_quad.v` changes: (1) one address
+register per RAM (`ra_*` for the S0 read, `rb_*` for the S4 reads, `wa_*`
+for the S6 writes) so the fitter places each next to its MLAB — one 3-bit
+phase tap routed across the quad was the +0.7 ns floor; (2) the squares'
+lo-word add moved from S2a0 to S2a1 (S2a0 is now a pure re-register of the
+DSP output for the squares, the DSP→LAB hop no longer shares a cycle with an
+adder); (3) a two-level 4:1/2:1 slot-port mux for the load operands (the
+first level one cycle early, allowed by the CDC contract); (4) the cardioid
+compare `zr_zi < ci²/4` split into signed-high / unsigned-low halves in S5
+and combined in S6; (5) the RAM write-data mux as AND-OR on registered
+one-hot state bits instead of a 6:1 case mux into the MLAB write registers;
+(6) the S7 flag writeback driven by registered per-context one-hot enables
+(`wb7_en`) instead of a shared enable decoded against a phase tap for 8×15
+bits; (7) per-quad registered copies of the period-3 and periodicity enables
+with a two-cycle multicycle in the SDC (as `max_iter_q` already had); (8) the
+48-bit periodicity equality evaluated in S5 from the low 24 bits of the
+next-z operands (the low bits of a sum depend only on the low bits of the
+addends).  ALMs unchanged within noise.
+
+Result at 130 MHz: **release seeds 6/6 close every clock** (clk_iter +0.46 …
++0.84 ns, HDMI +0.06 … +0.73); bench seeds 5/6 (the miss is one routing-heavy
+path from a context MLAB into the cardioid comparator, −0.31 ns).  The first
+six changes alone closed 11/12 (deepthought sweep q14).
+
+**Geomean 1.05x (+5.2%)**, 23 of 90 scenes faster, none slower.  Expected raw
+gain 10% (130/118.18); the unquantized satellites read +10…14% (R2 HALF ISLE
+3.5 → 4.0, SAT DBL SPIRAL 1.4 → 1.6, SAT SEAHORSE 1.6 → 1.8, SAT HEAD
+1.8 → 2.0, TRIPLE SPIRAL P4 2.9 → 3.2).  Harmonic crossings: NEEDLE MED
+30 → 60; SH TAIL SPIRAL, ELEPHANT MED / MED 2, DOUBLE HOOK 20 → 30; R2T 1/2
+ISLE STEP 15 → 20; SH SATELLITE, SEAHORSE BODY 12 → 15.  Cumulative: 1.40x
+over the four-quad collect build (2026-10-12), 1.44x over the 2026-07-08
+periodicity build, 2.02x over the first full-suite run (2026-05-14).
+
+| idx | scene | F10 before | F10 after | ratio |
+|----:|-------|-----------:|----------:|------:|
+| 0 | P6 SUB BULB | 596 | 596 | 1.00x |
+| 1 | P3 ISLAND | 597 | 596 | 1.00x |
+| 2 | P3 ISLAND TIP | 596 | 596 | 1.00x |
+| 3 | P4 ISLAND | 597 | 597 | 1.00x |
+| 4 | P5 ISLAND | 596 | 597 | 1.00x |
+| 5 | P6 ISLAND | 597 | 597 | 1.00x |
+| 6 | P7 ISLAND | 596 | 596 | 1.00x |
+| 7 | P8 ISLAND | 596 | 596 | 1.00x |
+| 8 | P9 ISLAND | 596 | 596 | 1.00x |
+| 9 | P11 ISLAND | 299 | 299 | 1.00x |
+| 10 | P22 ISLAND | 298 | 298 | 1.00x |
+| 11 | ELEPHANT TRUNK | 596 | 596 | 1.00x |
+| 12 | ELEPHANT HEADS | 150 | 149 | 0.99x |
+| 13 | ELEPHANT ISLAND | 60 | 66 | 1.10x |
+| 14 | ELEPHANT P19 | 298 | 297 | 1.00x |
+| 15 | ELEPHANT P16 | 299 | 299 | 1.00x |
+| 16 | SEAHORSE BODY | 120 | 149 | 1.24x |
+| 17 | SEAHORSE TAIL | 298 | 298 | 1.00x |
+| 18 | SEAHORSE DEEP | 99 | 100 | 1.01x |
+| 19 | SEAHORSE TAIL2 | 297 | 297 | 1.00x |
+| 20 | DOUBLE HOOK | 199 | 298 | 1.50x |
+| 21 | SH SATELLITE | 119 | 149 | 1.25x |
+| 22 | SAT ANTENNA | 30 | 32 | 1.07x |
+| 23 | SAT HEAD | 18 | 20 | 1.11x |
+| 24 | SAT SEAHORSE | 16 | 18 | 1.12x |
+| 25 | SAT DBL SPIRAL | 14 | 16 | 1.14x |
+| 26 | JULIA ISLANDS | 33 | 37 | 1.12x |
+| 27 | TRIPLE WEST | 66 | 74 | 1.12x |
+| 28 | TRIPLE DEEP | 149 | 149 | 1.00x |
+| 29 | FEIGENBAUM | 298 | 298 | 1.00x |
+| 30 | FEIGENBAUM ZOOM | 199 | 199 | 1.00x |
+| 31 | FEIGENBAUM DEEP | 86 | 99 | 1.15x |
+| 32 | GEN FEIGENBAUM | 596 | 596 | 1.00x |
+| 33 | MISIUREWICZ M4 | 596 | 597 | 1.00x |
+| 34 | MISIUREWICZ M4-2 | 596 | 596 | 1.00x |
+| 35 | MISIUREWICZ SPIR | 298 | 298 | 1.00x |
+| 36 | MISIUREWICZ -1.94 | 596 | 596 | 1.00x |
+| 37 | MISIUREWICZ -1.84 | 596 | 596 | 1.00x |
+| 38 | DBL SPIRAL P4 | 597 | 596 | 1.00x |
+| 39 | SINGLE SPIRAL | 596 | 596 | 1.00x |
+| 40 | TRIPLE MEDALLION | 298 | 299 | 1.00x |
+| 41 | DBL SPIRAL ISLE | 149 | 149 | 1.00x |
+| 42 | TRIPLE ISLE MED | 149 | 149 | 1.00x |
+| 43 | CAULIFLOWER MED | 199 | 199 | 1.00x |
+| 44 | EJS CAULI | 596 | 596 | 1.00x |
+| 45 | EJS DBL SPIRAL | 298 | 298 | 1.00x |
+| 46 | EJS BRANCH | 298 | 298 | 1.00x |
+| 47 | EJS NUCLEUS | 20 | 22 | 1.10x |
+| 48 | LOVE CANAL | 58 | 65 | 1.12x |
+| 49 | P5 ISLAND DEEP | 297 | 298 | 1.00x |
+| 50 | ELEPHANT MED | 200 | 298 | 1.49x |
+| 51 | STARFISH | 199 | 199 | 1.00x |
+| 52 | M3,1 WAKE 3/7 | 298 | 298 | 1.00x |
+| 53 | M11,1 WAKE 5/11 | 149 | 149 | 1.00x |
+| 54 | CONCHA APPROACH | 594 | 595 | 1.00x |
+| 55 | M7,1 WAKE 1/7 | 298 | 298 | 1.00x |
+| 56 | SH CUSP DEEP | 32 | 34 | 1.06x |
+| 57 | EJS PERIOD 44 | 296 | 298 | 1.01x |
+| 58 | JEWEL BOX | 149 | 149 | 1.00x |
+| 59 | R2T P6 ISLAND | 595 | 594 | 1.00x |
+| 60 | SH CUSP FINE | 15 | 15 | 1.00x |
+| 61 | R2 HALF ISLE | 35 | 40 | 1.14x |
+| 62 | R2T P7 ISLAND | 594 | 595 | 1.00x |
+| 63 | SCEPTER MED | 198 | 198 | 1.00x |
+| 64 | BRANCH MED | 298 | 298 | 1.00x |
+| 65 | EJS P3 DEEP | 120 | 120 | 1.00x |
+| 66 | NEEDLE MED | 298 | 595 | 2.00x |
+| 67 | M3,1 1/3 LIMB TIP | 597 | 597 | 1.00x |
+| 68 | M_4,2 CASCADE 1 | 596 | 597 | 1.00x |
+| 69 | M_8,4 CASCADE 2 | 596 | 597 | 1.00x |
+| 70 | M_16,8 CASCADE 3 | 299 | 298 | 1.00x |
+| 71 | EJS P47 ALPHA | 298 | 297 | 1.00x |
+| 72 | EJS P50 BETA | 298 | 298 | 1.00x |
+| 73 | EJS WAKE 1/4 | 299 | 298 | 1.00x |
+| 74 | SH SPIRAL CONT | 298 | 298 | 1.00x |
+| 75 | SH TAIL SPIRAL | 199 | 298 | 1.50x |
+| 76 | ELEPHANT MED 2 | 199 | 298 | 1.50x |
+| 77 | R2T 1/2 ISLE STEP | 149 | 199 | 1.34x |
+| 78 | BEYER STEP 13 | 35 | 38 | 1.09x |
+| 79 | BEYER STEP 14 | 30 | 32 | 1.07x |
+| 80 | TRIPLE SPIRAL P4 | 29 | 32 | 1.10x |
+| 81 | MERCATOR P189 | 146 | 147 | 1.01x |
+| 82 | MERCATOR P38 | 298 | 298 | 1.00x |
+| 83 | M(3,3) WAKE 1/3 DP | 596 | 596 | 1.00x |
+| 84 | M(7,7) WAKE 1/4 DP | 597 | 596 | 1.00x |
+| 85 | EJS P47 GAMMA | 299 | 298 | 1.00x |
+| 86 | P3 BULB UPPER | 199 | 199 | 1.00x |
+| 87 | P3 BULB LOWER | 199 | 199 | 1.00x |
+| 88 | P3 LIMB FULL | 596 | 596 | 1.00x |
+| 89 | P3 BULB DEEP | 597 | 597 | 1.00x |
+
+---
+
 ## 2026-10-14 · `clk-iter-118` — quad pipeline deepened for 118.18 MHz (VCO 1300 / 11)
 
 Builds (same tree, deepthought sweep of six seeds each): baseline =
