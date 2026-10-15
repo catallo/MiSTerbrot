@@ -27,7 +27,10 @@ checksums identical on all five scenes):
 | 3 | 15,807,903 | 15,712,847 | 0.6% |
 | 4 | 943,820 | 895,543 | 5.1% |
 
-Scene 1 checksum: `74fe0134ce1a4d66` — any dispatch/collect change must keep it.
+Scene 1 checksum: `85b61ebef8d12d8a` since the three-squares quad of 2026-10-15
+(was `74fe0134ce1a4d66` for every engine from 2026-07 to 2026-10-14) — any
+dispatch/collect change must keep it; only an arithmetic change in iter_quad
+may move it, and then all four scenes get new values together.
 
 Five quads (2026-10-13, `verilator -GNI=30 ...`): same checksums, cycles
 715,451 → 572,625 / 1,975,041 → 1,580,312 / 600,099 → 481,700 /
@@ -47,3 +50,16 @@ cycles 1,533,597 → 1,542,818 / 448,051 → 456,931 / 12,509,275 → 12,517,056
 661,547 → 672,013 (+0.1…2%: two more cycles of latency per pixel slot, the
 iteration rate per context is unchanged) — paid back many times by the
 108.33 → 118.18 MHz clock.
+
+Three-squares quad, eight quads (2026-10-15, `NI = 64`): the cross product
+2·zr·zi is now (zr+zi)² − zr² − zi² (9 DSP per quad instead of 15, so eight
+quads fit in 105 of 112 blocks).  NOT bit-identical: checksums
+`85b61ebef8d12d8a` / `84f1f064fe7de454` / `0498904ef2d8b4e6` /
+`278c426417ebb095`; against the previous engine 0.02–2.1% of the pixels per
+scene differ (boundary points, deep zoom most), and on a 150-pixel sample of
+those a 200-bit mpmath reference agrees with the old engine 17 times and the
+new one 15 — the two are equally accurate, the rest are chaotic orbits
+beyond 56-bit precision.  Cycles with 64 iterators: 1,545,781 → 968,988 /
+458,062 → 304,196 / 12,516,819 → 7,823,645 / 673,084 → 427,717 (−34…−38%,
+ideal 64/40 = −37.5%).  `+dump=<file>` in tb_pp writes one line per result
+for such engine-to-engine diffs.

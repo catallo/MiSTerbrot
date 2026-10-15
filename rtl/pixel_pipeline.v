@@ -21,7 +21,7 @@
 //============================================================================
 
 module pixel_pipeline #(
-    parameter N_ITERATORS = 40,  // quads x 8 contexts/quad (fractal_top passes 40 = 5 quads)
+    parameter N_ITERATORS = 64,  // quads x 8 contexts/quad (fractal_top passes 64 = 8 quads)
     parameter WIDTH       = 64,
     parameter FRAC_BITS   = 56,
     parameter RID_W       = 2    // region_id tag width (Mariani-Silver v2)

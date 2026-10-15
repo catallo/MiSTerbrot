@@ -285,7 +285,7 @@ wire [1:0] av_sl;
 fractal_top #(
 	.H_RES(320),
 	.V_RES(240),
-	.N_ITERATORS(40),	// 5 quads x 8 contexts/quad (2026-10-14)
+	.N_ITERATORS(64),	// 8 quads x 8 contexts/quad (2026-10-15, three-squares quad)
 	.WIDTH(64),
 	.FRAC_BITS(56)
 ) u_fractal_top (

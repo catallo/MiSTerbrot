@@ -19,7 +19,7 @@
 module fractal_top #(
     parameter H_RES       = 320,
     parameter V_RES       = 240,
-    parameter N_ITERATORS = 40,  // 5 quads x 8 contexts/quad (2026-10-14: 8-context MLAB-store iter_quad)
+    parameter N_ITERATORS = 64,  // 8 quads x 8 contexts/quad (2026-10-15: three-squares iter_quad, 9 DSP/quad)
     parameter WIDTH       = 64,
     parameter FRAC_BITS   = 56,
     // ~1 s of progressive output before honoring a saved interlaced
@@ -1016,8 +1016,8 @@ end
 //
 // Flushed on start_render — pending mirrors from a now-stale frame
 // must not bleed into the new one.
-localparam SYMQ_DEPTH = 64;  // was 32 with 24 iterators; the backpressure threshold is DEPTH - N_ITERATORS
-localparam SYMQ_AW    = 6;   // log2(SYMQ_DEPTH)
+localparam SYMQ_DEPTH = 128; // 32 with 24 iterators, 64 with 40; the backpressure threshold is DEPTH - N_ITERATORS
+localparam SYMQ_AW    = 7;   // log2(SYMQ_DEPTH)
 reg [10:0] symq_x    [0:SYMQ_DEPTH-1];
 reg [10:0] symq_y    [0:SYMQ_DEPTH-1];
 reg [11:0] symq_iter [0:SYMQ_DEPTH-1];

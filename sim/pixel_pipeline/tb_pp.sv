@@ -7,7 +7,7 @@
 //              4: ANTENNA BAND MERGE z3
 `timescale 1ns/1ps
 module tb_pp;
-parameter NI = 40;   // iterators under test (5 quads x 8 contexts); override with verilator -GNI=<multiple of 8>
+parameter NI = 64;   // iterators under test (8 quads x 8 contexts); override with verilator -GNI=<multiple of 8>
 reg clk = 0, clk_iter = 0, rst_n = 0;
 always #10 clk = ~clk;        // 50 MHz
 always #5  clk_iter = ~clk_iter;   // 100 MHz
@@ -43,8 +43,13 @@ real cx, cy; integer zoom; reg signed [63:0] step, cx_raw, cy_raw;
 
 integer results = 0, cycles = 0;
 reg [63:0] chk = 0;
+// +dump=<file>: one "x y iter esc" line per result, for engine-to-engine
+// per-pixel diffs (tools: sort both files, compare).
+integer dumpf = 0; reg [1023:0] dumpname;
+initial if ($value$plusargs("dump=%s", dumpname)) dumpf = $fopen(dumpname, "w");
 always @(posedge clk) if (result_valid) begin
     results = results + 1;
+    if (dumpf) $fwrite(dumpf, "%0d %0d %0d %0d\n", result_x, result_y, result_iter, result_escaped);
     // order-independent: sum of per-result hashes (collect order may change)
     chk = chk + (({28'd0, result_x, result_y, result_iter, result_escaped} ^ 64'hA5A5_5A5A_C3C3_3C3C) * 64'h9E3779B97F4A7C15);
 end
@@ -75,6 +80,7 @@ initial begin
     coord_valid <= 0; coord_frame_done <= 1;
     while (!frame_done) @(posedge clk);
     repeat (3) @(posedge clk);   // let the last collected result land in the counters
+    if (dumpf) $fclose(dumpf);
     $display("scene=%0d iterators=%0d results=%0d cycles=%0d chk=%h", scene, NI, results, cycles, chk);
     if (results != W*H) begin $display("FAIL: result count"); $fatal; end
     $finish;
