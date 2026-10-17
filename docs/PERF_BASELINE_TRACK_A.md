@@ -63,7 +63,9 @@ Builds: baseline = `bench_q20_20261015.json` (eight quads, 130 MHz); after =
 clk_vid +0.655, 34,629 ALMs / 83%).  Release build: seed 2, **HDMI +0.243 /
 clk_iter +0.397 / clk_vid +0.753 / clk_sys +3.338 ns, 34,124 ALMs (81%),
 105/112 DSP, 494/553 M10K** — pinned in `MiSTerbrot.qsf`, deployed as
-`MiSTerbrot_20261017.rbf`.  Sweep (scm, q30 seeds 1–6 + bench 1–3): 3/6
+`MiSTerbrot_20261017.rbf` (superseded the same day by `MiSTerbrot_20261017b.rbf`,
+the identical core with the colour-cycling pool change, seed 2: HDMI +0.253,
+clk_iter +0.353).  Sweep (scm, q30 seeds 1–6 + bench 1–3): 3/6
 release and 3/3 bench seeds close every clock; the misses are clk_iter on two
 seeds (−0.07 / −0.50: `phase → mem_zs/mem_zr` MLAB read, DSP output → S2a0 at
 82% fill) and HDMI −0.12 on one.  Ten quads (sweep q29, 80 iterators, 31.3k
