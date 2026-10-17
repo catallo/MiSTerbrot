@@ -27,10 +27,13 @@ checksums identical on all five scenes):
 | 3 | 15,807,903 | 15,712,847 | 0.6% |
 | 4 | 943,820 | 895,543 | 5.1% |
 
-Scene 1 checksum: `85b61ebef8d12d8a` since the three-squares quad of 2026-10-15
-(was `74fe0134ce1a4d66` for every engine from 2026-07 to 2026-10-14) — any
+Scene 1 checksum: `025d9feda50278c4` since the 26-bit-limb three-squares quad
+of 2026-10-15 (`85b61ebef8d12d8a` for its 32-bit-limb first cut the same day,
+`74fe0134ce1a4d66` for every engine from 2026-07 to 2026-10-14) — any
 dispatch/collect change must keep it; only an arithmetic change in iter_quad
-may move it, and then all four scenes get new values together.
+may move it, and then all scenes get new values together (scene 0
+`68c4dd111749a118`, 2 `d87d47036503cbe0`, 3 `8a3f4046237621b1`, default
+`463bda20ddeb55c3`).
 
 Five quads (2026-10-13, `verilator -GNI=30 ...`): same checksums, cycles
 715,451 → 572,625 / 1,975,041 → 1,580,312 / 600,099 → 481,700 /
@@ -63,3 +66,20 @@ beyond 56-bit precision.  Cycles with 64 iterators: 1,545,781 → 968,988 /
 458,062 → 304,196 / 12,516,819 → 7,823,645 / 673,084 → 427,717 (−34…−38%,
 ideal 64/40 = −37.5%).  `+dump=<file>` in tb_pp writes one line per result
 for such engine-to-engine diffs.
+
+Slot coordinate store in the quad (2026-10-16): pixel_pipeline's per-slot
+cr/ci register file became an 8 x 128 dual-clock RAM per quad (`mem_ld`,
+written by the dispatcher on clk_sys, read at phase_d3) and the pixel tags
+one MLAB; the start synchronizer grew to 4 FFs.  Same checksums at `NI` 64,
+80 and 96; scene 1 cycles 740,634 → 740,711 (64) → 594,732 (80) → 498,608
+(96), i.e. 1.25x and 1.49x for ten and twelve quads.
+
+Bench views: `+cxraw=<hex 8.56> +cyraw=<hex> +stepraw=<hex> +maxiter=<n>
++p3=<0|1>` render any catalogue view (tools/benchmarks.json) on the DEVICE
+grid — in 640-wide mode the horizontal step is step/2 and every row sits
+half a row pitch off the axis, exactly as coord_generator does (the named
+scenes keep the plain ±W/2·step grid their checksums were taken on).  With
+`clk_iter` modelled at 130 MHz (`ITER_HALF_NS`, override with
+`-GITER_HALF_NS=`), `cycles / 50 MHz` is the frame time; `-GH=480` renders
+the 480-row frame.  Checked 2026-10-16: the predicted 60/N vsync rate matches
+the measured bench rate on all 90 scenes (bench mode renders 640x240).

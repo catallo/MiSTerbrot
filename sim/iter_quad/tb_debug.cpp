@@ -14,10 +14,10 @@ static uint64_t main_time = 0;
 double sc_time_stamp() { return (double)main_time; }
 
 static void tick(Viter_quad* dut) {
-    dut->clk = 0;
+    dut->clk = 0; dut->clk_wr = 0;
     dut->eval();
     main_time++;
-    dut->clk = 1;
+    dut->clk = 1; dut->clk_wr = 1;
     dut->eval();
     main_time++;
 }
@@ -34,9 +34,10 @@ int main(int argc, char** argv) {
     dut->rst_n = 0;
     dut->max_iter = 1024;
     dut->p3_precheck_enable = 1;
-    // 8-context flat ports (2026-10-14): context A = start bit 0, words 0..1.
+    // 8-context ports (2026-10-16): start[7:0]; the slot coordinates go
+    // through the clk_wr write port (clk_wr runs in lockstep with clk here).
     dut->start = 0;
-    for (int w = 0; w < 16; w++) { dut->cr_flat[w] = 0; dut->ci_flat[w] = 0; }
+    dut->ld_we = 0; dut->ld_wa = 0; dut->ld_cr = 0; dut->ld_ci = 0;
     for (int i = 0; i < 4; i++) tick(dut);
     dut->rst_n = 1;
     for (int i = 0; i < 4; i++) tick(dut);
@@ -45,8 +46,9 @@ int main(int argc, char** argv) {
     double cr = -1.7487645202;
     double ci = 1e-10;
     uint64_t cr_fx = (uint64_t)to_8_56(cr), ci_fx = (uint64_t)to_8_56(ci);
-    dut->cr_flat[0] = (uint32_t)cr_fx; dut->cr_flat[1] = (uint32_t)(cr_fx >> 32);
-    dut->ci_flat[0] = (uint32_t)ci_fx; dut->ci_flat[1] = (uint32_t)(ci_fx >> 32);
+    dut->ld_cr = cr_fx; dut->ld_ci = ci_fx; dut->ld_wa = 0; dut->ld_we = 1;   // write slot A
+    tick(dut);
+    dut->ld_we = 0;
     dut->start = 1;
     tick(dut);
     dut->start = 0;

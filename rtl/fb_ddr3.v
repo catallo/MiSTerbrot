@@ -16,7 +16,8 @@
 // Write path: single-clock FIFO -> single-beat 64-bit writes with
 // 2-of-8 byte enables.  The probe measured 48.2 M such writes/s
 // against a <=15 M/s worst-case need, so no coalescing.  wr_ready
-// deasserts with headroom; the render side must stall dispatch on it.
+// deasserts HEADROOM entries early; the render side must stall dispatch
+// on it, and HEADROOM must cover every iterator still in flight.
 //
 // Read path: line_req(row) toggles the ping-pong target and bursts
 // logical row `line_row` of the DISPLAY bank (~render_bank) into it;
@@ -37,7 +38,13 @@
 module fb_ddr3 #(
     parameter [28:0] BASE_WORD  = 29'h0600_0000, // byte 0x3000_0000
     parameter [28:0] BANK_WORDS = 29'd131072,    // 1 MB bank stride
-    parameter        FIFO_AW    = 8              // 256-deep write FIFO
+    parameter        FIFO_AW    = 8,             // 256-deep write FIFO
+    // wr_ready deasserts this many entries before full: every in-flight
+    // iterator result (N_ITERATORS of them) plus the pipeline's output
+    // register can still arrive after dispatch stalls.  fractal_top
+    // passes N_ITERATORS + 64; the old fixed 64 was sized for 24 slots and
+    // overflowed (one stale pixel per excess write) with 80 iterators.
+    parameter        HEADROOM   = 64
 )(
     input  wire        clk,             // clk_sys: Avalon engine, FIFO, fetch
     input  wire        clk_vid,         // 100 MHz video domain: display reads
@@ -84,19 +91,35 @@ localparam [7:0] LINE_BEATS      = 8'd160;
 // wait for drain), address math done at issue.  MLAB-friendly async
 // read of the head entry.
 // ---------------------------------------------------------------------
+// Keep this FIFO exactly as Quartus infers it today: altsyncram 256 x 31 in
+// one M10K with pass-through logic (2026-10-16 lessons: 512 deep took a
+// second M10K and the fitter then demoted two of ascal's RAMs to 6k
+// registers; `ramstyle = "MLAB"` made the array "uninferred due to
+// unsupported read-during-write behavior" and cost 3.4k ALMs of flops).
 reg [30:0] wfifo [0:(1<<FIFO_AW)-1];
 reg [FIFO_AW:0] wf_wp, wf_rp;
 wire [FIFO_AW:0] wf_count = wf_wp - wf_rp;
 wire wf_empty = (wf_count == 0);
-// Headroom of 64: after wr_ready deasserts, up to ~24 in-flight slot
-// results plus mirror-FIFO drains can still arrive before the render
-// side actually stalls.
-assign wr_ready = (wf_count < ((1 << FIFO_AW) - 64));
+// HEADROOM: after wr_ready deasserts, every in-flight slot result plus
+// mirror-FIFO drains can still arrive before the render side stalls.
+assign wr_ready = (wf_count < ((1 << FIFO_AW) - HEADROOM));
+
+// Overflow guard (2026-10-16): a push at full drops the new pixel (one
+// stale pixel) instead of overwriting the oldest queued entry.  The
+// sticky flag is a diagnostic for the testbenches (hierarchical read);
+// correct HEADROOM makes it unreachable.  Kept in its own always block so
+// the RAM write block stays the inference template it was.
+wire wf_full = (wf_count >= (1 << FIFO_AW));
+reg  wf_overflow_sticky;
+always @(posedge clk) begin
+    if (!rst_n) wf_overflow_sticky <= 1'b0;
+    else if (wr_en && wf_full) wf_overflow_sticky <= 1'b1;
+end
 
 always @(posedge clk) begin
     if (!rst_n) begin
         wf_wp <= 0;
-    end else if (wr_en) begin
+    end else if (wr_en && !wf_full) begin
         wfifo[wf_wp[FIFO_AW-1:0]] <= {render_bank, wr_y, wr_x, wr_data};
         wf_wp <= wf_wp + 1'b1;
     end

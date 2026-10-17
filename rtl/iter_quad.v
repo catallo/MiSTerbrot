@@ -26,7 +26,7 @@
 //   * One shared writeback stage (S6) owns the single write port; the
 //     per-context state machines are reduced to a few flag registers.
 //   * A pixel load is performed in the context's own writeback slot from
-//     the (stable) per-slot coordinate ports, so no pass is ever wasted on
+//     the slot coordinate store, so no pass is ever wasted on
 //     "priming": the pass right after any writeback already sees the new
 //     operands.  (The old design spent one full pass per state transition.)
 //   * The evaluation stage is split: S4 = clamp + magnitude add, S5 =
@@ -83,14 +83,20 @@ module iter_quad #(
     // a false positive (~2^-48 per compare) is invisible.
     input  wire                    periodicity_enable,
 
-    // Per-context slot ports.  cr/ci are pixel_pipeline's per-slot
-    // registers: written at dispatch, stable until the slot is collected,
-    // and (CDC contract, see MiSTerbrot.sdc) stable >= 2 clk cycles
-    // before the synchronized start pulse.  The quad samples them in the
-    // context's own slot after the pulse.
+    // Pixel-load write port (clk_wr = pixel_pipeline's clk_sys).  The
+    // dispatcher writes {cr, ci} of slot ld_wa on the same clk_wr edge that
+    // toggles the slot's start bit; the toggle reaches this quad as a start
+    // pulse >= 3 clk edges later (4-FF chain, see MiSTerbrot.sdc) and the
+    // context reads its word in its own S3 slot after that.  The store is
+    // an 8 x 128 dual-clock RAM (M10K, 2026-10-16); the per-slot register
+    // file it replaces cost ~1.7k ALMs of badly packed MLAB in
+    // pixel_pipeline plus a two-level 8:1 mux and 256 flops per quad.
+    input  wire                    clk_wr,
+    input  wire                    ld_we,
+    input  wire [2:0]              ld_wa,
+    input  wire signed [WIDTH-1:0] ld_cr,
+    input  wire signed [WIDTH-1:0] ld_ci,
     input  wire [NCTX-1:0]         start,
-    input  wire [NCTX*WIDTH-1:0]   cr_flat,
-    input  wire [NCTX*WIDTH-1:0]   ci_flat,
     output wire [NCTX-1:0]         done,
     output wire [NCTX*12-1:0]      iter_count_flat,
     output wire [NCTX-1:0]         escaped
@@ -145,14 +151,10 @@ reg        ctx_phit       [0:NCTX-1];  // current z equals the snapshot (evaluat
 (* ramstyle = "MLAB" *) reg [WIDTH-1:0] mem_cisq [0:NCTX-1];  // ci^2 (clamped), cardioid rhs source
 (* ramstyle = "MLAB" *) reg [47:0]      mem_snap [0:NCTX-1];  // Brent snapshot {zr[23:0], zi[23:0]}
 
-// ---- Port fan-in / fan-out ----
-wire signed [WIDTH-1:0] ctx_cr_in [0:NCTX-1];
-wire signed [WIDTH-1:0] ctx_ci_in [0:NCTX-1];
+// ---- Port fan-out ----
 genvar gp;
 generate
 for (gp = 0; gp < NCTX; gp = gp + 1) begin : ports
-    assign ctx_cr_in[gp]                 = cr_flat[gp*WIDTH +: WIDTH];
-    assign ctx_ci_in[gp]                 = ci_flat[gp*WIDTH +: WIDTH];
     assign done[gp]                      = ctx_done[gp];
     assign escaped[gp]                   = ctx_escaped[gp];
     assign iter_count_flat[gp*12 +: 12]  = ctx_iter_count[gp];
@@ -433,15 +435,14 @@ reg                    s4_sq_ovf;      // either square overflowed its window
 reg signed [WIDTH-1:0] s4_c_real, s4_crq, s4_cs, s4_c_imag, s4_ci_sq;
 reg [47:0]             s4_snap;
 reg signed [WIDTH-1:0] s4_ld_cr, s4_ld_ci;
-// Two-level slot-port mux: 4:1 on phase_d3 (one cycle early; the ports are
-// stable >= 2 clks before the start pulse, see the CDC contract), 2:1 in S4.
-reg signed [WIDTH-1:0] ld_cr_lo, ld_cr_hi, ld_ci_lo, ld_ci_hi;
-always @(posedge clk) begin
-    ld_cr_lo <= ctx_cr_in[{1'b0, phase_d3[1:0]}];
-    ld_cr_hi <= ctx_cr_in[{1'b1, phase_d3[1:0]}];
-    ld_ci_lo <= ctx_ci_in[{1'b0, phase_d3[1:0]}];
-    ld_ci_hi <= ctx_ci_in[{1'b1, phase_d3[1:0]}];
-end
+// Slot coordinate store: written by the dispatcher on clk_wr, read every
+// pass at phase_d3 (one cycle early, like ci^2 and the snapshot) so S4
+// takes the load operands from the RAM output register.  Quartus' dual-
+// clock simple-dual-port template: one write block, one read block.
+(* ramstyle = "M10K" *) reg [2*WIDTH-1:0] mem_ld [0:NCTX-1];
+reg [2*WIDTH-1:0] ld_q;
+always @(posedge clk_wr) if (ld_we) mem_ld[ld_wa] <= {ld_cr, ld_ci};
+always @(posedge clk) ld_q <= mem_ld[phase_d3];
 reg [2:0]              s4_state;
 reg                    s4_zbig, s4_qok, s4_pre_bad, s4_snap_ok, s4_phit;
 reg [11:0]             s4_iter;
@@ -453,8 +454,8 @@ always @(posedge clk) begin
     s4_zr_zi     <= {two_zrzi_w[WIDTH-1], two_zrzi_w[WIDTH-1:1]};
     s4_zi_sq_c   <= zi_sq_c;
     s4_sq_ovf    <= (|zr_sq_ovf_c) | (|zi_sq_ovf_c);
-    s4_ld_cr     <= phase_d4[2] ? ld_cr_hi : ld_cr_lo;
-    s4_ld_ci     <= phase_d4[2] ? ld_ci_hi : ld_ci_lo;
+    s4_ld_cr     <= ld_q[2*WIDTH-1:WIDTH];
+    s4_ld_ci     <= ld_q[WIDTH-1:0];
     s4_state     <= ctx_state[phase_d4];
     s4_zbig      <= ctx_zbig[phase_d4];
     s4_qok       <= ctx_qok[phase_d4];

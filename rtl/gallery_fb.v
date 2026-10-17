@@ -24,7 +24,8 @@
 module gallery_fb #(
     parameter [28:0] BASE_A_WORD = 29'h0604_0000, // byte 0x3020_0000
     parameter [28:0] BASE_B_WORD = 29'h060C_0000, // byte 0x3060_0000
-    parameter        FIFO_AW     = 8
+    parameter        FIFO_AW     = 8,
+    parameter        HEADROOM    = 64            // >= in-flight iterator results (fractal_top: N_ITERATORS + 64)
 )(
     input  wire        clk,
     input  wire        rst_n,
@@ -91,12 +92,12 @@ assign fb_pal_dout = pal_data_in;
 assign fb_pal_wr   = pal_wr_in;
 
 // ---- index write FIFO: {bank, y[10:0], x[10:0], index[7:0]} = 31 bits
-reg [30:0] wfifo [0:(1<<FIFO_AW)-1];
+reg [30:0] wfifo [0:(1<<FIFO_AW)-1];   // no ramstyle, 256 deep: see fb_ddr3.v
 reg [FIFO_AW:0] wf_wp, wf_rp;
 wire [FIFO_AW:0] wf_count = wf_wp - wf_rp;
 wire wf_empty = (wf_count == 0);
-// 64-entry headroom for in-flight pipeline results after a stall
-assign wr_ready = (wf_count < ((1 << FIFO_AW) - 64));
+// HEADROOM entries for the in-flight pipeline results after a stall
+assign wr_ready = (wf_count < ((1 << FIFO_AW) - HEADROOM));
 assign wr_idle  = wf_empty & ~ddram_we;
 
 // Overflow guard: a push at full drops (one stale pixel) instead of
@@ -104,6 +105,11 @@ assign wr_idle  = wf_empty & ~ddram_we;
 // in fractal_top makes this unreachable; it exists as a corruption
 // backstop.
 wire wf_full = (wf_count >= (1 << FIFO_AW));
+reg  wf_overflow_sticky;   // testbench diagnostic (hierarchical read)
+always @(posedge clk) begin
+    if (!rst_n) wf_overflow_sticky <= 1'b0;
+    else if (wr_en && wf_full) wf_overflow_sticky <= 1'b1;
+end
 always @(posedge clk) begin
     if (!rst_n) begin
         wf_wp <= 0;

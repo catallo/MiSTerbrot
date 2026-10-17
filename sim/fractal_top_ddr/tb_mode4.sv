@@ -43,8 +43,9 @@ reg         dout_ready = 0;
 wire        underrun;
 wire        rendering;
 
+parameter NI = 24;   // override with -GNI=<n>: the write-FIFO headroom must cover NI in-flight results
 fractal_top #(
-    .H_RES(320), .V_RES(240), .N_ITERATORS(24),
+    .H_RES(320), .V_RES(240), .N_ITERATORS(NI),
     .WIDTH(64), .FRAC_BITS(56),
     .BOOT_GRACE_VBLANKS(6'd2)
 ) dut (
@@ -65,9 +66,17 @@ fractal_top #(
 
 // ---- DDR3 model (as in sim/fb_ddr3, memory-backed) ----
 reg [31:0] rnd = 32'hC0FFEE11;
+// +busyburst: hold the Avalon port busy for 400 of every 4096 clks (8 us
+// stalls, as the HDMI scaler's DDR3 bursts can cause on the device) so the
+// write FIFO must absorb every in-flight iterator result after dispatch
+// stalls.  The default random 5/16 busy drains too steadily to ever test
+// the headroom (a steady drain cannot let the FIFO gain 64 net entries).
+reg busyburst = 1'b0; reg [11:0] bcnt = 12'd0;
+initial if ($test$plusargs("busyburst")) busyburst = 1'b1;
 always @(negedge clk) begin
     rnd  <= {rnd[30:0], rnd[31] ^ rnd[21] ^ rnd[1] ^ rnd[0]};
-    busy <= (rnd[3:0] < 4'd5);
+    bcnt <= bcnt + 12'd1;
+    busy <= busyburst ? (bcnt < 12'd400) : (rnd[3:0] < 4'd5);
 end
 
 reg [63:0] mem [0:(1<<18)-1];
@@ -213,6 +222,7 @@ initial begin
     if (f1_toggles > 2)     begin $display("FAIL: F1 toggling in 480p"); $fatal; end
     if (vga_interlaced)     begin $display("FAIL: interlaced flag in 480p"); $fatal; end
     if (underrun)          begin $display("FAIL: underrun flagged"); $fatal; end
+    if (dut.u_fb_ddr3.wf_overflow_sticky) begin $display("FAIL: DDR3 write FIFO overflowed (headroom < in-flight results)"); $fatal; end
     $display("TB PASS");
     $finish;
 end

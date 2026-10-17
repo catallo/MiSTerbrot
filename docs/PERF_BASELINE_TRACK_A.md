@@ -56,6 +56,169 @@ with `tools/bench_diff.py <before.json> <after.json>`.
 
 ---
 
+## 2026-10-17 · `quad12-slotram` — twelve quads (96 iterators): slot coordinates in M10K, write-FIFO headroom fix
+
+Builds: baseline = `bench_q20_20261015.json` (eight quads, 130 MHz); after =
+`bench_q30_20261017.json`, bench seed 3 (clk_iter +0.173, HDMI +0.529,
+clk_vid +0.655, 34,629 ALMs / 83%).  Release build: seed 2, **HDMI +0.243 /
+clk_iter +0.397 / clk_vid +0.753 / clk_sys +3.338 ns, 34,124 ALMs (81%),
+105/112 DSP, 494/553 M10K** — pinned in `MiSTerbrot.qsf`, deployed as
+`MiSTerbrot_20261017.rbf`.  Sweep (scm, q30 seeds 1–6 + bench 1–3): 3/6
+release and 3/3 bench seeds close every clock; the misses are clk_iter on two
+seeds (−0.07 / −0.50: `phase → mem_zs/mem_zr` MLAB read, DSP output → S2a0 at
+82% fill) and HDMI −0.12 on one.  Ten quads (sweep q29, 80 iterators, 31.3k
+ALMs = 75%) close 5/6 with ≥ +0.11 ns and are the fallback; their bench
+(`bench_q21_20261016.json`, naive build) read 1.19x.  Device captures of the
+twelve-quad build differ from the eight-quad reference by exactly the 8
+build-date pixels on all eight views and are run-to-run identical.  Verilator:
+12/12 benches pass with unchanged checksums (the engine is untouched).
+
+What changed (`rtl/pixel_pipeline.v`, `rtl/iter_quad.v`, `rtl/fb_ddr3.v`,
+`rtl/gallery_fb.v`, `rtl/fractal_top.v`, `MiSTerbrot.sdc`):
+
+1. **Slot coordinate store.**  pixel_pipeline kept every slot's cr/ci in a
+   64 × 128-bit register file read by each quad through a two-level 8:1 mux.
+   Quartus had implemented it as ~1.7k ALMs of quarter-used MLABs, and each
+   quad spent 256 flops plus the mux on reading it.  Now the dispatcher writes
+   {cr, ci} straight into the owning quad's 8 × 128 dual-clock RAM (`mem_ld`,
+   one M10K group per quad, written on clk_sys, read at phase_d3 on clk_iter)
+   and the pixel tag {px, py, rid} into one async-read MLAB (`mem_tag`); the
+   start synchronizer is 4 FFs so the first read of a slot is ≥ 3 clk_iter
+   edges after the write (outside the RAM's mixed-port window), and the two
+   `set_net_delay` bounds on the old registers are gone.  Eight quads:
+   33.2k → 28.3k ALMs (−4.9k), bit-identical (all tb_pp checksums, 46-case
+   quad bench, 12 top-level benches).  That is what let ten quads fit at 75%
+   and twelve at 81%; the naive ten-quad probe without it sat at 90% and
+   closed 1/6.
+2. **Write-FIFO headroom** (found by the device check: the ten-quad pan-up
+   capture had ~10 pixels that differed between two runs of the same RBF; the
+   eight-quad build had none).  `fb_ddr3`/`gallery_fb` deasserted `wr_ready`
+   64 entries before full — sized for 24 in-flight slots — and a push at
+   full overwrote the oldest queued pixel.  With 80 iterators a DDR3 busy
+   stall of a few microseconds (the scaler's bursts) overflowed it, leaving
+   stale pixels in 480p frames while panning.  Now `HEADROOM = N_ITERATORS +
+   64` (parameter), an overflow guard drops instead of overwriting, and
+   `wf_overflow_sticky` is checked by `tb_mode4 -GNI=96 +busyburst` in
+   `sim/run_all.sh` (the bench's steady random busy could never reach the
+   headroom; the burst mode reproduces the overflow at NI=80 with the old
+   64).  Two wrong turns, both measured: 512-deep FIFOs stayed in M10K but
+   the fitter then demoted two ascal RAMs into 6k registers (+3.1k ALMs,
+   HDMI −0.8…−1.1 on 12/12 seeds); `ramstyle = "MLAB"` made the FIFOs
+   "uninferred due to unsupported read-during-write behavior" (+6.9k ALMs,
+   twelve quads no longer fit).  The FIFO stays the 256 × 31 altsyncram
+   template.
+3. `N_ITERATORS` 64 → 96 (`SYMQ_DEPTH` 128 still leaves a 32-entry
+   backpressure threshold).  DSP 81 → 105 of 112, M10K 446 → 494.
+
+The frame-time model (`sim/pixel_pipeline/tb_pp.sv` on the device grid, 240
+rows, cycles / 50 MHz) predicted this round exactly: it said +25% would lift 13
+scenes from 30 to 60 fps, 7 from 20 to 30 and 2 from 15 to 20 — the ten-quad
+bench moved precisely those — and at +50% the list below.
+
+**Geomean 1.27x (+26.6%)**, 42 of 90 scenes faster, none slower; **61 scenes on
+the 60 fps cap** (44 before), 12 at 30 (21), 2 at 20 (8).  Raw iteration rate
++50% (96/64): the 12 scenes below 10 fps read **1.46x** (SH CUSP FINE 2.4 →
+3.8, SH CUSP DEEP 5.5 → 7.5, JULIA ISLANDS 6.0 → 8.4, SAT HEAD 3.0 → 4.6,
+R2 HALF ISLE 6.0 → 8.4, BEYER STEP 13 6.0 → 8.5, SAT SEAHORSE 2.8 → 4.3,
+TRIPLE SPIRAL P4 5.0 → 7.5).  Cumulative: 2.40x over
+the four-quad collect build (2026-10-12), 2.83x over the 2026-07-08
+periodicity build.  Twelve-quad-only moves vs ten quads: CAULIFLOWER MED,
+STARFISH, P3 BULB UPPER/LOWER 30 → 60; EJS P3 DEEP 20 → 30; ELEPHANT ISLAND,
+LOVE CANAL 10 → 15 (TRIPLE WEST had already reached 15 at ten quads).
+
+| idx | scene | F10 before | F10 after | ratio |
+|----:|-------|-----------:|----------:|------:|
+| 0 | P6 SUB BULB | 597 | 597 | 1.00x |
+| 1 | P3 ISLAND | 597 | 596 | 1.00x |
+| 2 | P3 ISLAND TIP | 596 | 597 | 1.00x |
+| 3 | P4 ISLAND | 596 | 596 | 1.00x |
+| 4 | P5 ISLAND | 597 | 596 | 1.00x |
+| 5 | P6 ISLAND | 597 | 596 | 1.00x |
+| 6 | P7 ISLAND | 597 | 596 | 1.00x |
+| 7 | P8 ISLAND | 597 | 597 | 1.00x |
+| 8 | P9 ISLAND | 596 | 597 | 1.00x |
+| 9 | P11 ISLAND | 596 | 596 | 1.00x |
+| 10 | P22 ISLAND | 298 | 596 | 2.00x |
+| 11 | ELEPHANT TRUNK | 596 | 597 | 1.00x |
+| 12 | ELEPHANT HEADS | 298 | 298 | 1.00x |
+| 13 | ELEPHANT ISLAND | 100 | 149 | 1.49x |
+| 14 | ELEPHANT P19 | 596 | 595 | 1.00x |
+| 15 | ELEPHANT P16 | 596 | 596 | 1.00x |
+| 16 | SEAHORSE BODY | 198 | 298 | 1.51x |
+| 17 | SEAHORSE TAIL | 596 | 597 | 1.00x |
+| 18 | SEAHORSE DEEP | 150 | 198 | 1.32x |
+| 19 | SEAHORSE TAIL2 | 298 | 596 | 2.00x |
+| 20 | DOUBLE HOOK | 298 | 596 | 2.00x |
+| 21 | SH SATELLITE | 199 | 299 | 1.50x |
+| 22 | SAT ANTENNA | 50 | 75 | 1.50x |
+| 23 | SAT HEAD | 30 | 46 | 1.53x |
+| 24 | SAT SEAHORSE | 28 | 43 | 1.54x |
+| 25 | SAT DBL SPIRAL | 25 | 37 | 1.48x |
+| 26 | JULIA ISLANDS | 60 | 84 | 1.40x |
+| 27 | TRIPLE WEST | 118 | 149 | 1.26x |
+| 28 | TRIPLE DEEP | 199 | 298 | 1.50x |
+| 29 | FEIGENBAUM | 596 | 597 | 1.00x |
+| 30 | FEIGENBAUM ZOOM | 299 | 596 | 1.99x |
+| 31 | FEIGENBAUM DEEP | 149 | 198 | 1.33x |
+| 32 | GEN FEIGENBAUM | 597 | 597 | 1.00x |
+| 33 | MISIUREWICZ M4 | 597 | 597 | 1.00x |
+| 34 | MISIUREWICZ M4-2 | 596 | 596 | 1.00x |
+| 35 | MISIUREWICZ SPIR | 596 | 596 | 1.00x |
+| 36 | MISIUREWICZ -1.94 | 597 | 597 | 1.00x |
+| 37 | MISIUREWICZ -1.84 | 596 | 597 | 1.00x |
+| 38 | DBL SPIRAL P4 | 597 | 596 | 1.00x |
+| 39 | SINGLE SPIRAL | 597 | 597 | 1.00x |
+| 40 | TRIPLE MEDALLION | 595 | 596 | 1.00x |
+| 41 | DBL SPIRAL ISLE | 199 | 299 | 1.50x |
+| 42 | TRIPLE ISLE MED | 198 | 298 | 1.51x |
+| 43 | CAULIFLOWER MED | 298 | 595 | 2.00x |
+| 44 | EJS CAULI | 597 | 597 | 1.00x |
+| 45 | EJS DBL SPIRAL | 298 | 596 | 2.00x |
+| 46 | EJS BRANCH | 596 | 597 | 1.00x |
+| 47 | EJS NUCLEUS | 35 | 49 | 1.40x |
+| 48 | LOVE CANAL | 100 | 149 | 1.49x |
+| 49 | P5 ISLAND DEEP | 298 | 595 | 2.00x |
+| 50 | ELEPHANT MED | 298 | 597 | 2.00x |
+| 51 | STARFISH | 298 | 597 | 2.00x |
+| 52 | M3,1 WAKE 3/7 | 298 | 597 | 2.00x |
+| 53 | M11,1 WAKE 5/11 | 198 | 298 | 1.51x |
+| 54 | CONCHA APPROACH | 596 | 596 | 1.00x |
+| 55 | M7,1 WAKE 1/7 | 299 | 596 | 1.99x |
+| 56 | SH CUSP DEEP | 55 | 75 | 1.36x |
+| 57 | EJS PERIOD 44 | 594 | 596 | 1.00x |
+| 58 | JEWEL BOX | 199 | 299 | 1.50x |
+| 59 | R2T P6 ISLAND | 596 | 596 | 1.00x |
+| 60 | SH CUSP FINE | 24 | 38 | 1.58x |
+| 61 | R2 HALF ISLE | 60 | 84 | 1.40x |
+| 62 | R2T P7 ISLAND | 595 | 596 | 1.00x |
+| 63 | SCEPTER MED | 298 | 299 | 1.00x |
+| 64 | BRANCH MED | 596 | 596 | 1.00x |
+| 65 | EJS P3 DEEP | 198 | 298 | 1.51x |
+| 66 | NEEDLE MED | 597 | 596 | 1.00x |
+| 67 | M3,1 1/3 LIMB TIP | 597 | 597 | 1.00x |
+| 68 | M_4,2 CASCADE 1 | 596 | 597 | 1.00x |
+| 69 | M_8,4 CASCADE 2 | 597 | 597 | 1.00x |
+| 70 | M_16,8 CASCADE 3 | 596 | 596 | 1.00x |
+| 71 | EJS P47 ALPHA | 596 | 596 | 1.00x |
+| 72 | EJS P50 BETA | 299 | 597 | 2.00x |
+| 73 | EJS WAKE 1/4 | 596 | 597 | 1.00x |
+| 74 | SH SPIRAL CONT | 597 | 596 | 1.00x |
+| 75 | SH TAIL SPIRAL | 299 | 596 | 1.99x |
+| 76 | ELEPHANT MED 2 | 298 | 596 | 2.00x |
+| 77 | R2T 1/2 ISLE STEP | 297 | 298 | 1.00x |
+| 78 | BEYER STEP 13 | 60 | 85 | 1.42x |
+| 79 | BEYER STEP 14 | 50 | 74 | 1.48x |
+| 80 | TRIPLE SPIRAL P4 | 50 | 75 | 1.50x |
+| 81 | MERCATOR P189 | 298 | 297 | 1.00x |
+| 82 | MERCATOR P38 | 596 | 596 | 1.00x |
+| 83 | M(3,3) WAKE 1/3 DP | 596 | 597 | 1.00x |
+| 84 | M(7,7) WAKE 1/4 DP | 596 | 596 | 1.00x |
+| 85 | EJS P47 GAMMA | 299 | 596 | 1.99x |
+| 86 | P3 BULB UPPER | 298 | 597 | 2.00x |
+| 87 | P3 BULB LOWER | 298 | 596 | 2.00x |
+| 88 | P3 LIMB FULL | 596 | 597 | 1.00x |
+| 89 | P3 BULB DEEP | 597 | 597 | 1.00x |
+
 ## 2026-10-15 · `quad8x8-3sq` — eight quads: three-squares iter_quad, 64 iterators at 130 MHz
 
 Builds: baseline = `bench_q15_20261015.json` (five quads, clk_iter 130 MHz);

@@ -10,8 +10,9 @@
 //   start_x[i]: pulse on clk_sys → toggle synchronizer → 1-cycle pulse on clk_iter
 //   done_x[i] : edge-detected pulse on clk_iter → toggle synchronizer →
 //               1-cycle pulse on clk_sys
-//   cr/ci buses (clk_sys → clk_iter): static for the duration of the iteration,
-//               sampled by iter_quad when synchronized start fires (no sync needed)
+//   cr/ci (clk_sys → clk_iter): written into the quad's dual-clock slot RAM
+//               at dispatch; iter_quad reads the slot after the synchronized
+//               start fires (>= 3 clk_iter edges later, 4-FF chain)
 //   iter_count, escaped buses (clk_iter → clk_sys): static when done fires,
 //               sampled by collect logic on synchronized done pulse
 //   max_iter: 2-FF synchronizer (rare changes;
@@ -21,7 +22,7 @@
 //============================================================================
 
 module pixel_pipeline #(
-    parameter N_ITERATORS = 64,  // quads x 8 contexts/quad (fractal_top passes 64 = 8 quads)
+    parameter N_ITERATORS = 96,  // quads x 8 contexts/quad (fractal_top passes 96 = 12 quads since 2026-10-17)
     parameter WIDTH       = 64,
     parameter FRAC_BITS   = 56,
     parameter RID_W       = 2    // region_id tag width (Mariani-Silver v2)
@@ -97,26 +98,35 @@ end
 // =====================================================================
 reg                     iter_busy    [0:N_ITERATORS-1];
 reg                     iter_start_q [0:N_ITERATORS-1]; // toggle in clk_sys
-reg  [10:0]             iter_px      [0:N_ITERATORS-1];
-reg  [10:0]             iter_py      [0:N_ITERATORS-1];
-reg  signed [WIDTH-1:0] iter_cr      [0:N_ITERATORS-1];
-reg  signed [WIDTH-1:0] iter_ci      [0:N_ITERATORS-1];
-reg  [RID_W-1:0]        iter_rid     [0:N_ITERATORS-1]; // region_id tag
+// Per-slot pixel tag {px, py, rid}: written at dispatch, read once at
+// collect.  An MLAB with an asynchronous read replaces the per-slot
+// register file and its N:1 collect mux (2026-10-16).  Dispatch writes a
+// free slot and collect reads a busy one, so the two never touch the
+// same word in one cycle: no read-during-write bypass needed.
+localparam TAG_W = 11 + 11 + RID_W;
+(* ramstyle = "MLAB, no_rw_check" *) reg [TAG_W-1:0] mem_tag [0:N_ITERATORS-1];
+// The coordinates themselves live in each quad's slot RAM (iter_quad
+// mem_ld), written through the quad's clk_sys port at dispatch.
 
 // =====================================================================
 // CDC: per-slot start (clk_sys → clk_iter) via toggle synchronizer
 // =====================================================================
-reg [2:0] iter_start_sync [0:N_ITERATORS-1]; // 3-FF chain in clk_iter
+// 4-FF chain (2026-10-16, was 3): the slot's coordinates are written into
+// the quad's dual-clock RAM on the same clk_sys edge as the toggle, and a
+// mixed-port read must not fall within one write-clock period (20 ns) of
+// the write.  Three clk_iter edges (>= 23 ns at 130 MHz) before the pulse
+// cover that; the extra 7.7 ns of dispatch latency is <1% of a pixel.
+reg [3:0] iter_start_sync [0:N_ITERATORS-1]; // 4-FF chain in clk_iter
 wire      iter_start_pulse_iter [0:N_ITERATORS-1]; // 1-cycle pulse on clk_iter
 
 genvar gs;
 generate
     for (gs = 0; gs < N_ITERATORS; gs = gs + 1) begin : gen_start_sync
         always @(posedge clk_iter or negedge rst_n) begin
-            if (!rst_n) iter_start_sync[gs] <= 3'b0;
-            else        iter_start_sync[gs] <= {iter_start_sync[gs][1:0], iter_start_q[gs]};
+            if (!rst_n) iter_start_sync[gs] <= 4'b0;
+            else        iter_start_sync[gs] <= {iter_start_sync[gs][2:0], iter_start_q[gs]};
         end
-        assign iter_start_pulse_iter[gs] = iter_start_sync[gs][2] ^ iter_start_sync[gs][1];
+        assign iter_start_pulse_iter[gs] = iter_start_sync[gs][3] ^ iter_start_sync[gs][2];
     end
 endgenerate
 
@@ -166,13 +176,13 @@ genvar gq, gc;
 generate
     for (gq = 0; gq < N_ITERATORS/8; gq = gq + 1) begin : gen_quad
         wire [7:0]         q_start;
-        wire [8*WIDTH-1:0] q_cr, q_ci;
         wire [7:0]         q_done, q_escaped;
         wire [8*12-1:0]    q_iter_count;
+        // Slot coordinate write port: this quad owns slots 8*gq .. 8*gq+7.
+        wire               q_ld_we = coord_valid && coord_ready &&
+                                     ((dispatch_slot >> 3) == gq);
         for (gc = 0; gc < 8; gc = gc + 1) begin : gen_slot
             assign q_start[gc]                 = iter_start_pulse_iter[8*gq+gc];
-            assign q_cr[gc*WIDTH +: WIDTH]     = iter_cr[8*gq+gc];
-            assign q_ci[gc*WIDTH +: WIDTH]     = iter_ci[8*gq+gc];
             assign iter_done_level[8*gq+gc]    = q_done[gc];
             assign iter_escaped_level[8*gq+gc] = q_escaped[gc];
             assign iter_count_level[8*gq+gc]   = q_iter_count[gc*12 +: 12];
@@ -182,9 +192,12 @@ generate
             .max_iter(max_iter_iter),
             .p3_precheck_enable(p3_precheck_enable_iter),
             .periodicity_enable(periodicity_enable_iter),
+            .clk_wr(clk),
+            .ld_we(q_ld_we),
+            .ld_wa(dispatch_slot[2:0]),
+            .ld_cr(coord_cr),
+            .ld_ci(coord_ci),
             .start(q_start),
-            .cr_flat(q_cr),
-            .ci_flat(q_ci),
             .done(q_done),
             .iter_count_flat(q_iter_count),
             .escaped(q_escaped)
@@ -253,6 +266,12 @@ always @(*) begin
         if (pend_flat[pc]) begin collect_slot = pc[IDX_W-1:0]; collect_any = 1'b1; end
 end
 
+// Pixel tag store (no reset: a RAM; a slot's word is written before it is
+// ever read).
+always @(posedge clk)
+    if (coord_valid && coord_ready)
+        mem_tag[dispatch_slot] <= {coord_px, coord_py, coord_region_id};
+
 integer i;
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
@@ -264,11 +283,6 @@ always @(posedge clk or negedge rst_n) begin
             iter_busy[i]         <= 1'b0;
             iter_start_q[i]      <= 1'b0;
             iter_done_pending[i] <= 1'b0;
-            iter_px[i]           <= 11'd0;
-            iter_py[i]           <= 10'd0;
-            iter_cr[i]           <= {WIDTH{1'b0}};
-            iter_ci[i]           <= {WIDTH{1'b0}};
-            iter_rid[i]          <= {RID_W{1'b0}};
         end
     end else begin
         result_valid <= 1'b0;
@@ -282,13 +296,10 @@ always @(posedge clk or negedge rst_n) begin
         // ---- Dispatch (first free slot) ----
         if (coord_valid && coord_ready) begin
             // Toggle the slot's start bit; CDC pulse-syncs into clk_iter.
+            // The coordinates go into the quad's slot RAM (q_ld_we above)
+            // and the pixel tag into mem_tag on this same edge.
             iter_start_q[dispatch_slot] <= ~iter_start_q[dispatch_slot];
             iter_busy[dispatch_slot]    <= 1'b1;
-            iter_px[dispatch_slot]      <= coord_px;
-            iter_py[dispatch_slot]      <= coord_py;
-            iter_cr[dispatch_slot]      <= coord_cr;
-            iter_ci[dispatch_slot]      <= coord_ci;
-            iter_rid[dispatch_slot]     <= coord_region_id;
         end
 
         // ---- Collect (first pending slot) ----
@@ -297,11 +308,9 @@ always @(posedge clk or negedge rst_n) begin
         // freed slot is visible to the dispatch encoder next cycle.
         if (collect_any) begin
             result_valid                   <= 1'b1;
-            result_x                       <= iter_px[collect_slot];
-            result_y                       <= iter_py[collect_slot];
+            {result_x, result_y, result_region_id} <= mem_tag[collect_slot];
             result_iter                    <= iter_count_level[collect_slot];
             result_escaped                 <= iter_escaped_level[collect_slot];
-            result_region_id               <= iter_rid[collect_slot];
             iter_busy[collect_slot]        <= 1'b0;
             iter_done_pending[collect_slot]<= 1'b0;
         end

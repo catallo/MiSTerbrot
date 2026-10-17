@@ -19,7 +19,7 @@
 module fractal_top #(
     parameter H_RES       = 320,
     parameter V_RES       = 240,
-    parameter N_ITERATORS = 64,  // 8 quads x 8 contexts/quad (2026-10-15: three-squares iter_quad, 9 DSP/quad)
+    parameter N_ITERATORS = 96,  // 12 quads x 8 contexts/quad (2026-10-17; three-squares iter_quad, 6 DSP/quad, slot store in M10K)
     parameter WIDTH       = 64,
     parameter FRAC_BITS   = 56,
     // ~1 s of progressive output before honoring a saved interlaced
@@ -916,8 +916,8 @@ wire                    pipe_coord_frame_done  = cg_frame_done;
 wire                    pipe_coord_ready;
 wire [RID_W-1:0]        pipe_result_region_id;
 // In DDR3 mode the write FIFO adds a third backpressure source; its
-// wr_ready threshold leaves headroom for the ~24 in-flight slot results
-// that keep completing after dispatch stalls.
+// wr_ready threshold leaves N_ITERATORS + 64 entries of headroom for the
+// in-flight slot results that keep completing after dispatch stalls.
 assign cg_ready = pipe_coord_ready && dispatch_ok;
 
 // A3 (period-3 bulb precheck) per-frame enable.  Three sources, OSD wins:
@@ -1216,7 +1216,12 @@ assign ddram_be       = gallery_mode ? gal_be   : fbd_be;
 assign ddram_we       = gallery_mode ? gal_we   : fbd_we;
 assign ddram_rd       = gallery_mode ? 1'b0     : fbd_rd;
 
-fb_ddr3 u_fb_ddr3 (
+// wr_ready HEADROOM = N_ITERATORS + 64: after dispatch stalls every busy slot
+// can still deliver a result (2026-10-16: the fixed 64 was sized for 24
+// slots; with 80 iterators the overflow replaced ~10 pixels per 480p frame
+// with the bank's previous content during panning).  The FIFO stays 256
+// deep: 512 entries no longer inferred as MLAB and cost 1.5k ALMs each.
+fb_ddr3 #(.HEADROOM(N_ITERATORS + 64)) u_fb_ddr3 (
     .clk(clk),
     .clk_vid(clk_vid),
     .rst_n(rst_n),
@@ -1252,8 +1257,8 @@ fb_ddr3 u_fb_ddr3 (
 // Interior is palette entry 0 (black); an escape at iter % 256 == 0
 // remaps to entry 1 — one color band shifted on one iteration value,
 // invisible (GALLERY_DESIGN.md).  Rate matching: cg_ready is gated on
-// gal_wr_ready above, and the FIFO keeps 64 entries of headroom for
-// the in-flight iterator results after a stall.
+// gal_wr_ready above, and the FIFO keeps N_ITERATORS + 64 entries of
+// headroom for the in-flight iterator results after a stall.
 wire        gal_wr_idle;
 wire        gal_render_bank, gal_display_bank;
 wire        gal_clear_wr, gal_clear_bank;
@@ -1306,7 +1311,7 @@ assign gal_dwell_gate = !gallery_mode ||
                         ((render_state == RS_IDLE) && gal_wr_idle
                                                    && gal_dwell_ok);
 
-gallery_fb u_gallery_fb (
+gallery_fb #(.HEADROOM(N_ITERATORS + 64)) u_gallery_fb (
     .clk(clk), .rst_n(rst_n),
     .gallery_en(gallery_mode),
     // activation clear preempts the render tap (clear_done then forces

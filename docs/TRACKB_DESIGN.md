@@ -214,6 +214,19 @@ Consequences:
 - **No write coalescer, ever.**  Scattered-write throughput exceeds
   the worst-case need (~10-15 M writes/s) by >3×; a small write FIFO
   purely for rate-smoothing is all the write path needs.
+- **The FIFO's `wr_ready` headroom must cover every in-flight iterator**
+  (2026-10-17: `HEADROOM = N_ITERATORS + 64`, a parameter of `fb_ddr3` and
+  `gallery_fb`).  It was a fixed 64, sized when 24 slots were in flight;
+  with 80 iterators a few-microsecond DDR3 busy stall (the scaler's bursts)
+  let the late results overflow the FIFO, and the overflow overwrote the
+  oldest queued pixel — about ten stale pixels per 480p frame while
+  panning, visible as run-to-run differences in device captures.  The
+  FIFO must stay the 256 × 31 altsyncram template Quartus infers today:
+  512 entries took a second M10K and the fitter then demoted two of
+  ascal's RAMs into ~6k registers; `ramstyle = "MLAB"` made the array
+  "uninferred due to unsupported read-during-write behavior".  Guarded by
+  `sim/run_all.sh` (`tb_mode4 -GNI=96 +busyburst`, reads
+  `wf_overflow_sticky`).
 - The line-prefetch margin argument is proven, not assumed.
 - All ceilings above are port-clock-limited (64 bit × 50 MHz); if a
   future mode ever needs more, DDRAM_CLK = clk_iter (100 MHz) doubles

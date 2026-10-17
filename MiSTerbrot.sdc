@@ -19,10 +19,11 @@ set_clock_groups -asynchronous \
 # done toggle: 3-FF chain in clk_sys, 40-60 ns).  One destination-clock
 # period of net delay preserves comfortable margin.
 
-# clk_sys -> clk_iter: per-slot coordinate buses, sampled by iter_quad when
-# the synchronized start pulse fires.
-set_net_delay -max 15 -from [get_registers {*u_pipeline|iter_cr[*]*}]
-set_net_delay -max 15 -from [get_registers {*u_pipeline|iter_ci[*]*}]
+# clk_sys -> clk_iter: the per-slot coordinates are written into each
+# quad's dual-clock slot RAM (iter_quad mem_ld, M10K, 2026-10-16) on the
+# dispatch edge; the first read of that slot is >= 3 clk_iter edges later
+# (4-FF start synchronizer), outside the RAM's mixed-port write window, so
+# the former per-slot register net-delay bounds are no longer needed.
 
 # clk_sys -> clk_iter control (max_iter, p3_precheck_enable) is deliberately
 # NOT net-delay constrained: set_net_delay requires -from and the sources are
