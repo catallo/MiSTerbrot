@@ -46,8 +46,8 @@ module auto_zoom #(
     input  wire [1:0]              zoom_speed_sel,
     // Attract Randomizer (OSD O[52], default On): per-POI random draw of
     // color-cycling speed/direction and auto-zoom speed.  Pools chosen
-    // for screensaver taste: CC speed 300 baud..33.6k (no Teletype, no
-    // ISDN+), direction forward/reverse only (no ping-pong), zoom speed
+    // for screensaver taste: CC speed 300 baud..14.4k (no Teletype, no
+    // 28.8k+), direction forward/reverse only (no ping-pong), zoom speed
     // Normal/Fast/Very Fast (no Slow).
     input  wire                    randomize_enable,
 
@@ -379,8 +379,9 @@ wire dwell_done = (dwell_count >= (attract_wait_vblanks - 16'd1));
 // produced strongly correlated speeds/directions.  Caught by the TB.)
 reg [15:0] rnd_lfsr;
 // CC speed pool (OSD sel values): 300(2), 1200(3), 2400(4), 9600(0),
-// 14.4k(5), 28.8k(6) — top tier 33.6k excluded per user spec, 28.8k
-// double-weighted; the leftover 3-bit slot goes to the neutral 9600.
+// 14.4k(5) — 28.8k and above excluded per user spec (2026-10-17: 28.8k
+// "too fast"; 33.6k+ from the start); 2400, 9600 and 14.4k double-weighted
+// to fill the eight 3-bit slots.
 reg [3:0] rnd_speed_map;
 always @(*) begin
     case (rnd_lfsr[2:0])
@@ -389,8 +390,8 @@ always @(*) begin
         3'd2: rnd_speed_map = 4'd4;   // 2400
         3'd3: rnd_speed_map = 4'd0;   // 9600
         3'd4: rnd_speed_map = 4'd5;   // 14.4k
-        3'd5: rnd_speed_map = 4'd6;   // 28.8k
-        3'd6: rnd_speed_map = 4'd6;   // 28.8k (double weight)
+        3'd5: rnd_speed_map = 4'd5;   // 14.4k (double weight)
+        3'd6: rnd_speed_map = 4'd4;   // 2400  (double weight)
         default: rnd_speed_map = 4'd0; // 9600
     endcase
 end
