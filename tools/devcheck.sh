@@ -27,8 +27,18 @@ home() { # $1 = out png ; reach the home view with verification
 cmd=$1; shift
 case $cmd in
   deploy)
-    sshpass -p 1 scp -o StrictHostKeyChecking=no -o LogLevel=ERROR "$1" root@$H:/media/fat/_Other/$2
-    rsh "sha256sum /media/fat/_Other/$2 | cut -c1-16; echo load_core /media/fat/_Other/$2 > /dev/MiSTer_cmd"; sleep 22
+    # 2026-10-17: an interrupted scp from the build host left a 0-byte RBF, the
+    # chain loaded it, the FPGA ended up uninitialized and the MiSTer main
+    # process quit (recovery needed a reboot).  Refuse anything that is not a
+    # plausible bitstream, and only load what the device verifiably received.
+    sz=$(stat -c %s "$1" 2>/dev/null || echo 0)
+    [ "$sz" -gt 3000000 ] || { echo "deploy: $1 is $sz bytes — not an RBF, refusing"; exit 1; }
+    lsum=$(sha256sum "$1" | cut -c1-16)
+    sshpass -p 1 scp -o StrictHostKeyChecking=no -o LogLevel=ERROR "$1" root@$H:/media/fat/_Other/$2 || { echo "deploy: scp failed"; exit 1; }
+    rsum=$(rsh "sha256sum /media/fat/_Other/$2 | cut -c1-16")
+    [ "$lsum" = "$rsum" ] || { echo "deploy: checksum mismatch local $lsum device $rsum — not loading"; rsh "rm -f /media/fat/_Other/$2"; exit 1; }
+    echo "$rsum"
+    rsh "timeout 10 sh -c 'echo load_core /media/fat/_Other/$2 > /dev/MiSTer_cmd'" || { echo "deploy: MiSTer command pipe has no reader (main process down?)"; exit 1; }; sleep 22
     $MC screenshot --output $DC/deploy.png >/dev/null
     (cd $ROOT && python3 -c "import sys; sys.path.insert(0,'tools'); import poi_ocr; print('overlay:', poi_ocr.read_poi_name('$DC/deploy.png'))");;
   pal)
