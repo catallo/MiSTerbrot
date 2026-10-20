@@ -878,19 +878,6 @@
     "note": "Wider 1/3-limb view showing the cardioid attachment point and the period-3 bulb in one frame. Centered between attachment (-0.25,0.4330) and bulb center (-0.1226,0.7449)."
   },
   {
-    "name": "P3 BULB DEEP",
-    "cx": -0.1225611669,
-    "cy": 0.7448617666,
-    "zoom_level": 7.0,
-    "category": "PERIOD_BULB",
-    "precheck_p3": true,
-    "sources": [
-      "https://en.wikipedia.org/wiki/Mandelbrot_set#Hyperbolic_components"
-    ],
-    "note": "Deep zoom into period-3 bulb interior. Visible area ~0.04 wide, all inside the bulb's inscribed circle (r^2=0.005625) -> A3 precheck should fire on every pixel and skip iteration entirely.",
-    "max_iter": 128
-  },
-  {
     "name": "P4 BULB 1-4",
     "cx": 0.2822713907669139,
     "cy": 0.5300606175785253,
