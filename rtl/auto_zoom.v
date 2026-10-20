@@ -429,6 +429,15 @@ end
 // direction: Forward / Reverse only, 50/50 (user spec 2026-10-20: no
 // Ping-Pong in the random pool — it stays a manual OSD choice).
 wire [1:0] rnd_dir_map = {1'b0, rnd_lfsr[3]};
+// Flashing-palette speed cap (user spec 2026-10-20): a palette flagged in
+// rtl/palette_flags.vh never cycles faster than 300 baud when the speed
+// comes from this random draw (manual OSD speeds are the user's choice and
+// stay uncapped).  Teletype (1) and 300 (2) pass through, every faster code
+// becomes 300.  At 300 baud 12 of the 14 flagged palettes drop under the
+// 3 flashes/s WCAG line (CGA Magenta 3.7, C64 3.3 remain just above).
+localparam [3:0] FLASHY_SPEED_CAP = 4'd2;   // 300 baud (color_mapper code)
+wire [3:0] rnd_speed_draw = (PAL_FLASHY[pp_rdata] && rnd_speed_map != 4'd1 && rnd_speed_map != FLASHY_SPEED_CAP)
+                          ? FLASHY_SPEED_CAP : rnd_speed_map;
 reg [1:0] rnd_zoom_map;
 always @(*) begin
     rnd_zoom_map = (rnd_lfsr[9:6] < 4'd11) ? 2'd2 : 2'd3;
@@ -729,7 +738,7 @@ always @(posedge clk or negedge rst_n) begin
                     skip_run    <= IDX_ZERO;
                     pal_skip_run <= PAL_ZERO;
                     // Attract Randomizer: fresh draws land with the new POI.
-                    rnd_cycle_speed     <= rnd_speed_map;
+                    rnd_cycle_speed     <= rnd_speed_draw;
                     rnd_cycle_direction <= rnd_dir_map;
                     rnd_zoom_speed      <= rnd_zoom_map;
                     adv_ph <= 2'd3;
@@ -786,7 +795,7 @@ always @(posedge clk or negedge rst_n) begin
                     pal_skip_run <= PAL_ZERO;
                     target_playlist_pos <= (target_playlist_pos == TARGET_LAST_IDX) ? IDX_ZERO : (target_playlist_pos + IDX_ONE);
                     // Attract Randomizer: fresh draws land with the new POI.
-                    rnd_cycle_speed     <= rnd_speed_map;
+                    rnd_cycle_speed     <= rnd_speed_draw;
                     rnd_cycle_direction <= rnd_dir_map;
                     rnd_zoom_speed      <= rnd_zoom_map;
                     adv_ph <= 2'd3;

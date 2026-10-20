@@ -366,9 +366,28 @@ Next below the line: Embers (1-in-16 spark) at 1.7/s, Frozen / Milky Way at
 regenerates `rtl/palette_flags.vh` (`PAL_FLASHY_MASK`, `PAL_FLASHY_COUNT`,
 `pal_safe_at()`) and `tools/palette_flash.json` (per-palette scores);
 `sim/color_mapper/tb_pal_flags.sv` (in `sim/run_all.sh`) checks the include
-and `sim/auto_zoom/tb_az.sv` the playlist filter.  **Rerun the tool after any
-palette edit in `color_mapper.v`** — the flags are a snapshot of the palette
-math.
+and `sim/auto_zoom/tb_az.sv` the playlist filter and the speed cap below.
+**Rerun the tool after any palette edit in `color_mapper.v`** — the flags are
+a snapshot of the palette math.
+
+**Speed cap in the random draw (2026-10-20, Flashing Palettes = On):** when
+the Attract Randomizer / Speed=Auto draw lands one of the 14 flagged
+palettes, `auto_zoom.v` caps the drawn cycling speed at **300 baud**
+(`FLASHY_SPEED_CAP`; Teletype would pass through but is not in the pool).
+Unflagged palettes keep the whole 300 .. 14.4k pool.  At 300 baud 12 of the
+14 drop under 3 flashes/s; CGA Magenta (3.7) and C64 (3.3) stay just above
+it — only Teletype would bring them under.  A fixed OSD speed is the user's
+own choice and is never capped; the Off position of the row removes the
+flagged palettes altogether.
+
+| Palette | 300 baud | 1200 | 2400 | 9600 | 14.4k |
+|---|---|---|---|---|---|
+| CGA Magenta | 3.7 | 7.5 | 9.3 | 11.2 | 13.1 |
+| C64 | 3.3 | 6.6 | 8.2 | 9.8 | 11.5 |
+| Disco Floor, Stained Glass Hard | 2.3 | 4.7 | 5.9 | 7.0 | 8.2 |
+| Neon Tubes, Game Boy, Pixel Sprite | 1.9 | 3.8 | 4.7 | 5.7 | 6.6 |
+| NES Castlevania, Strobe Police, Casino Slots | 1.2 | 2.4 | 3.0 | 3.6 | 4.2 |
+| ZX Spectrum, Halloween Strobe, Traffic Lights, SMPTE | 1.0 | 1.9 | 2.4 | 2.9 | 3.3 |
 
 ## 11. Adding a new palette
 

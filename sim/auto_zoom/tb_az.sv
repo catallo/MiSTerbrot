@@ -12,7 +12,10 @@
 //   no_flash_palettes = 1 (N advances and M snaps): no palette flagged in
 //                  rtl/palette_flags.vh is ever drawn, every other palette
 //                  is, one palette/POI change per advance (no transient);
-//   no_flash_palettes = 0: the flagged palettes come back.
+//   no_flash_palettes = 0: the flagged palettes come back, and every draw
+//                  that lands a flagged palette carries the 300-baud speed
+//                  cap (rnd_cycle_speed == 2) while unflagged palettes still
+//                  see the whole 300..14.4k pool (2026-10-20 speed cap).
 // Build: verilator --binary --timing -Wno-fatal -Wno-WIDTH -I../../rtl --top tb_az tb_az.sv ../../rtl/auto_zoom.v
 `timescale 1ns/1ps
 `include "poi_generated.vh"
@@ -58,6 +61,8 @@ reg [N-1:0] seen;
 integer idx_changes, vc_pulses, mi_changes, pal_changes;
 reg [6:0] pal_prev;
 reg [NPAL-1:0] pseen; integer n_flashy = 0, seen_pal, seen_flashy;
+reg [15:0] spd_seen_safe = 0;   // speed codes drawn with an unflagged palette
+integer n_capped = 0, n_flashy_draws = 0;
 reg [`POI_IDX_BITS-1:0] idx_prev; reg [11:0] mi_prev; reg counting = 0;
 
 // Every target_idx change must be matched by exactly one view_changed pulse
@@ -168,10 +173,24 @@ initial begin
     // ---- phase 4: no_flash_palettes = 0 ----
     no_flash = 0;
     pseen = 0;
-    for (k = 0; k < ADV; k = k + 1) begin advance; pseen[palette_idx] = 1; end
+    for (k = 0; k < ADV; k = k + 1) begin
+        advance; pseen[palette_idx] = 1;
+        if (PMASK[palette_idx]) begin
+            n_flashy_draws = n_flashy_draws + 1;
+            if (rnd_cs == 4'd2) n_capped = n_capped + 1;
+            else begin $display("FAIL: flashy palette %0d drawn with speed code %0d (cap is 2 = 300 baud)", palette_idx, rnd_cs); errors = errors + 1; end
+        end else begin
+            spd_seen_safe[rnd_cs] = 1'b1;
+            if (!(rnd_cs == 4'd0 || (rnd_cs >= 4'd2 && rnd_cs <= 4'd5))) begin
+                $display("FAIL: speed code %0d outside the 300..14.4k pool", rnd_cs); errors = errors + 1; end
+        end
+    end
     seen_flashy = 0; for (i = 0; i < NPAL; i = i + 1) if (pseen[i] && PMASK[i]) seen_flashy = seen_flashy + 1;
-    $display("no_flash=0: %0d advances, flashy palettes seen %0d (expect %0d)", ADV, seen_flashy, n_flashy);
+    $display("no_flash=0: %0d advances, flashy palettes seen %0d (expect %0d), flashy draws %0d all capped to 300 baud (%0d), unflagged speed codes seen %b (expect 0,2,3,4,5)",
+             ADV, seen_flashy, n_flashy, n_flashy_draws, n_capped, spd_seen_safe[5:0]);
     if (seen_flashy != n_flashy) begin $display("FAIL: flashy palettes missing with no_flash_palettes=0"); errors = errors + 1; end
+    if (n_flashy_draws == 0 || n_capped != n_flashy_draws) begin $display("FAIL: speed cap on flagged palettes"); errors = errors + 1; end
+    if (spd_seen_safe[5:0] != 6'b111101) begin $display("FAIL: unflagged palettes must see the whole speed pool"); errors = errors + 1; end
 
     if (errors == 0) $display("TB PASS"); else $display("TB FAIL (%0d errors)", errors);
     $finish;
