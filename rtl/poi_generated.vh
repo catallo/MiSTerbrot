@@ -16,6 +16,9 @@
 `define POI_NAME_LABEL_W  160
 `define POI_NAME_LEN_LSB  160
 
+// gallery_only flags: 18 of 128 POIs (tools/poi_frametime.py)
+`define POI_GALLERY_ONLY_MASK 128'h180820000001C0023100820007C00000
+
 // ---- poi_rom init (auto_zoom.v): {cx, cy, zoom_x10, zoom_int, max_iter} ----
 `define POI_TABLE_INIT \
     poi_rom[0  ] = 155'h7F42E6C093D9663800000000000000000786800; /* P6 SUB BULB */ \

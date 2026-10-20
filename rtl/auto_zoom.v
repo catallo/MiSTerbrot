@@ -50,6 +50,13 @@ module auto_zoom #(
     // 28.8k+), direction forward/reverse only (no ping-pong), zoom speed
     // Normal/Fast/Very Fast (no Slow).
     input  wire                    randomize_enable,
+    // Fast-POI filter (OSD "Auto-Zoom POIs" = Fast only): the playlist
+    // advance skips POIs flagged gallery_only in tools/poi_master.json —
+    // their zoom-in path has a stretch below the frame-rate floor (see
+    // tools/poi_frametime.py).  Only the animated advance (S_NEXT) filters;
+    // snap/gallery (S_SNAP_LOAD) always serves all POIs.  fractal_top
+    // ties it low in gallery mode and when the zoom-in animation is off.
+    input  wire                    fast_only,
 
     // BRAM framebuffer sampling (held inactive in deterministic zoom mode)
     input  wire [12:0]             fb_rd_data,
@@ -176,11 +183,21 @@ initial begin
     `POI_TABLE_INIT
 end
 reg  [POI_W-1:0] poi_q;
+// Gallery-only flags, one bit per ROM slot (same source as the ROM).  Read
+// combinationally off the playlist entry while it is in flight, so a
+// skipped candidate never reaches target_idx, palette_idx or the ROM read.
+localparam [POI_DEPTH-1:0] GALLERY_ONLY = `POI_GALLERY_ONLY_MASK;
+// Consecutive-skip guard: after POI_DEPTH-1 skips in a row the next
+// candidate is taken regardless, so the advance can never spin even if
+// every flag were set.
+reg  [IDX_BITS-1:0] skip_run;
+wire cand_skip = fast_only && GALLERY_ONLY[tp_rdata] && (skip_run != {IDX_BITS{1'b1}});
 // Gated on `enable`: if Z/Space drops auto-zoom on the phase-2 edge the
 // FSM leaves for S_IDLE and target_idx keeps its value, so poi_q must
 // not be loaded from the (abandoned) playlist read — the 1-cycle
 // phantom would land in target_max_iter_r (2026-10-12 review fix).
-wire advance_rd = enable && (state == S_NEXT || state == S_SNAP_LOAD) && (adv_ph == 2'd2);
+wire advance_rd = enable && (state == S_NEXT || state == S_SNAP_LOAD) && (adv_ph == 2'd2)
+                  && !(state == S_NEXT && cand_skip);
 always @(posedge clk) poi_q <= poi_rom[advance_rd ? tp_rdata : target_idx];
 
 // Field offsets come from poi_generated.vh (single source: poi_encode.py).
@@ -423,6 +440,7 @@ always @(posedge clk or negedge rst_n) begin
         palette_lfsr <= 16'h5E31;
         target_playlist_pos <= IDX_ONE;
         palette_playlist_pos <= PAL_ONE;
+        skip_run <= IDX_ZERO;
         shuffle_phase <= 1'b0;
         shuffle_idx <= TARGET_LAST_IDX;
         zoom_out_final_pending <= 1'b0;
@@ -672,15 +690,26 @@ always @(posedge clk or negedge rst_n) begin
             end
             2'd1: adv_ph <= 2'd2;
             2'd2: begin
-                target_idx  <= tp_rdata;
-                palette_idx <= pp_rdata;
+                // Both playlists advance whether or not the candidate is
+                // taken (a skipped POI also burns its palette draw).
                 target_playlist_pos  <= (target_playlist_pos  == TARGET_LAST_IDX)  ? IDX_ZERO : (target_playlist_pos  + IDX_ONE);
                 palette_playlist_pos <= (palette_playlist_pos == PALETTE_LAST_IDX) ? PAL_ZERO : (palette_playlist_pos + PAL_ONE);
-                // Attract Randomizer: fresh draws land with the new POI.
-                rnd_cycle_speed     <= rnd_speed_map;
-                rnd_cycle_direction <= {1'b0, rnd_lfsr[3]};
-                rnd_zoom_speed      <= rnd_zoom_map;
-                adv_ph <= 2'd3;
+                if (cand_skip) begin
+                    // Gallery-only POI under the fast filter: draw again.
+                    // target_idx/palette_idx/poi_q stay on the current POI,
+                    // so nothing downstream sees the skipped candidate.
+                    skip_run <= skip_run + IDX_ONE;
+                    adv_ph   <= 2'd0;
+                end else begin
+                    target_idx  <= tp_rdata;
+                    palette_idx <= pp_rdata;
+                    skip_run    <= IDX_ZERO;
+                    // Attract Randomizer: fresh draws land with the new POI.
+                    rnd_cycle_speed     <= rnd_speed_map;
+                    rnd_cycle_direction <= {1'b0, rnd_lfsr[3]};
+                    rnd_zoom_speed      <= rnd_zoom_map;
+                    adv_ph <= 2'd3;
+                end
             end
             default: begin
                 center_x<=rom_cx; center_y<=rom_cy;

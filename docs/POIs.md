@@ -86,7 +86,8 @@ The deepest POI in the playlist (Julia Islands at `X2^29.85` ≈ `10⁹×`) sits
      "sources": ["https://commons.wikimedia.org/wiki/...", "https://mrob.com/pub/muency/..."],
      "note": "Beyer step 4, seahorse tail spirals",
      "max_iter": 1024,       // (optional) A7 per-POI override; if absent, the zoom-tier ladder (512/1024/2048/4095) is used
-     "precheck_p3": false    // (optional) A3 period-3 bulb precheck opt-in; only relevant for POIs near (-0.123, ±0.745)
+     "precheck_p3": false,   // (optional) A3 period-3 bulb precheck opt-in; only relevant for POIs near (-0.123, ±0.745)
+     "gallery_only": true    // (generated) zoom-in path too slow for auto-zoom — see "Fast vs gallery-only POIs" below
    }
    ```
 2. `python3 tools/poi_render.py` — render thumbnails to `screenshots/poi/idx_NNN_*.png`
@@ -98,6 +99,36 @@ The deepest POI in the playlist (Julia Islands at `X2^29.85` ≈ `10⁹×`) sits
 8. On hardware, press `M` (or gamepad X) to snap through the playlist and visually verify on the actual display.
 
 **Never hand-edit `rtl/poi_generated.vh`** — it's regenerated.
+
+### Fast vs gallery-only POIs (`gallery_only`, 2026-10-19)
+
+Every POI serves two modes: the animated auto-zoom (overview → canonical
+depth, 355 frames per zoom level at Normal speed) and the static 1080p
+gallery / snap view.  A POI whose zoom-in path has a slow stretch makes a
+poor auto-zoom target but a fine gallery image, so the catalogue carries a
+derived flag:
+
+- `python3 tools/poi_frametime.py [--host scm]` simulates every integer
+  zoom level of every POI's zoom-in path on the Verilator pixel-pipeline
+  bench (device grid, the POI's own `max_iter`, precheck off — exactly what
+  auto-zoom renders) and writes `tools/poi_frametimes.json`.  The bench
+  matches the hardware benchmark on every comparable scene, so the numbers
+  are the device's.  On scm the sweep takes about a minute.
+- `python3 tools/poi_frametime.py --classify-fps 6 --write` sets
+  `gallery_only` on every POI whose slowest zoom-in frame falls below 6 fps
+  in 640x480p (the vsync-locked rate, 2x the 240-row work), clears it on the
+  rest, then `tools/poi_encode.py` bakes the flags into
+  `POI_GALLERY_ONLY_MASK` in `rtl/poi_generated.vh`.
+- `auto_zoom.v` skips flagged POIs in the animated playlist advance when the
+  OSD row *Attract Mode → Auto-Zoom POIs* is **Fast only** (default).  The
+  decision is taken on the in-flight playlist entry, so a skipped POI never
+  reaches `target_idx`, the palette draw or the POI ROM read (no transient
+  re-render).  Snap (M key), gallery mode and **All** serve every POI.
+  `sim/auto_zoom/tb_az.sv` (in `sim/run_all.sh`) proves both settings
+  against the real ROM.
+
+Re-run the sweep after a throughput change: a faster core promotes POIs
+automatically.
 
 ## 4. Source quality is the limiting factor
 

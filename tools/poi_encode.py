@@ -156,6 +156,18 @@ def main():
     lines.append(f"`define POI_NAME_LABEL_W  {POI_NAME_LABEL_W}")
     lines.append(f"`define POI_NAME_LEN_LSB  {POI_NAME_LEN_LSB}")
     lines.append("")
+    # gallery_only: one bit per ROM slot (bit i = POI i).  Set by
+    # tools/poi_frametime.py --classify-fps: the POI's zoom-in path has a
+    # frame below the rate floor, so auto_zoom.v's animated advance skips
+    # it when the OSD "Auto-Zoom POIs" row is Fast only.
+    gmask = 0
+    for i, p in enumerate(pois):
+        if p.get("gallery_only"):
+            gmask |= 1 << i
+    n_gonly = bin(gmask).count("1")
+    lines.append(f"// gallery_only flags: {n_gonly} of {n} POIs (tools/poi_frametime.py)")
+    lines.append(f"`define POI_GALLERY_ONLY_MASK {depth}'h{gmask:0{(depth+3)//4}X}")
+    lines.append("")
     lines.append("// ---- poi_rom init (auto_zoom.v): {cx, cy, zoom_x10, zoom_int, max_iter} ----")
     lines.append("`define POI_TABLE_INIT \\")
     for i in range(depth):

@@ -198,7 +198,8 @@
     "cy": 0.1318252536,
     "zoom_level": 20.34,
     "category": "ANTENNA",
-    "note": "Beyer step 8, satellite antenna"
+    "note": "Beyer step 8, satellite antenna",
+    "gallery_only": true
   },
   {
     "name": "SAT HEAD",
@@ -206,7 +207,8 @@
     "cy": 0.13182604688,
     "zoom_level": 22.5,
     "category": "SEAHORSE",
-    "note": "Beyer step 9, head-shoulder of satellite"
+    "note": "Beyer step 9, head-shoulder of satellite",
+    "gallery_only": true
   },
   {
     "name": "SAT SEAHORSE",
@@ -214,7 +216,8 @@
     "cy": 0.13182590271,
     "zoom_level": 24.82,
     "category": "SEAHORSE",
-    "note": "Beyer step 10, satellite seahorse valley"
+    "note": "Beyer step 10, satellite seahorse valley",
+    "gallery_only": true
   },
   {
     "name": "SAT DBL SPIRAL",
@@ -222,7 +225,8 @@
     "cy": 0.131825890901,
     "zoom_level": 26.27,
     "category": "SEAHORSE",
-    "note": "Beyer step 11, satellite double spiral"
+    "note": "Beyer step 11, satellite double spiral",
+    "gallery_only": true
   },
   {
     "name": "JULIA ISLANDS",
@@ -231,7 +235,8 @@
     "zoom_level": 29.85,
     "category": "JULIA_ISLAND",
     "note": "Beyer step 12, embedded Julia islands",
-    "max_iter": 2048
+    "max_iter": 2048,
+    "gallery_only": true
   },
   {
     "name": "TRIPLE WEST",
@@ -361,7 +366,8 @@
     "zoom_level": 23.0,
     "category": "MEDALLION",
     "note": "Double-spiral medallion in P3 island",
-    "max_iter": 1024
+    "max_iter": 1024,
+    "gallery_only": true
   },
   {
     "name": "TRIPLE ISLE MED",
@@ -414,7 +420,8 @@
     "cy": 0.1217237736,
     "zoom_level": 27.0,
     "category": "JULIA_ISLAND",
-    "note": "Deep embedded Julia set in seahorse valley"
+    "note": "Deep embedded Julia set in seahorse valley",
+    "gallery_only": true
   },
   {
     "name": "LOVE CANAL",
@@ -493,7 +500,8 @@
     "cy": 0.00298255,
     "zoom_level": 17.04,
     "category": "SEAHORSE",
-    "note": "Deep seahorse valley R.C(1/2-) cusp dwell figure"
+    "note": "Deep seahorse valley R.C(1/2-) cusp dwell figure",
+    "gallery_only": true
   },
   {
     "name": "EJS PERIOD 44",
@@ -528,7 +536,8 @@
     "cy": 0.002972856,
     "zoom_level": 19.04,
     "category": "SEAHORSE",
-    "note": "Finer seahorse valley R.C(1/2-) cusp dwell"
+    "note": "Finer seahorse valley R.C(1/2-) cusp dwell",
+    "gallery_only": true
   },
   {
     "name": "R2 HALF ISLE",
@@ -536,7 +545,8 @@
     "cy": 0.030466443,
     "zoom_level": 21.14,
     "category": "MINIBROT",
-    "note": "Spiral-detail island in R2.1/2 child cusp"
+    "note": "Spiral-detail island in R2.1/2 child cusp",
+    "gallery_only": true
   },
   {
     "name": "R2T P7 ISLAND",
@@ -572,7 +582,8 @@
     "zoom_level": 23.68,
     "category": "JULIA_ISLAND",
     "note": "2-fold EJS deep inside P3 island, Cantor-dust",
-    "max_iter": 1024
+    "max_iter": 1024,
+    "gallery_only": true
   },
   {
     "name": "NEEDLE MED",
@@ -735,7 +746,8 @@
       "https://en.wikipedia.org/wiki/Mandelbrot_set"
     ],
     "note": "Wolfgang Beyer step 13: 5.14e9x. Satellite seahorse tail with embedded Julia island. Deeper than JULIA ISLANDS.",
-    "max_iter": 2048
+    "max_iter": 2048,
+    "gallery_only": true
   },
   {
     "name": "BEYER STEP 14",
@@ -747,7 +759,8 @@
       "https://commons.wikimedia.org/wiki/File:Mandel_zoom_14_satellite_julia_island.jpg",
       "https://en.wikipedia.org/wiki/Mandelbrot_set"
     ],
-    "note": "Wolfgang Beyer step 14: 5.998e10x. Two islands connected by tiny structures meeting at a satellite. Deepest published Beyer waypoint."
+    "note": "Wolfgang Beyer step 14: 5.998e10x. Two islands connected by tiny structures meeting at a satellite. Deepest published Beyer waypoint.",
+    "gallery_only": true
   },
   {
     "name": "TRIPLE SPIRAL P4",
@@ -760,7 +773,8 @@
       "https://en.wikipedia.org/wiki/Mandelbrot_set"
     ],
     "note": "Romera et al triple-spiral medallion. Zoom-sequence of existing TRIPLE MEDALLION at deeper magnification.",
-    "max_iter": 2048
+    "max_iter": 2048,
+    "gallery_only": true
   },
   {
     "name": "MERCATOR P189",
@@ -1110,7 +1124,8 @@
     "sources": [
       "https://mrob.com/pub/muency/secondorderembeddedjuliase.html"
     ],
-    "note": "Period-101 island at heart of canonical 2nd-order embedded Julia set"
+    "note": "Period-101 island at heart of canonical 2nd-order embedded Julia set",
+    "gallery_only": true
   },
   {
     "name": "CANTOR DUST CUSP",
@@ -1180,7 +1195,8 @@
     "sources": [
       "https://mathr.co.uk/web/m-describe.html"
     ],
-    "note": "Misiurewicz preperiod-141 period-1 near 1/5-limb shrub, very tight spiral"
+    "note": "Misiurewicz preperiod-141 period-1 near 1/5-limb shrub, very tight spiral",
+    "gallery_only": true
   },
   {
     "name": "WEST DOUBLE SPIRAL",
@@ -1269,7 +1285,8 @@
       "https://commons.wikimedia.org/wiki/File:Part_of_parameter_plane_with_fragment_of_Mandelbrot_set_,_center_=_-1.8605739600158748e%2B00_%2B_-9.3437424499999996e-07.png",
       "https://raw.githubusercontent.com/LegalizeAdulthood/fractint-legacy/master/fractint.par"
     ],
-    "note": "EJS on main antenna at -1.8606 south of axis, around period-124 island; SAME point published independently as Fractint 'Filament' (Ian Adam) and Commons EJS render (Majewski) - merged from both round-2 agents"
+    "note": "EJS on main antenna at -1.8606 south of axis, around period-124 island; SAME point published independently as Fractint 'Filament' (Ian Adam) and Commons EJS render (Majewski) - merged from both round-2 agents",
+    "gallery_only": true
   },
   {
     "name": "LANGSTON EYE",
@@ -1281,7 +1298,8 @@
       "https://raw.githubusercontent.com/xaos-project/XaoS/master/examples/Langston/pretty2.xpf",
       "https://raw.githubusercontent.com/xaos-project/XaoS/master/examples/Langston/eye.xpf"
     ],
-    "note": "Langston signature landmark, 6 files center this point z26.8-z53; spiral hub above P2 disk (rescues the dropped Messner-1 region properly)"
+    "note": "Langston signature landmark, 6 files center this point z26.8-z53; spiral hub above P2 disk (rescues the dropped Messner-1 region properly)",
+    "gallery_only": true
   },
   {
     "name": "GF4D DRAGON",

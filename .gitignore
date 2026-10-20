@@ -54,6 +54,8 @@ tools/*
 !tools/palette_names.txt
 !tools/devcheck.sh
 !tools/poi_master.json
+!tools/poi_frametime.py
+!tools/poi_frametimes.json
 !tools/benchmarks.json
 !tools/bench_encode.py
 !tools/bench_decode_screenshot.py

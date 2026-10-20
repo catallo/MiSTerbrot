@@ -228,6 +228,7 @@ wire [1:0] palette_transition_mode;
 wire       zoom_pacing_mode;
 wire [1:0] zoom_speed_sel;
 wire       attract_zoom_in_enable;
+wire       az_fast_only;
 wire       attract_zoom_out_enable;
 wire [15:0] attract_wait_vblanks;
 wire       gallery_live_render;
@@ -265,7 +266,8 @@ fractal_osd #(
     .zoom_speed_sel(zoom_speed_sel),
     .attract_zoom_in_enable(attract_zoom_in_enable),
     .attract_zoom_out_enable(attract_zoom_out_enable),
-    .attract_wait_vblanks(attract_wait_vblanks)
+    .attract_wait_vblanks(attract_wait_vblanks),
+    .az_fast_only(az_fast_only)
 );
 
 // ---- Verification-mode overrides (keys force on/off, default = follow OSD) ----
@@ -477,6 +479,10 @@ auto_zoom #(
     // enables masked, auto_zoom snaps each POI to its canonical zoom,
     // dwells, and advances — the gallery sequencing comes for free.
     .attract_zoom_in_enable(attract_zoom_in_enable & ~gallery_mode),
+    // The gallery_only filter only matters for an animated zoom-in: a
+    // snapped (zoom-in Off) or gallery POI is a static image, where the
+    // slow path never renders.
+    .fast_only(az_fast_only & attract_zoom_in_enable & ~gallery_mode),
     .attract_zoom_out_enable(attract_zoom_out_enable & ~gallery_mode),
     .attract_wait_vblanks(attract_wait_vblanks),
     // "Wait on POI" counts display time only: gate is forward-declared

@@ -198,6 +198,10 @@ localparam CONF_STR = {
 	"D0P1O[48],Zoom Pacing,Cinematic,Constant;",
 	"D0P1O[50:49],Zoom Speed,Normal,Slow,Fast,Very Fast;",
 	"P1O[52],Randomize CC+Zoom Speed,On,Off;",
+	// Fast only = skip POIs flagged gallery_only (zoom-in path below 6 fps
+	// in 640x480p, tools/poi_frametime.py).  Snap (M) and gallery mode
+	// always serve all POIs, so the row is masked in gallery mode.
+	"D0P1O[53],Auto-Zoom POIs,Fast only,All;",
 		"-;",
 	"-, Arrows/WASD/D-Pad: Pan;",
 	"-, +/-/PgUp/PgDn: Zoom;",
