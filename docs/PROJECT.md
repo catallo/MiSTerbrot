@@ -219,7 +219,6 @@ Main page:
 | `O[23]`   | Overlay BG (Transparent/Dimmed) |
 | `O[26:25]`| P3 Bulb Precheck (Auto/On/Off) — Auto uses per-POI flag in bench mode |
 | `O[51]`   | Periodicity Check (On/Off) — Brent cycle detection for interior pixels (P2) |
-| `O[59]`   | Gallery Live Render (On default / Off) — On paints each POI progressively into the displayed buffer; Off renders hidden, then palette-fades to black, flips `FB_BASE` while the screen is uniformly black (tear-free), and fades back in.  Greyed outside gallery (`d0`); the zoom-related Attract rows grey inside it (`D0`, `status_menumask[0]`) |
 | `O[36]`   | Limit Colours to (262K Recommended / 16.7M) — 6-bit output quantization mask on/off |
 | `O[122:121]` | Aspect ratio               |
 

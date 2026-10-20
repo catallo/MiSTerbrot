@@ -128,7 +128,7 @@ always @(posedge clk) if (rst_n) begin
                        ? dut.pipe_result_iter[7:0] : 8'd1)
                 : 8'd0;
         if (dut.gal_clear_active) begin
-            // activation clear: index must be 0 (both banks swept)
+            // activation clear: index must be 0 (the single bank swept)
             clear_pushes = clear_pushes + 1;
             if (dut.u_gallery_fb.wr_index !== 8'd0) begin
                 push_errs = push_errs + 1;
@@ -264,7 +264,7 @@ initial begin
     #1_000_000;
     $display("covered=%0d push_errs=%0d wr_errs=%0d rd_cmds=%0d clear_pushes=%0d",
              covered_cnt, push_errs, wr_errs, rd_cmds, clear_pushes);
-    if (clear_pushes !== 2*1920*1080) begin
+    if (clear_pushes !== 1920*1080) begin
         $display("FAIL: clear push count %0d", clear_pushes); $fatal;
     end
     $display("coord_checks=%0d coord_errs=%0d pitch_errs=%0d pal_writes=%0d pal0=%0d",

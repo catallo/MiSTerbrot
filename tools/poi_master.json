@@ -495,15 +495,6 @@
     "max_iter": 256
   },
   {
-    "name": "SH CUSP DEEP",
-    "cx": -0.75000582,
-    "cy": 0.00298255,
-    "zoom_level": 17.04,
-    "category": "SEAHORSE",
-    "note": "Deep seahorse valley R.C(1/2-) cusp dwell figure",
-    "gallery_only": true
-  },
-  {
     "name": "EJS PERIOD 44",
     "cx": -1.76886792,
     "cy": 0.00392602,
@@ -529,15 +520,6 @@
     "category": "MINIBROT",
     "note": "Period-6 island in real-axis R2t cascade to c=-2",
     "max_iter": 512
-  },
-  {
-    "name": "SH CUSP FINE",
-    "cx": -0.74999636,
-    "cy": 0.002972856,
-    "zoom_level": 19.04,
-    "category": "SEAHORSE",
-    "note": "Finer seahorse valley R.C(1/2-) cusp dwell",
-    "gallery_only": true
   },
   {
     "name": "R2 HALF ISLE",

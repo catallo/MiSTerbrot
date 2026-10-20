@@ -72,13 +72,13 @@ read path at all — ascal does the scanout.
 
 ## Live-render toggle (user spec: DEFAULT ON)
 
-- **On** (default): indices write into the DISPLAYED buffer — the POI
-  paints progressively on screen, old image overdrawn as the new one
-  arrives (the classic fractal-program look).
-- **Off**: render into the hidden buffer; on completion fade the
-  palette to black (~30 frames, a scale factor in the palette
-  writer), flip `FB_BASE`, fade back in.
-OSD bit `O[59]` ("Gallery Live Render", On/Off, default On = 0).
+- Live render (the only mode since 2026-10-20): indices write into the
+  DISPLAYED buffer — the POI paints progressively on screen, old image
+  overdrawn as the new one arrives (the classic fractal-program look).
+- The former `O[59]` "Gallery Live Render" Off path (hidden second
+  bank, palette fade to black, `FB_BASE` flip, fade back in) was
+  removed: one DDR3 bank, no fade scaler in the palette writer, the
+  activation clear sweeps half as many pixels.
 
 ## POI sequencing
 
@@ -131,8 +131,8 @@ release builds.
 3. Palette sequencer through the color pipeline: cycling, band mix,
    crossfades; then POI transitions (fade-flip for toggle Off) and
    dwell sequencing.
-4. OSD integration: resolution value 5, D-mask greying, O[59] toggle,
-   boot grace, new_vmode.
+4. OSD integration: resolution value 5, D-mask greying, boot grace,
+   new_vmode (the O[59] live-render toggle was removed 2026-10-20).
 5. Verification (TB + hardware pixel-exact) and docs.
 6. Polish: baked POI-name text, gallery walkthrough tooling.
 
@@ -179,12 +179,12 @@ Deviations and decisions made during implementation:
   of 1080p vblank) removes the seam; the rare core-vblank-mid-sweep
   frame (~0.06 %) mixes two adjacent phases across the entry range —
   a subtle one-frame inconsistency, not a spatial seam.
-- **Fade-flip (O[59]=Off)**: fade 3/vblank (63 -> 0 in ~0.35 s), flip
-  FB_BASE only at fade 0 — the screen is uniformly black, so the flip
-  is tear-free by construction, no FB_VBL handshake needed.
+- **Fade-flip**: removed 2026-10-20 together with the O[59] toggle
+  (was: fade 3/vblank, flip FB_BASE at fade 0).  The palette writer
+  now only forces black while the activation clear runs (`blank`).
 - **Dwell gating**: auto_zoom got a `dwell_gate` input; in gallery,
   "Wait on POI" counts only while the render FSM is idle, the index
-  FIFO drained, and the fade settled at 63 — pure display time.
+  FIFO drained, and the activation clear finished — pure display time.
 - **Zoom inertness**: gallery masks `attract_zoom_in/out_enable` at
   the auto_zoom instance; the existing snap-dwell-advance path then
   sequences POIs with no zoom animation at all.
@@ -197,9 +197,9 @@ Deviations and decisions made during implementation:
 - **Analog output**: blanked (black, live syncs) in gallery mode —
   the core video carries the injection sweep, which would otherwise
   show as noise on the CRT.  Scaler-only, per design.
-- **OSD**: `O[59]` "Gallery Live Render" On/Off (default On), `d0`
-  (greyed outside gallery); zoom rows `D0` (greyed in gallery);
-  `status_menumask[0]` = resolution selection == 1920x1080.
+- **OSD**: zoom rows `D0` (greyed in gallery);
+  `status_menumask[0]` = resolution selection == 1920x1080.  (The
+  `O[59]` live-render row is gone; bit 59 is free.)
 
 ## OPEN: output video mode for the FB display (user decision)
 
@@ -284,8 +284,8 @@ issues, all fixed:
 TB coverage: tb_pitch checks the valid handshake (drop on change,
 rise within two passes, correct at rise); tb_gallery validates
 frame-start coordinates against the LATCHED pitch and its freshness
-(no publish-latency tolerance anymore); tb_gallery_flip fails on any
-double render per POI advance.
+(no publish-latency tolerance anymore).  (tb_gallery_flip, which
+guarded the removed hidden-bank flip, was deleted 2026-10-20.)
 
 ## User-testing round 2 (2026-07-11)
 

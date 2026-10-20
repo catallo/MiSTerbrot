@@ -231,7 +231,6 @@ wire       attract_zoom_in_enable;
 wire       az_fast_only;
 wire       attract_zoom_out_enable;
 wire [15:0] attract_wait_vblanks;
-wire       gallery_live_render;
 
 fractal_osd #(
     .WIDTH(WIDTH),
@@ -255,7 +254,6 @@ fractal_osd #(
     .periodicity_enable(osd_periodicity_enable),
     .attract_randomize(attract_randomize),
     .res_mode(osd_res_mode),
-    .gallery_live_render(gallery_live_render),
     .color_depth_mode(color_depth_mode),
     .cycle_speed_sel(cycle_speed_sel),
     .cycle_direction(cycle_direction),
@@ -353,6 +351,13 @@ wire [1:0]              az_rnd_cycle_direction;
 reg  [6:0]              az_target_idx_prev;
 reg                     az_enable;
 reg                     az_enable_prev;
+// Colour-cycling direction: OSD 0 = Auto -> the per-POI random draw while
+// auto-zoom drives the view (Forward in manual mode); OSD 1..3 -> fixed
+// Forward/Reverse/Ping-Pong (color_mapper codes 0..2).  Randomize still
+// overrides a fixed OSD direction as before.
+wire       cycle_dir_auto = (cycle_direction == 2'd0);
+wire [1:0] cycle_direction_eff = ((attract_randomize || cycle_dir_auto) && auto_zoom_active) ? az_rnd_cycle_direction
+                               : cycle_dir_auto ? 2'd0 : (cycle_direction - 2'd1);
 wire                    auto_zoom_handoff = az_enable_prev & ~az_enable;
 
 // ---- Overlay visibility timer (6s after last input) ----
@@ -1266,20 +1271,10 @@ fb_ddr3 #(.HEADROOM(N_ITERATORS + 64)) u_fb_ddr3 (
 // gal_wr_ready above, and the FIFO keeps N_ITERATORS + 64 entries of
 // headroom for the in-flight iterator results after a stall.
 wire        gal_wr_idle;
-wire        gal_render_bank, gal_display_bank;
-wire        gal_clear_wr, gal_clear_bank;
+wire        gal_clear_wr;
 wire [10:0] gal_clear_x, gal_clear_y;
-wire [5:0]  gal_fade_scale;
+wire        gal_blank;      // palette held black while the activation clear runs
 wire        gal_dwell_ok;
-// black_shown: gallery_palette (clk_vid) reports that the last completed
-// scaler sweep wrote an all-black palette; 2FF into clk_sys gates the
-// hidden-mode bank flip (single-bit level, no net-delay requirement).
-wire        gal_black_shown;
-reg  [1:0]  gal_black_ss;
-always @(posedge clk or negedge rst_n) begin
-    if (!rst_n) gal_black_ss <= 2'b00;
-    else        gal_black_ss <= {gal_black_ss[0], gal_black_shown};
-end
 // palette stream: driven by gallery_palette in the VIDEO domain (the
 // sequencer taps color_mapper); gallery_fb forwards clk_vid as
 // fb_pal_clk so ascal's pal2 port clocks coherently with the writes.
@@ -1294,25 +1289,17 @@ wire [7:0] gal_wr_index = fb_wr_escaped
 gallery_ctl u_gallery_ctl (
     .clk(clk), .rst_n(rst_n),
     .gallery_en(gallery_mode),
-    .live_render(gallery_live_render),
-    .frame_done_rise(frame_done_rise && gallery_mode),
-    .render_idle((render_state == RS_IDLE) && !need_rerender),
-    .wr_idle(gal_wr_idle),
-    .vblank_rise(vblank_rise),
-    .black_shown(gal_black_ss[1]),
     .wr_ready(gal_wr_ready),
     .clear_active(gal_clear_active),
     .clear_wr(gal_clear_wr),
     .clear_x(gal_clear_x), .clear_y(gal_clear_y),
-    .clear_bank(gal_clear_bank),
     .clear_done(gal_clear_done),
-    .render_bank(gal_render_bank), .display_bank(gal_display_bank),
-    .fade_scale(gal_fade_scale),
+    .blank(gal_blank),
     .dwell_ok(gal_dwell_ok)
 );
 
 // Dwell counts only while a settled image is displayed: render FSM
-// idle, every index write committed, no clear/fade in progress.
+// idle, every index write committed, no clear in progress.
 assign gal_dwell_gate = !gallery_mode ||
                         ((render_state == RS_IDLE) && gal_wr_idle
                                                    && gal_dwell_ok);
@@ -1326,9 +1313,10 @@ gallery_fb #(.HEADROOM(N_ITERATORS + 64)) u_gallery_fb (
     .wr_x(gal_clear_active ? gal_clear_x : fb_wr_pixel_x),
     .wr_y(gal_clear_active ? gal_clear_y : fb_wr_pixel_y),
     .wr_index(gal_clear_active ? 8'd0 : gal_wr_index),
-    .render_bank(gal_clear_active ? gal_clear_bank : gal_render_bank),
+    // live render only (2026-10-20): one bank, painted in place
+    .render_bank(1'b0),
     .wr_ready(gal_wr_ready), .wr_idle(gal_wr_idle),
-    .display_bank(gal_display_bank),
+    .display_bank(1'b0),
     .fb_en(gal_fb_en), .fb_format(gal_fb_format),
     .fb_width(gal_fb_width), .fb_height(gal_fb_height),
     .fb_base(gal_fb_base), .fb_stride(gal_fb_stride),
@@ -1433,7 +1421,7 @@ color_mapper u_color_mapper (
     .palette_sel(palette_sel),
     .cycle_enable(effective_color_cycle_enable),
     .cycle_speed_sel(cycle_speed_eff),
-    .cycle_direction((attract_randomize && auto_zoom_active) ? az_rnd_cycle_direction : cycle_direction),
+    .cycle_direction(cycle_direction_eff),
     .cycle_blend_hard(cycle_blend_hard),
     .cycle_band_mode(cycle_band_mode),
     .palette_transition_mode(palette_transition_mode),
@@ -1444,18 +1432,11 @@ color_mapper u_color_mapper (
 );
 
 // ---- Gallery palette sequencer (clk_vid, taps color_mapper) ----
-// fade_scale CDC: quasi-static (one +/-3 step per vblank).  Plain 2FF
-// per-bit sync — a torn sample can only affect the entries of a
-// single sweep for one frame, invisible and self-correcting.
-reg [5:0] fade_vs_meta, fade_vs;
+// blank CDC: a level that changes once per gallery activation (2FF).
+reg [1:0] blank_vs;
 always @(posedge clk_vid or negedge rst_n) begin
-    if (!rst_n) begin
-        fade_vs_meta <= 6'd0;
-        fade_vs      <= 6'd0;
-    end else begin
-        fade_vs_meta <= gal_fade_scale;
-        fade_vs      <= fade_vs_meta;
-    end
+    if (!rst_n) blank_vs <= 2'b11;
+    else        blank_vs <= {blank_vs[0], gal_blank};
 end
 
 // FB_VBL edge for the sweep trigger (2FF hygiene; sys_top already
@@ -1472,11 +1453,10 @@ gallery_palette u_gallery_palette (
     .gallery_en(gallery_v),
     .ce_pix(ce_pix),
     .sweep_start(fb_vbl_rise),
-    .fade_scale(fade_vs),
+    .blank(blank_vs[1]),
     .inj_iter(gal_inj_iter),
     .color_r(disp_r), .color_g(disp_g), .color_b(disp_b),
-    .pal_wr(gal_pwr), .pal_addr(gal_paddr), .pal_data(gal_pdata),
-    .black_shown(gal_black_shown)
+    .pal_wr(gal_pwr), .pal_addr(gal_paddr), .pal_data(gal_pdata)
 );
 
 text_overlay #(

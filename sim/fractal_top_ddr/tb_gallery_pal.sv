@@ -151,9 +151,9 @@ always @(posedge clk_iter) if (rst_n) begin
             end
             frames_compared = frames_compared + 1;
         end
-        // start a new lockstep frame — only at settled full fade
-        // (activation clear + fade transitions scale entries down)
-        armed       <= dut.gallery_v && (dut.gal_fade_scale == 6'd63);
+        // start a new lockstep frame — only once the activation clear
+        // is over (the palette writer emits black while it runs)
+        armed       <= dut.gallery_v && !dut.blank_vs[1];
         golden_done <= 1'b0;
         g_running   <= dut.gallery_v;
         g_k         <= 9'd1;

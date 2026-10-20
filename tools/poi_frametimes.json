@@ -1653,40 +1653,6 @@
   },
   {
    "idx": 56,
-   "name": "SH CUSP DEEP",
-   "category": "SEAHORSE",
-   "cx": -0.75000582,
-   "cy": 0.00298255,
-   "zoom_level": 17.04,
-   "zoom_int": 17,
-   "max_iter": 2048,
-   "ms_by_zoom": {
-    "1": 4.66,
-    "2": 4.85,
-    "3": 3.45,
-    "4": 3.24,
-    "5": 3.19,
-    "6": 3.19,
-    "7": 3.19,
-    "8": 3.19,
-    "9": 3.19,
-    "10": 3.19,
-    "11": 3.2,
-    "12": 4.3,
-    "13": 7.97,
-    "14": 15.24,
-    "15": 29.64,
-    "16": 58.57,
-    "17": 116.51
-   },
-   "target_ms": 116.51,
-   "worst_ms": 116.51,
-   "worst_z": 17,
-   "fps480_min": 4.285714285714286,
-   "fps480_target": 4.285714285714286
-  },
-  {
-   "idx": 57,
    "name": "EJS PERIOD 44",
    "category": "JULIA_ISLAND",
    "cx": -1.76886792,
@@ -1720,7 +1686,7 @@
    "fps480_target": 60.0
   },
   {
-   "idx": 58,
+   "idx": 57,
    "name": "JEWEL BOX",
    "category": "JULIA_ISLAND",
    "cx": -0.74542846,
@@ -1755,7 +1721,7 @@
    "fps480_target": 20.0
   },
   {
-   "idx": 59,
+   "idx": 58,
    "name": "R2T P6 ISLAND",
    "category": "MINIBROT",
    "cx": -1.99637834,
@@ -1790,43 +1756,7 @@
    "fps480_target": 60.0
   },
   {
-   "idx": 60,
-   "name": "SH CUSP FINE",
-   "category": "SEAHORSE",
-   "cx": -0.74999636,
-   "cy": 0.002972856,
-   "zoom_level": 19.04,
-   "zoom_int": 19,
-   "max_iter": 4095,
-   "ms_by_zoom": {
-    "1": 5.53,
-    "2": 5.86,
-    "3": 3.82,
-    "4": 3.44,
-    "5": 3.34,
-    "6": 3.32,
-    "7": 3.32,
-    "8": 3.32,
-    "9": 3.32,
-    "10": 3.32,
-    "11": 3.62,
-    "12": 5.87,
-    "13": 10.94,
-    "14": 21.19,
-    "15": 41.66,
-    "16": 82.61,
-    "17": 103.5,
-    "18": 154.01,
-    "19": 255.36
-   },
-   "target_ms": 255.36,
-   "worst_ms": 255.36,
-   "worst_z": 19,
-   "fps480_min": 1.935483870967742,
-   "fps480_target": 1.935483870967742
-  },
-  {
-   "idx": 61,
+   "idx": 59,
    "name": "R2 HALF ISLE",
    "category": "MINIBROT",
    "cx": -1.249559196,
@@ -1864,7 +1794,7 @@
    "fps480_target": 5.0
   },
   {
-   "idx": 62,
+   "idx": 60,
    "name": "R2T P7 ISLAND",
    "category": "MINIBROT",
    "cx": -1.9990964107298,
@@ -1903,7 +1833,7 @@
    "fps480_target": 60.0
   },
   {
-   "idx": 63,
+   "idx": 61,
    "name": "SCEPTER MED",
    "category": "MEDALLION",
    "cx": -1.25450731,
@@ -1943,7 +1873,7 @@
    "fps480_target": 20.0
   },
   {
-   "idx": 64,
+   "idx": 62,
    "name": "BRANCH MED",
    "category": "MEDALLION",
    "cx": -1.25850351,
@@ -1983,7 +1913,7 @@
    "fps480_target": 60.0
   },
   {
-   "idx": 65,
+   "idx": 63,
    "name": "EJS P3 DEEP",
    "category": "JULIA_ISLAND",
    "cx": -1.7499254344,
@@ -2024,7 +1954,7 @@
    "fps480_target": 15.0
   },
   {
-   "idx": 66,
+   "idx": 64,
    "name": "NEEDLE MED",
    "category": "MEDALLION",
    "cx": -1.25320279,
@@ -2065,7 +1995,7 @@
    "fps480_target": 60.0
   },
   {
-   "idx": 67,
+   "idx": 65,
    "name": "M3,1 1/3 LIMB TIP",
    "category": "MISIUREWICZ",
    "cx": -0.2281554937,
@@ -2093,7 +2023,7 @@
    "fps480_target": 60.0
   },
   {
-   "idx": 68,
+   "idx": 66,
    "name": "M_4,2 CASCADE 1",
    "category": "FEIGENBAUM",
    "cx": -1.4303576325,
@@ -2121,7 +2051,7 @@
    "fps480_target": 60.0
   },
   {
-   "idx": 69,
+   "idx": 67,
    "name": "M_8,4 CASCADE 2",
    "category": "FEIGENBAUM",
    "cx": -1.4074051182,
@@ -2151,7 +2081,7 @@
    "fps480_target": 60.0
   },
   {
-   "idx": 70,
+   "idx": 68,
    "name": "M_16,8 CASCADE 3",
    "category": "FEIGENBAUM",
    "cx": -1.4024921764,
@@ -2182,7 +2112,7 @@
    "fps480_target": 60.0
   },
   {
-   "idx": 71,
+   "idx": 69,
    "name": "EJS P47 ALPHA",
    "category": "JULIA_ISLAND",
    "cx": -1.7688720239,
@@ -2218,7 +2148,7 @@
    "fps480_target": 30.0
   },
   {
-   "idx": 72,
+   "idx": 70,
    "name": "EJS P50 BETA",
    "category": "JULIA_ISLAND",
    "cx": -1.7688663431,
@@ -2255,7 +2185,7 @@
    "fps480_target": 30.0
   },
   {
-   "idx": 73,
+   "idx": 71,
    "name": "EJS WAKE 1/4",
    "category": "JULIA_ISLAND",
    "cx": -0.1601617454,
@@ -2285,7 +2215,7 @@
    "fps480_target": 30.0
   },
   {
-   "idx": 74,
+   "idx": 72,
    "name": "SH SPIRAL CONT",
    "category": "SEAHORSE",
    "cx": -0.744538,
@@ -2313,7 +2243,7 @@
    "fps480_target": 30.0
   },
   {
-   "idx": 75,
+   "idx": 73,
    "name": "SH TAIL SPIRAL",
    "category": "SEAHORSE",
    "cx": -0.7445366,
@@ -2342,7 +2272,7 @@
    "fps480_target": 30.0
   },
   {
-   "idx": 76,
+   "idx": 74,
    "name": "ELEPHANT MED 2",
    "category": "MEDALLION",
    "cx": -1.256841444,
@@ -2382,7 +2312,7 @@
    "fps480_target": 30.0
   },
   {
-   "idx": 77,
+   "idx": 75,
    "name": "R2T 1/2 ISLE STEP",
    "category": "MINIBROT",
    "cx": -1.2494989,
@@ -2412,7 +2342,7 @@
    "fps480_target": 20.0
   },
   {
-   "idx": 78,
+   "idx": 76,
    "name": "BEYER STEP 13",
    "category": "SEAHORSE",
    "cx": -0.7436438872,
@@ -2460,7 +2390,7 @@
    "fps480_target": 4.285714285714286
   },
   {
-   "idx": 79,
+   "idx": 77,
    "name": "BEYER STEP 14",
    "category": "JULIA_ISLAND",
    "cx": -0.743643887,
@@ -2508,7 +2438,7 @@
    "fps480_target": 4.285714285714286
   },
   {
-   "idx": 80,
+   "idx": 78,
    "name": "TRIPLE SPIRAL P4",
    "category": "MEDALLION",
    "cx": -0.1540378,
@@ -2536,7 +2466,7 @@
    "fps480_target": 3.75
   },
   {
-   "idx": 81,
+   "idx": 79,
    "name": "MERCATOR P189",
    "category": "MINIBROT",
    "cx": -1.7487645202,
@@ -2578,7 +2508,7 @@
    "fps480_target": 20.0
   },
   {
-   "idx": 82,
+   "idx": 80,
    "name": "MERCATOR P38",
    "category": "MINIBROT",
    "cx": -1.7487645763,
@@ -2617,7 +2547,7 @@
    "fps480_target": 60.0
   },
   {
-   "idx": 83,
+   "idx": 81,
    "name": "M(3,3) WAKE 1/3 DP",
    "category": "MISIUREWICZ",
    "cx": -0.1010963638,
@@ -2646,7 +2576,7 @@
    "fps480_target": 60.0
   },
   {
-   "idx": 84,
+   "idx": 82,
    "name": "M(7,7) WAKE 1/4 DP",
    "category": "MISIUREWICZ",
    "cx": 0.3663629834,
@@ -2675,7 +2605,7 @@
    "fps480_target": 60.0
   },
   {
-   "idx": 85,
+   "idx": 83,
    "name": "EJS P47 GAMMA",
    "category": "JULIA_ISLAND",
    "cx": -1.7688635553,
@@ -2711,7 +2641,7 @@
    "fps480_target": 30.0
   },
   {
-   "idx": 86,
+   "idx": 84,
    "name": "P3 BULB UPPER",
    "category": "PERIOD_BULB",
    "cx": -0.1225611669,
@@ -2732,7 +2662,7 @@
    "fps480_target": 15.0
   },
   {
-   "idx": 87,
+   "idx": 85,
    "name": "P3 BULB LOWER",
    "category": "PERIOD_BULB",
    "cx": -0.1225611669,
@@ -2753,7 +2683,7 @@
    "fps480_target": 15.0
   },
   {
-   "idx": 88,
+   "idx": 86,
    "name": "P3 LIMB FULL",
    "category": "PERIOD_BULB",
    "cx": -0.1875,
@@ -2773,7 +2703,7 @@
    "fps480_target": 60.0
   },
   {
-   "idx": 89,
+   "idx": 87,
    "name": "P4 BULB 1-4",
    "category": "PERIOD_BULB",
    "cx": 0.2822713907669139,
@@ -2794,7 +2724,7 @@
    "fps480_target": 30.0
   },
   {
-   "idx": 90,
+   "idx": 88,
    "name": "P5 BULB 1-5",
    "category": "PERIOD_BULB",
    "cx": 0.3795135880159238,
@@ -2816,7 +2746,7 @@
    "fps480_target": 30.0
   },
   {
-   "idx": 91,
+   "idx": 89,
    "name": "P5 BULB 2-5",
    "category": "PERIOD_BULB",
    "cx": -0.504340175446244,
@@ -2837,7 +2767,7 @@
    "fps480_target": 30.0
   },
   {
-   "idx": 92,
+   "idx": 90,
    "name": "P6 BULB 1-6",
    "category": "PERIOD_BULB",
    "cx": 0.38900684056977125,
@@ -2860,7 +2790,7 @@
    "fps480_target": 30.0
   },
   {
-   "idx": 93,
+   "idx": 91,
    "name": "P7 BULB 2-7",
    "category": "PERIOD_BULB",
    "cx": 0.12119278610590649,
@@ -2882,7 +2812,7 @@
    "fps480_target": 30.0
   },
   {
-   "idx": 94,
+   "idx": 92,
    "name": "P7 BULB 3-7",
    "category": "PERIOD_BULB",
    "cx": -0.6224362950412936,
@@ -2904,7 +2834,7 @@
    "fps480_target": 30.0
   },
   {
-   "idx": 95,
+   "idx": 93,
    "name": "P8 BULB 3-8",
    "category": "PERIOD_BULB",
    "cx": -0.35910239011244915,
@@ -2926,7 +2856,7 @@
    "fps480_target": 30.0
   },
   {
-   "idx": 96,
+   "idx": 94,
    "name": "P9 BULB 2-9",
    "category": "PERIOD_BULB",
    "cx": 0.3289029472964821,
@@ -2949,7 +2879,7 @@
    "fps480_target": 30.0
   },
   {
-   "idx": 97,
+   "idx": 95,
    "name": "P7 BULB 1-7",
    "category": "PERIOD_BULB",
    "cx": 0.37600868184676756,
@@ -2972,7 +2902,7 @@
    "fps480_target": 30.0
   },
   {
-   "idx": 98,
+   "idx": 96,
    "name": "P8 BULB 1-8",
    "category": "PERIOD_BULB",
    "cx": 0.35903106283661446,
@@ -2996,7 +2926,7 @@
    "fps480_target": 20.0
   },
   {
-   "idx": 99,
+   "idx": 97,
    "name": "P10 BULB 3-10",
    "category": "PERIOD_BULB",
    "cx": 0.050271834823355066,
@@ -3019,7 +2949,7 @@
    "fps480_target": 20.0
   },
   {
-   "idx": 100,
+   "idx": 98,
    "name": "TOPKNOT",
    "category": "PERIOD_BULB",
    "cx": -1.310702641336833,
@@ -3040,7 +2970,7 @@
    "fps480_target": 60.0
   },
   {
-   "idx": 101,
+   "idx": 99,
    "name": "P5 ISLAND ANTENNA",
    "category": "MINIBROT",
    "cx": -1.6254137251233036,
@@ -3063,7 +2993,7 @@
    "fps480_target": 60.0
   },
   {
-   "idx": 102,
+   "idx": 100,
    "name": "R2T P5 ISLAND",
    "category": "MINIBROT",
    "cx": -1.9854242530542052,
@@ -3092,7 +3022,7 @@
    "fps480_target": 60.0
   },
   {
-   "idx": 103,
+   "idx": 101,
    "name": "P7 ISL 2-5 WAKE",
    "category": "MINIBROT",
    "cx": -0.5308278048599427,
@@ -3116,7 +3046,7 @@
    "fps480_target": 60.0
   },
   {
-   "idx": 104,
+   "idx": 102,
    "name": "P9 ISL 1-3 WAKE",
    "category": "MINIBROT",
    "cx": -0.10546993816740448,
@@ -3140,7 +3070,7 @@
    "fps480_target": 60.0
   },
   {
-   "idx": 105,
+   "idx": 103,
    "name": "P6 ISL 1-4 WAKE",
    "category": "MINIBROT",
    "cx": 0.39653457003241505,
@@ -3165,7 +3095,7 @@
    "fps480_target": 60.0
   },
   {
-   "idx": 106,
+   "idx": 104,
    "name": "P12 MINI ELEPHANT",
    "category": "MINIBROT",
    "cx": 0.32558950955066035,
@@ -3192,7 +3122,7 @@
    "fps480_target": 30.0
   },
   {
-   "idx": 107,
+   "idx": 105,
    "name": "TIP SIDE ISLAND P6",
    "category": "MINIBROT",
    "cx": -0.21752674703051103,
@@ -3221,7 +3151,7 @@
    "fps480_target": 60.0
   },
   {
-   "idx": 108,
+   "idx": 106,
    "name": "P101 ISLAND",
    "category": "MINIBROT",
    "cx": -1.7686678629886754,
@@ -3267,7 +3197,7 @@
    "fps480_target": 6.666666666666667
   },
   {
-   "idx": 109,
+   "idx": 107,
    "name": "CANTOR DUST CUSP",
    "category": "EMBEDDED_JULIA",
    "cx": -1.74652333,
@@ -3302,7 +3232,7 @@
    "fps480_target": 60.0
   },
   {
-   "idx": 110,
+   "idx": 108,
    "name": "ANTENNA BAND MERGE",
    "category": "MISIUREWICZ",
    "cx": -1.5436890126920764,
@@ -3325,7 +3255,7 @@
    "fps480_target": 60.0
   },
   {
-   "idx": 111,
+   "idx": 109,
    "name": "DENDRITE AT I",
    "category": "DENDRITE",
    "cx": 0.0,
@@ -3346,7 +3276,7 @@
    "fps480_target": 60.0
   },
   {
-   "idx": 112,
+   "idx": 110,
    "name": "P2 SHRUB SPIRAL",
    "category": "SPIRAL",
    "cx": -1.2963551381730363,
@@ -3373,7 +3303,7 @@
    "fps480_target": 60.0
   },
   {
-   "idx": 113,
+   "idx": 111,
    "name": "NE BRANCH M4-1",
    "category": "MISIUREWICZ",
    "cx": 0.3439069959725681,
@@ -3402,7 +3332,7 @@
    "fps480_target": 60.0
   },
   {
-   "idx": 114,
+   "idx": 112,
    "name": "TIGHT SPIRAL M141",
    "category": "MISIUREWICZ",
    "cx": 0.402439259495344,
@@ -3436,7 +3366,7 @@
    "fps480_target": 12.0
   },
   {
-   "idx": 115,
+   "idx": 113,
    "name": "WEST DOUBLE SPIRAL",
    "category": "SPIRAL",
    "cx": -0.770231,
@@ -3463,7 +3393,7 @@
    "fps480_target": 30.0
   },
   {
-   "idx": 116,
+   "idx": 114,
    "name": "SHEPHERDS CROOK",
    "category": "FILAMENT",
    "cx": -0.74574,
@@ -3489,7 +3419,7 @@
    "fps480_target": 15.0
   },
   {
-   "idx": 117,
+   "idx": 115,
    "name": "SEAHORSE WEST",
    "category": "SEAHORSE",
    "cx": -1.25709,
@@ -3512,7 +3442,7 @@
    "fps480_target": 12.0
   },
   {
-   "idx": 118,
+   "idx": 116,
    "name": "TANTE RENATE",
    "category": "SPIRAL",
    "cx": -0.7746806106269039,
@@ -3559,7 +3489,7 @@
    "fps480_target": 20.0
   },
   {
-   "idx": 119,
+   "idx": 117,
    "name": "BOURKE SPIRALS",
    "category": "SPIRAL",
    "cx": -0.761574,
@@ -3585,7 +3515,7 @@
    "fps480_target": 20.0
   },
   {
-   "idx": 120,
+   "idx": 118,
    "name": "WIKI MOVIE POINT",
    "category": "FILAMENT",
    "cx": 0.001643721971153,
@@ -3612,7 +3542,7 @@
    "fps480_target": 60.0
   },
   {
-   "idx": 121,
+   "idx": 119,
    "name": "SHRUB NODE M17-1",
    "category": "MISIUREWICZ",
    "cx": 0.3072084787,
@@ -3641,7 +3571,7 @@
    "fps480_target": 30.0
   },
   {
-   "idx": 122,
+   "idx": 120,
    "name": "EJS SOUTH ANTENNA",
    "category": "EMBEDDED_JULIA",
    "cx": -1.8605739600158748,
@@ -3687,7 +3617,7 @@
    "fps480_target": 20.0
   },
   {
-   "idx": 123,
+   "idx": 121,
    "name": "LANGSTON EYE",
    "category": "MISIUREWICZ",
    "cx": -1.0396579104749,
@@ -3731,7 +3661,7 @@
    "fps480_target": 12.0
   },
   {
-   "idx": 124,
+   "idx": 122,
    "name": "GF4D DRAGON",
    "category": "SPIRAL",
    "cx": -0.8054856003079394,
@@ -3763,7 +3693,7 @@
    "fps480_target": 30.0
   },
   {
-   "idx": 125,
+   "idx": 123,
    "name": "XAOS GALAXY",
    "category": "DENDRITE",
    "cx": 0.23616578,
@@ -3793,7 +3723,7 @@
    "fps480_target": 30.0
   },
   {
-   "idx": 126,
+   "idx": 124,
    "name": "FIERY MANDELBROT",
    "category": "DENDRITE",
    "cx": -0.592262425,

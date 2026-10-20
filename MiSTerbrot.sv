@@ -170,7 +170,6 @@ localparam CONF_STR = {
 	"O[20],Always Show FPS,Off,On;",
 	"O[21],Always Show POI/Palette,On,Off;",
 	"O[56:54],Resolution,320x240,640x240,320x480i,640x480i,640x480p,1920x1080;",
-	"d0O[59],Gallery Live Render,On,Off;",
 	"O[23],Overlay BG,Transparent,Dimmed;",
 	"O[17:15],Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
 	// Mariani-Silver was on the Optimisations page but had an intermittent
@@ -187,7 +186,12 @@ localparam CONF_STR = {
 	// A saved config from before 2026-10-13 holding 0 (= the old 9600 default)
 	// therefore comes up as Auto; explicit saved rates shift one step.
 	"P2O[40:37],Speed,Auto,9600 baud,Teletype,300 baud,1200 baud,2400 baud,14.4k,28.8k,33.6k,ISDN,DSL,Fiber;",
-	"P2O[42:41],Direction,Forward,Reverse,Ping-Pong;",
+	// Direction value 0 = Auto (per-POI random draw of Forward/Reverse,
+	// same source as the Attract Randomizer; Forward outside auto-zoom);
+	// 1..3 = the fixed directions (fractal_top subtracts 1).  A saved config
+	// from before 2026-10-20 holding 0 (= the old Forward default) comes up
+	// as Auto; explicit saved directions shift one step.
+	"P2O[42:41],Direction,Auto,Forward,Reverse,Ping-Pong;",
 	"P2O[43],Blending,Smooth,Hard-step;",
 	"P2O[45:44],Iter Band Mix,Off,Low Slow,Low Fast,Counter;",
 	"P2O[47:46],Palette Transition,Crossfade,Instant,Slow Crossfade;",
@@ -244,9 +248,8 @@ hps_io #(.CONF_STR(CONF_STR)) hps_io
 	.buttons(buttons),
 	.status(status),
 	// [0]: gallery selected — greys the zoom-related Attract rows
-	// (inert in gallery, user spec) and enables the gallery-only
-	// Live Render row.  Keyed to the SELECTION, not the post-grace
-	// gallery_mode, so the OSD reflects the choice immediately.
+	// (inert in gallery, user spec).  Keyed to the SELECTION, not the
+	// post-grace gallery_mode, so the OSD reflects the choice immediately.
 	.status_menumask({15'd0, status[56:54] == 3'd5}),
 	.new_vmode(core_new_vmode),
 	.TIMESTAMP(TIMESTAMP),

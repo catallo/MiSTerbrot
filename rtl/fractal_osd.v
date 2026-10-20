@@ -52,16 +52,13 @@ module fractal_osd #(
     // DDR3 framebuffer).  Bit 56 was free since the Deinterlace move
     // to O[58:57], so existing saved configs keep their meaning.
     output wire [2:0]   res_mode,
-    // Gallery live render (status[59]): 0 = On (default; paint into the
-    // displayed buffer), 1 = Off (hidden render + palette fade-flip)
-    output wire         gallery_live_render,
     // Color depth (status[36]):
     //   1'b0 = 6-bit (default, recommended — matches MiSTer Analog I/O R-2R DAC)
     //   1'b1 = 8-bit full (no quantization)
     output wire         color_depth_mode,
     // Color Cycling submenu (status[45:37]):
     output wire [3:0]   cycle_speed_sel,    // [40:37] raw OSD value: 0=Auto, 1..11 = fixed rate index + 1 (decoded in fractal_top)
-    output wire [1:0]   cycle_direction,    // [42:41] 0=Forward(default),1=Reverse,2=Ping-Pong
+    output wire [1:0]   cycle_direction,    // [42:41] raw OSD value: 0=Auto(default), 1=Forward, 2=Reverse, 3=Ping-Pong (decoded in fractal_top)
     output wire         cycle_blend_hard,   // [43]    0=Smooth(default),1=Hard-step
     output wire [1:0]   cycle_band_mode,    // [45:44] 0=Off(default),1=Low Slow,2=Low Fast,3=Counter
     output wire [1:0]   palette_transition_mode, // [47:46] 0=Instant(default),1=Crossfade ~1s,2=Slow Crossfade ~2s
@@ -110,7 +107,6 @@ assign p3_mode = status[26:25];
 assign periodicity_enable = ~status[51];
 assign attract_randomize = ~status[52];
 assign res_mode = status[56:54];
-assign gallery_live_render = ~status[59];
 assign color_depth_mode = status[36];
 
 // Color Cycling submenu decoding
