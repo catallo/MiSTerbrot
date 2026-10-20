@@ -94,9 +94,10 @@ The deepest POI in the playlist (Julia Islands at `X2^29.85` ≈ `10⁹×`) sits
 3. **Look at every thumbnail.** Verify the named feature is centered and visible at the configured zoom.
 4. `python3 tools/poi_flag_bad.py` — flags solid-color/mostly-interior images for hand-tuning.
 5. Hand-tune any flagged POIs (adjust `cx`/`cy` or `zoom_level`), re-render, re-verify.
-6. `python3 tools/poi_encode.py` — generates `rtl/poi_generated.vh` (deterministic, roundtrip-verified).
-7. Rebuild the core (`quartus_sh --flow compile MiSTerbrot` — see `README.md → Building`).
-8. On hardware, press `M` (or gamepad X) to snap through the playlist and visually verify on the actual display.
+6. `python3 tools/poi_frametime.py --host scm --classify-fps 6 --write` — re-sweep the zoom-in frame times and refresh the `gallery_only` flags (one minute on scm; see "Fast vs gallery-only POIs" below).
+7. `python3 tools/poi_encode.py` — generates `rtl/poi_generated.vh` (deterministic, roundtrip-verified).  It refuses to run when the sweep is stale.
+8. Rebuild the core (`quartus_sh --flow compile MiSTerbrot` — see `README.md → Building`).
+9. On hardware, press `M` (or gamepad X) to snap through the playlist and visually verify on the actual display.
 
 **Never hand-edit `rtl/poi_generated.vh`** — it's regenerated.
 
@@ -127,8 +128,19 @@ derived flag:
   `sim/auto_zoom/tb_az.sv` (in `sim/run_all.sh`) proves both settings
   against the real ROM.
 
-Re-run the sweep after a throughput change: a faster core promotes POIs
-automatically.
+**The flags are a snapshot, and the encoder enforces it.**  Nothing on the
+device measures frame rate: the mask is whatever the last sweep said about
+the core of that day.  A faster core leaves fast POIs hidden; a slower core,
+or a raised `max_iter` / deeper `zoom_level`, lets a now-slow POI back into
+the rotation.  So `poi_frametimes.json` records the sweep's inputs — the
+iterator count from `fractal_top.v`, `clk_iter` as the PLL
+(`rtl/pll/pll_0002.v`) makes it, the fps floor, and every POI's `cx`, `cy`,
+`zoom_level` and `max_iter` — and `poi_encode.py` refuses to generate the
+header when any of them differs from the tree, or when a flag disagrees with
+the recorded frame rate.  The fix is always the same: re-run the sweep with
+`--classify-fps 6 --write`, then the encoder.  `--skip-frametime-check`
+bakes the flags unchecked (the header says so) for the rare case the sweep
+host is unreachable.
 
 ## 4. Source quality is the limiting factor
 
@@ -448,8 +460,9 @@ For everything else the script is fast enough to run as a pre-step before every 
 3. `python3 tools/poi_render.py` → look at the new thumbnail.
 4. If framing's bad: nudge `zoom_level` ±1, or adjust `cx`/`cy` toward the actual feature center.
 5. Re-render until the thumbnail clearly shows the named feature.
-6. `python3 tools/poi_encode.py` → regenerated `rtl/poi_generated.vh`.
-7. Rebuild + deploy + verify with `M` on hardware.
+6. `python3 tools/poi_frametime.py --host scm --classify-fps 6 --write` → frame-time sweep, `gallery_only` flag.
+7. `python3 tools/poi_encode.py` → regenerated `rtl/poi_generated.vh` (refuses a stale sweep).
+8. Rebuild + deploy + verify with `M` on hardware.
 
 ### Diagnosing a "this POI looks weird on the FPGA" report
 

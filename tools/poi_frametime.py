@@ -23,7 +23,10 @@ frame rate in 640x480p (every frame is twice the 240-row work there).
         # zoom-in frame drops below 6 fps in 480p is gallery-only
         # (auto_zoom.v skips it when the OSD "Auto-Zoom POIs" row is Fast only)
 
-The iterator count defaults to N_ITERATORS in rtl/fractal_top.v.
+The iterator count defaults to N_ITERATORS in rtl/fractal_top.v; clk_iter is
+read from the PLL (rtl/pll/pll_0002.v) and passed to the bench.  The result
+records both plus every POI's inputs and the fps floor, and
+tools/poi_encode.py refuses to bake the flags when they no longer match.
 """
 
 import argparse
@@ -67,14 +70,23 @@ def default_ni() -> int:
     return int(m.group(1)) if m else 64
 
 
+def device_clk_iter_mhz() -> float:
+    """clk_iter as the device PLL makes it (rtl/pll/pll_0002.v outclk_2)."""
+    m = re.search(r'output_clock_frequency2\("([\d.]+) MHz"\)', (ROOT / "rtl" / "pll" / "pll_0002.v").read_text())
+    if not m:
+        sys.exit("cannot read clk_iter from rtl/pll/pll_0002.v")
+    return float(m.group(1))
+
+
 def fps_locked(ms_480p: float) -> float:
     return 60.0 / max(1, math.ceil(ms_480p / VBLANK_MS - 1e-9))
 
 
-def build(ni: int, jobs: int) -> Path:
+def build(ni: int, clk_mhz: float, jobs: int) -> Path:
     objdir = SIM_DIR / f"obj_dir_ft{ni}"
+    half_ns = 500.0 / clk_mhz    # tb_pp.sv: always #(ITER_HALF_NS) clk_iter = ~clk_iter
     cmd = ["verilator", "--binary", "--timing", "-Wno-fatal", "-Wno-WIDTH", "-I../../rtl",
-           "--top", "tb_pp", f"-GNI={ni}", "tb_pp.sv", "../../rtl/pixel_pipeline.v",
+           "--top", "tb_pp", f"-GNI={ni}", f"-GITER_HALF_NS={half_ns:.3f}", "tb_pp.sv", "../../rtl/pixel_pipeline.v",
            "../../rtl/iter_quad.v", "../../rtl/mul_trunc64.v", "-o", "tb_pp",
            "-Mdir", objdir.name, "-j", str(jobs)]
     env = dict(os.environ, LC_ALL="C.UTF-8")
@@ -118,7 +130,7 @@ def run_jobs(exe: Path, jobs, parallel: int):
     return out
 
 
-def summarize(pois, cycles, ni):
+def summarize(pois, cycles, ni, clk_mhz):
     rows = []
     for i, p in enumerate(pois):
         zi = zoom_int(float(p["zoom_level"]))
@@ -130,6 +142,7 @@ def summarize(pois, cycles, ni):
         worst_z = max(per, key=per.get)
         rows.append({
             "idx": i, "name": p["name"], "category": p.get("category"),
+            "cx": float(p["cx"]), "cy": float(p["cy"]),
             "zoom_level": p["zoom_level"], "zoom_int": zi,
             "max_iter": int(p.get("max_iter", tier(float(p["zoom_level"])))),
             "ms_by_zoom": per,
@@ -140,11 +153,12 @@ def summarize(pois, cycles, ni):
     return {"note": "sim/pixel_pipeline/tb_pp.sv frame times, ms per 640x240 frame (cy=0 halved); "
                     "auto-zoom path z1..zoom_int with the POI's max_iter, P3 precheck off. "
                     "640x480p frame = 2x; fps = 60/ceil(2*ms/16.67).",
-            "iterators": ni, "clk_iter_mhz": 130, "pois": rows}
+            "iterators": ni, "clk_iter_mhz": clk_mhz, "pois": rows}
 
 
 def classify(result, fps_thr: float, write: bool):
     pois = json.loads(MASTER_JSON.read_text())
+    result["fps_floor"] = fps_thr
     changed = []
     for r in result["pois"]:
         p = pois[r["idx"]]
@@ -171,7 +185,8 @@ def run_remote(host: str, ni: int, jobs: int | None) -> dict:
     rdir = "projects/mb_frametime"
     files = ["tools/poi_frametime.py", "tools/poi_master.json", "sim/pixel_pipeline/tb_pp.sv",
              "rtl/fractal_top.v", "rtl/pixel_pipeline.v", "rtl/iter_quad.v", "rtl/mul_trunc64.v"]
-    subprocess.run(["ssh", host, f"mkdir -p {rdir}/tools {rdir}/sim/pixel_pipeline {rdir}/rtl"], check=True)
+    subprocess.run(["ssh", host, f"mkdir -p {rdir}/tools {rdir}/sim/pixel_pipeline {rdir}/rtl/pll"], check=True)
+    subprocess.run(["rsync", "-a", str(ROOT / "rtl/pll/pll_0002.v"), f"{host}:{rdir}/rtl/pll/"], check=True)
     subprocess.run(["rsync", "-a"] + [str(ROOT / f) for f in files if f.startswith("tools/")]
                    + [f"{host}:{rdir}/tools/"], check=True)
     subprocess.run(["rsync", "-a"] + [str(ROOT / f) for f in files if f.startswith("rtl/")]
@@ -199,6 +214,7 @@ def main():
     a = ap.parse_args()
 
     ni = a.ni or default_ni()
+    clk_mhz = device_clk_iter_mhz()
     if a.from_json:
         result = json.loads(Path(a.from_json).read_text())
     elif a.host:
@@ -207,18 +223,19 @@ def main():
         pois = json.loads(MASTER_JSON.read_text())
         jobs = make_jobs(pois)
         par = a.jobs or os.cpu_count() or 4
-        print(f"{len(pois)} POIs, {len(jobs)} views, {ni} iterators, {par} parallel", file=sys.stderr)
-        exe = build(ni, par)
+        print(f"{len(pois)} POIs, {len(jobs)} views, {ni} iterators @ {clk_mhz:g} MHz, {par} parallel", file=sys.stderr)
+        exe = build(ni, clk_mhz, par)
         cycles = run_jobs(exe, jobs, par)
-        result = summarize(pois, cycles, ni)
-    if not a.from_json:
-        Path(a.out).write_text(json.dumps(result, indent=1) + "\n")
-        print(f"wrote {a.out}")
+        result = summarize(pois, cycles, ni, clk_mhz)
     rows = result["pois"]
     for thr in (30, 20, 15, 10, 6):
         print(f">= {thr:2d} fps in 480p along the zoom-in: {sum(1 for r in rows if r['fps480_min'] >= thr):3d} POIs")
     if a.classify_fps is not None:
         classify(result, a.classify_fps, a.write)
+    if not a.from_json or (a.classify_fps is not None and a.write):
+        out = Path(a.from_json) if a.from_json else Path(a.out)
+        out.write_text(json.dumps(result, indent=1) + "\n")
+        print(f"wrote {out}")
 
 
 if __name__ == "__main__":

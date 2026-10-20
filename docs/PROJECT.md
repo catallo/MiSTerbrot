@@ -400,7 +400,8 @@ This script:
 ```
 edit tools/poi_master.json                                   # 1. change a POI coord/zoom
 python3 tools/poi_render.py                                  # 2. preview locally
-python3 tools/poi_encode.py                                  # 3. regen rtl/poi_generated.vh
+python3 tools/poi_frametime.py --host scm --classify-fps 6 --write  # 3. re-sweep frame times, gallery_only flags
+python3 tools/poi_encode.py                                  # 4. regen rtl/poi_generated.vh (refuses a stale sweep)
 # Quartus smart-recompile does NOT track `include files. Force a clean build:
 docker run --rm -v $(pwd):/build ryanfb/quartus-mister sh -c \
   "rm -rf /build/db /build/incremental_db /build/output_files"
@@ -436,7 +437,8 @@ root-owned.)
 # 1. Edit tools/poi_master.json (add/move/retune POIs)
 python3 tools/poi_render.py    # render 200x150 thumbnails -> screenshots/poi/
 python3 tools/poi_flag_bad.py  # flag obviously-bad renders (solid color, etc.)
-python3 tools/poi_encode.py    # write rtl/poi_generated.vh (the four case-body macros)
+python3 tools/poi_frametime.py --host scm --classify-fps 6 --write  # zoom-in frame-time sweep -> gallery_only flags
+python3 tools/poi_encode.py    # write rtl/poi_generated.vh (refuses a stale sweep)
 # 2. Rebuild the core via Docker (see above)
 ```
 

@@ -16,7 +16,7 @@
 `define POI_NAME_LABEL_W  160
 `define POI_NAME_LEN_LSB  160
 
-// gallery_only flags: 18 of 128 POIs (tools/poi_frametime.py)
+// gallery_only flags: 18 of 128 POIs (tools/poi_frametime.py sweep: 96 iterators @ 130 MHz, floor 6 fps)
 `define POI_GALLERY_ONLY_MASK 128'h180820000001C0023100820007C00000
 
 // ---- poi_rom init (auto_zoom.v): {cx, cy, zoom_x10, zoom_int, max_iter} ----

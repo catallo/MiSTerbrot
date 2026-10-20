@@ -10,6 +10,7 @@ Reads tools/poi_master.json. Produces:
 8.56 format: 64-bit signed, 56 fractional bits. value = signed_int / 2**56.
 """
 
+import argparse
 import json
 import re
 import sys
@@ -17,7 +18,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MASTER_JSON = ROOT / "tools" / "poi_master.json"
+FRAMETIMES_JSON = ROOT / "tools" / "poi_frametimes.json"
 OUT_VH = ROOT / "rtl" / "poi_generated.vh"
+SWEEP_CMD = "python3 tools/poi_frametime.py --host scm --classify-fps <fps> --write"
 
 FRAC_BITS = 56
 WIDTH = 64
@@ -75,7 +78,64 @@ def pack_poi(cx_u: int, cy_u: int, zoom_x10: int, zoom_int: int, max_iter: int) 
             | (zoom_int << POI_ZINT_LSB) | max_iter)
 
 
+def check_frametimes(pois, encoded):
+    """The gallery_only flags are a snapshot of one tools/poi_frametime.py
+    sweep.  Refuse to bake them into the core when that sweep no longer
+    describes this tree: a different iterator count or clk_iter, a POI whose
+    coordinates / zoom / max_iter moved since, a flag that disagrees with the
+    recorded frame rate and floor, or a catalogue of different length.
+    Returns the stamp for the generated header."""
+    problems = []
+    if not FRAMETIMES_JSON.exists():
+        problems.append(f"{FRAMETIMES_JSON.name} missing")
+        ft = {"pois": []}
+    else:
+        ft = json.loads(FRAMETIMES_JSON.read_text())
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from poi_frametime import default_ni, device_clk_iter_mhz
+    ni, clk = default_ni(), device_clk_iter_mhz()
+    if ft.get("iterators") != ni:
+        problems.append(f"sweep ran with {ft.get('iterators')} iterators, fractal_top.v has {ni}")
+    if ft.get("clk_iter_mhz") != clk:
+        problems.append(f"sweep ran at {ft.get('clk_iter_mhz')} MHz clk_iter, the PLL makes {clk:g}")
+    floor = ft.get("fps_floor")
+    if floor is None:
+        problems.append("sweep result carries no fps_floor (run with --classify-fps F --write)")
+    rows = ft.get("pois", [])
+    if len(rows) != len(pois):
+        problems.append(f"sweep covers {len(rows)} POIs, catalogue has {len(pois)}")
+    for i, (p, e) in enumerate(zip(pois, encoded)):
+        if i >= len(rows):
+            break
+        r = rows[i]
+        diffs = []
+        if r.get("name") != p["name"]:                       diffs.append(f"name {r.get('name')!r}")
+        if r.get("cx") != float(p["cx"]):                    diffs.append(f"cx {r.get('cx')}")
+        if r.get("cy") != float(p["cy"]):                    diffs.append(f"cy {r.get('cy')}")
+        if float(r.get("zoom_level", -1)) != float(p["zoom_level"]): diffs.append(f"zoom {r.get('zoom_level')}")
+        if r.get("max_iter") != e["max_iter"]:               diffs.append(f"max_iter {r.get('max_iter')}")
+        if floor is not None:
+            want = r["fps480_min"] < floor
+            if bool(p.get("gallery_only", False)) != want:
+                diffs.append(f"gallery_only should be {want} ({r['fps480_min']:.1f} fps vs floor {floor:g})")
+        if diffs:
+            problems.append(f"POI {i} {p['name']}: sweep saw " + ", ".join(diffs))
+    if problems:
+        print("\nERROR: tools/poi_frametimes.json is stale — the gallery_only flags would not match this core:",
+              file=sys.stderr)
+        for q in problems:
+            print(f"  - {q}", file=sys.stderr)
+        print(f"Re-run the sweep:  {SWEEP_CMD}\n(or --skip-frametime-check to bake the flags as they are)",
+              file=sys.stderr)
+        sys.exit(1)
+    return f"{ni} iterators @ {clk:g} MHz, floor {floor:g} fps"
+
+
 def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--skip-frametime-check", action="store_true",
+                    help="bake the gallery_only flags even if tools/poi_frametimes.json does not match this tree")
+    a = ap.parse_args()
     if not MASTER_JSON.exists():
         print(f"ERROR: {MASTER_JSON} not found.", file=sys.stderr)
         sys.exit(1)
@@ -119,6 +179,12 @@ def main():
             "overlay": name_to_overlay(name),
         })
         print(f"{i:>3} {name:<22} {cx:>14.10f} {cy:>14.10f} {zoom:5.2f}  {hex64(cx_u)}  {hex64(cy_u)}")
+
+    if a.skip_frametime_check:
+        print("\nWARNING: gallery_only flags baked without checking tools/poi_frametimes.json", file=sys.stderr)
+        stamp = "UNCHECKED (--skip-frametime-check)"
+    else:
+        stamp = check_frametimes(pois, encoded)
 
     # Generate Verilog — block-RAM init tables (M10K), not case-statement LUT
     # ROMs.  Depth is the full 2^idx_bits so every address is defined; unused
@@ -165,7 +231,7 @@ def main():
         if p.get("gallery_only"):
             gmask |= 1 << i
     n_gonly = bin(gmask).count("1")
-    lines.append(f"// gallery_only flags: {n_gonly} of {n} POIs (tools/poi_frametime.py)")
+    lines.append(f"// gallery_only flags: {n_gonly} of {n} POIs (tools/poi_frametime.py sweep: {stamp})")
     lines.append(f"`define POI_GALLERY_ONLY_MASK {depth}'h{gmask:0{(depth+3)//4}X}")
     lines.append("")
     lines.append("// ---- poi_rom init (auto_zoom.v): {cx, cy, zoom_x10, zoom_int, max_iter} ----")
