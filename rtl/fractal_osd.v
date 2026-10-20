@@ -72,7 +72,10 @@ module fractal_osd #(
     output wire         attract_zoom_out_enable,
     output wire [15:0]  attract_wait_vblanks,
     //   [53] az_all_pois (default 0 = Fast only: auto-zoom skips gallery_only POIs)
-    output wire         az_fast_only
+    output wire         az_fast_only,
+    //   [59] flash_palettes_disable (default 0 = On: every palette available;
+    //        Off hides the strobing palettes listed in rtl/palette_flags.vh)
+    output wire         flash_palettes_enable
 );
 
 // Iterations: OSD order Auto,512,128,256,1024,2048 → remap to canonical iter_sel
@@ -121,6 +124,7 @@ assign zoom_speed_sel          = status[50:49];
 // Attract Mode decoding
 assign attract_zoom_in_enable  = ~status[29];
 assign az_fast_only            = ~status[53];
+assign flash_palettes_enable   = ~status[59];
 assign attract_zoom_out_enable = ~status[30];
 
 // Wait selector lookup → display vblank count (60 Hz).

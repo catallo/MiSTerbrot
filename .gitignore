@@ -67,3 +67,5 @@ tools/*
 !tools/analyze_max_iter.py
 sim/iter_quad/__pycache__/
 !tools/compose_iter_grid.py
+!tools/palette_flash.py
+!tools/palette_flash.json

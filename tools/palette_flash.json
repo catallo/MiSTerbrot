@@ -1,0 +1,748 @@
+{
+ "limit_flashes_per_s": 3.0,
+ "auto_pool_cycle_inc": {
+  "300 baud": 2,
+  "1200 baud": 4,
+  "2400 baud": 5,
+  "9600 baud": 6,
+  "14.4k": 7
+ },
+ "flagged": [
+  19,
+  75,
+  76,
+  78,
+  79,
+  80,
+  81,
+  82,
+  83,
+  84,
+  86,
+  87,
+  88,
+  89
+ ],
+ "palettes": [
+  {
+   "idx": 0,
+   "name": "Rainbow",
+   "changes": 9,
+   "flashes_per_s_9600": 0.4,
+   "flashes_per_s_auto_peak": 0.46,
+   "flashy": false
+  },
+  {
+   "idx": 1,
+   "name": "Fire",
+   "changes": 4,
+   "flashes_per_s_9600": 0.18,
+   "flashes_per_s_auto_peak": 0.21,
+   "flashy": false
+  },
+  {
+   "idx": 2,
+   "name": "Ocean",
+   "changes": 2,
+   "flashes_per_s_9600": 0.09,
+   "flashes_per_s_auto_peak": 0.1,
+   "flashy": false
+  },
+  {
+   "idx": 3,
+   "name": "Oil Slick",
+   "changes": 6,
+   "flashes_per_s_9600": 0.26,
+   "flashes_per_s_auto_peak": 0.31,
+   "flashy": false
+  },
+  {
+   "idx": 4,
+   "name": "Electric",
+   "changes": 8,
+   "flashes_per_s_9600": 0.35,
+   "flashes_per_s_auto_peak": 0.41,
+   "flashy": false
+  },
+  {
+   "idx": 5,
+   "name": "Neon",
+   "changes": 4,
+   "flashes_per_s_9600": 0.18,
+   "flashes_per_s_auto_peak": 0.21,
+   "flashy": false
+  },
+  {
+   "idx": 6,
+   "name": "Pastel",
+   "changes": 5,
+   "flashes_per_s_9600": 0.22,
+   "flashes_per_s_auto_peak": 0.26,
+   "flashy": false
+  },
+  {
+   "idx": 7,
+   "name": "Sunset",
+   "changes": 4,
+   "flashes_per_s_9600": 0.18,
+   "flashes_per_s_auto_peak": 0.21,
+   "flashy": false
+  },
+  {
+   "idx": 8,
+   "name": "Aurora",
+   "changes": 2,
+   "flashes_per_s_9600": 0.09,
+   "flashes_per_s_auto_peak": 0.1,
+   "flashy": false
+  },
+  {
+   "idx": 9,
+   "name": "Deep Sea",
+   "changes": 2,
+   "flashes_per_s_9600": 0.09,
+   "flashes_per_s_auto_peak": 0.1,
+   "flashy": false
+  },
+  {
+   "idx": 10,
+   "name": "Candy",
+   "changes": 2,
+   "flashes_per_s_9600": 0.09,
+   "flashes_per_s_auto_peak": 0.1,
+   "flashy": false
+  },
+  {
+   "idx": 11,
+   "name": "Matrix",
+   "changes": 5,
+   "flashes_per_s_9600": 0.22,
+   "flashes_per_s_auto_peak": 0.26,
+   "flashy": false
+  },
+  {
+   "idx": 12,
+   "name": "Toxic",
+   "changes": 9,
+   "flashes_per_s_9600": 0.4,
+   "flashes_per_s_auto_peak": 0.46,
+   "flashy": false
+  },
+  {
+   "idx": 13,
+   "name": "Frozen",
+   "changes": 22,
+   "flashes_per_s_9600": 0.97,
+   "flashes_per_s_auto_peak": 1.13,
+   "flashy": false
+  },
+  {
+   "idx": 14,
+   "name": "Lava",
+   "changes": 7,
+   "flashes_per_s_9600": 0.31,
+   "flashes_per_s_auto_peak": 0.36,
+   "flashy": false
+  },
+  {
+   "idx": 15,
+   "name": "Earth",
+   "changes": 7,
+   "flashes_per_s_9600": 0.31,
+   "flashes_per_s_auto_peak": 0.36,
+   "flashy": false
+  },
+  {
+   "idx": 16,
+   "name": "Indigo",
+   "changes": 3,
+   "flashes_per_s_9600": 0.13,
+   "flashes_per_s_auto_peak": 0.15,
+   "flashy": false
+  },
+  {
+   "idx": 17,
+   "name": "70s Retro",
+   "changes": 7,
+   "flashes_per_s_9600": 0.31,
+   "flashes_per_s_auto_peak": 0.36,
+   "flashy": false
+  },
+  {
+   "idx": 18,
+   "name": "90s Rave",
+   "changes": 7,
+   "flashes_per_s_9600": 0.31,
+   "flashes_per_s_auto_peak": 0.36,
+   "flashy": false
+  },
+  {
+   "idx": 19,
+   "name": "C64",
+   "changes": 224,
+   "flashes_per_s_9600": 9.84,
+   "flashes_per_s_auto_peak": 11.48,
+   "flashy": true
+  },
+  {
+   "idx": 20,
+   "name": "Miami",
+   "changes": 7,
+   "flashes_per_s_9600": 0.31,
+   "flashes_per_s_auto_peak": 0.36,
+   "flashy": false
+  },
+  {
+   "idx": 21,
+   "name": "Gold",
+   "changes": 7,
+   "flashes_per_s_9600": 0.31,
+   "flashes_per_s_auto_peak": 0.36,
+   "flashy": false
+  },
+  {
+   "idx": 22,
+   "name": "Starlight",
+   "changes": 10,
+   "flashes_per_s_9600": 0.44,
+   "flashes_per_s_auto_peak": 0.51,
+   "flashy": false
+  },
+  {
+   "idx": 23,
+   "name": "Nebula",
+   "changes": 8,
+   "flashes_per_s_9600": 0.35,
+   "flashes_per_s_auto_peak": 0.41,
+   "flashy": false
+  },
+  {
+   "idx": 24,
+   "name": "Silver",
+   "changes": 12,
+   "flashes_per_s_9600": 0.53,
+   "flashes_per_s_auto_peak": 0.62,
+   "flashy": false
+  },
+  {
+   "idx": 25,
+   "name": "Akihabara",
+   "changes": 5,
+   "flashes_per_s_9600": 0.22,
+   "flashes_per_s_auto_peak": 0.26,
+   "flashy": false
+  },
+  {
+   "idx": 26,
+   "name": "Colorado",
+   "changes": 9,
+   "flashes_per_s_9600": 0.4,
+   "flashes_per_s_auto_peak": 0.46,
+   "flashy": false
+  },
+  {
+   "idx": 27,
+   "name": "XTC",
+   "changes": 9,
+   "flashes_per_s_9600": 0.4,
+   "flashes_per_s_auto_peak": 0.46,
+   "flashy": false
+  },
+  {
+   "idx": 28,
+   "name": "Psilocybin",
+   "changes": 5,
+   "flashes_per_s_9600": 0.22,
+   "flashes_per_s_auto_peak": 0.26,
+   "flashy": false
+  },
+  {
+   "idx": 29,
+   "name": "HDR",
+   "changes": 6,
+   "flashes_per_s_9600": 0.26,
+   "flashes_per_s_auto_peak": 0.31,
+   "flashy": false
+  },
+  {
+   "idx": 30,
+   "name": "THC",
+   "changes": 5,
+   "flashes_per_s_9600": 0.22,
+   "flashes_per_s_auto_peak": 0.26,
+   "flashy": false
+  },
+  {
+   "idx": 31,
+   "name": "Barbie World",
+   "changes": 4,
+   "flashes_per_s_9600": 0.18,
+   "flashes_per_s_auto_peak": 0.21,
+   "flashy": false
+  },
+  {
+   "idx": 32,
+   "name": "Skittles",
+   "changes": 5,
+   "flashes_per_s_9600": 0.22,
+   "flashes_per_s_auto_peak": 0.26,
+   "flashy": false
+  },
+  {
+   "idx": 33,
+   "name": "Papagaio",
+   "changes": 6,
+   "flashes_per_s_9600": 0.26,
+   "flashes_per_s_auto_peak": 0.31,
+   "flashy": false
+  },
+  {
+   "idx": 34,
+   "name": "Bubblegum",
+   "changes": 8,
+   "flashes_per_s_9600": 0.35,
+   "flashes_per_s_auto_peak": 0.41,
+   "flashy": false
+  },
+  {
+   "idx": 35,
+   "name": "Synthwave",
+   "changes": 7,
+   "flashes_per_s_9600": 0.31,
+   "flashes_per_s_auto_peak": 0.36,
+   "flashy": false
+  },
+  {
+   "idx": 36,
+   "name": "Pop Art",
+   "changes": 4,
+   "flashes_per_s_9600": 0.18,
+   "flashes_per_s_auto_peak": 0.21,
+   "flashy": false
+  },
+  {
+   "idx": 37,
+   "name": "Tropical",
+   "changes": 2,
+   "flashes_per_s_9600": 0.09,
+   "flashes_per_s_auto_peak": 0.1,
+   "flashy": false
+  },
+  {
+   "idx": 38,
+   "name": "Vaporwave",
+   "changes": 7,
+   "flashes_per_s_9600": 0.31,
+   "flashes_per_s_auto_peak": 0.36,
+   "flashy": false
+  },
+  {
+   "idx": 39,
+   "name": "Acid",
+   "changes": 4,
+   "flashes_per_s_9600": 0.18,
+   "flashes_per_s_auto_peak": 0.21,
+   "flashy": false
+  },
+  {
+   "idx": 40,
+   "name": "Morning Sun",
+   "changes": 10,
+   "flashes_per_s_9600": 0.44,
+   "flashes_per_s_auto_peak": 0.51,
+   "flashy": false
+  },
+  {
+   "idx": 41,
+   "name": "Cloudy",
+   "changes": 7,
+   "flashes_per_s_9600": 0.31,
+   "flashes_per_s_auto_peak": 0.36,
+   "flashy": false
+  },
+  {
+   "idx": 42,
+   "name": "Aurora Borealis",
+   "changes": 8,
+   "flashes_per_s_9600": 0.35,
+   "flashes_per_s_auto_peak": 0.41,
+   "flashy": false
+  },
+  {
+   "idx": 43,
+   "name": "Cream",
+   "changes": 5,
+   "flashes_per_s_9600": 0.22,
+   "flashes_per_s_auto_peak": 0.26,
+   "flashy": false
+  },
+  {
+   "idx": 44,
+   "name": "Palladium Silver",
+   "changes": 7,
+   "flashes_per_s_9600": 0.31,
+   "flashes_per_s_auto_peak": 0.36,
+   "flashy": false
+  },
+  {
+   "idx": 45,
+   "name": "Complementary",
+   "changes": 9,
+   "flashes_per_s_9600": 0.4,
+   "flashes_per_s_auto_peak": 0.46,
+   "flashy": false
+  },
+  {
+   "idx": 46,
+   "name": "Migraine Aura",
+   "changes": 9,
+   "flashes_per_s_9600": 0.4,
+   "flashes_per_s_auto_peak": 0.46,
+   "flashy": false
+  },
+  {
+   "idx": 47,
+   "name": "Radioactive Glass",
+   "changes": 2,
+   "flashes_per_s_9600": 0.09,
+   "flashes_per_s_auto_peak": 0.1,
+   "flashy": false
+  },
+  {
+   "idx": 48,
+   "name": "Cathedral Window",
+   "changes": 5,
+   "flashes_per_s_9600": 0.22,
+   "flashes_per_s_auto_peak": 0.26,
+   "flashy": false
+  },
+  {
+   "idx": 49,
+   "name": "CRT Phosphor",
+   "changes": 4,
+   "flashes_per_s_9600": 0.18,
+   "flashes_per_s_auto_peak": 0.21,
+   "flashy": false
+  },
+  {
+   "idx": 50,
+   "name": "Deep Sea Bioluminescence",
+   "changes": 2,
+   "flashes_per_s_9600": 0.09,
+   "flashes_per_s_auto_peak": 0.1,
+   "flashy": false
+  },
+  {
+   "idx": 51,
+   "name": "Rust & Copper",
+   "changes": 3,
+   "flashes_per_s_9600": 0.13,
+   "flashes_per_s_auto_peak": 0.15,
+   "flashy": false
+  },
+  {
+   "idx": 52,
+   "name": "Cyberpunk Noir",
+   "changes": 5,
+   "flashes_per_s_9600": 0.22,
+   "flashes_per_s_auto_peak": 0.26,
+   "flashy": false
+  },
+  {
+   "idx": 53,
+   "name": "Bone & Ink",
+   "changes": 3,
+   "flashes_per_s_9600": 0.13,
+   "flashes_per_s_auto_peak": 0.15,
+   "flashy": false
+  },
+  {
+   "idx": 54,
+   "name": "Solar Flare",
+   "changes": 2,
+   "flashes_per_s_9600": 0.09,
+   "flashes_per_s_auto_peak": 0.1,
+   "flashy": false
+  },
+  {
+   "idx": 55,
+   "name": "Arctic Plasma",
+   "changes": 2,
+   "flashes_per_s_9600": 0.09,
+   "flashes_per_s_auto_peak": 0.1,
+   "flashy": false
+  },
+  {
+   "idx": 56,
+   "name": "Toxic Candy",
+   "changes": 4,
+   "flashes_per_s_9600": 0.18,
+   "flashes_per_s_auto_peak": 0.21,
+   "flashy": false
+  },
+  {
+   "idx": 57,
+   "name": "Old Terminal Amber",
+   "changes": 4,
+   "flashes_per_s_9600": 0.18,
+   "flashes_per_s_auto_peak": 0.21,
+   "flashy": false
+  },
+  {
+   "idx": 58,
+   "name": "Alien Coral Reef",
+   "changes": 4,
+   "flashes_per_s_9600": 0.18,
+   "flashes_per_s_auto_peak": 0.21,
+   "flashy": false
+  },
+  {
+   "idx": 59,
+   "name": "Black Hole Accretion",
+   "changes": 4,
+   "flashes_per_s_9600": 0.18,
+   "flashes_per_s_auto_peak": 0.21,
+   "flashy": false
+  },
+  {
+   "idx": 60,
+   "name": "Infrared Camera",
+   "changes": 4,
+   "flashes_per_s_9600": 0.18,
+   "flashes_per_s_auto_peak": 0.21,
+   "flashy": false
+  },
+  {
+   "idx": 61,
+   "name": "Pearlescent",
+   "changes": 3,
+   "flashes_per_s_9600": 0.13,
+   "flashes_per_s_auto_peak": 0.15,
+   "flashy": false
+  },
+  {
+   "idx": 62,
+   "name": "Data Center Night",
+   "changes": 2,
+   "flashes_per_s_9600": 0.09,
+   "flashes_per_s_auto_peak": 0.1,
+   "flashy": false
+  },
+  {
+   "idx": 63,
+   "name": "Lava Lamp",
+   "changes": 3,
+   "flashes_per_s_9600": 0.13,
+   "flashes_per_s_auto_peak": 0.15,
+   "flashy": false
+  },
+  {
+   "idx": 64,
+   "name": "Monochrome Brutalist",
+   "changes": 4,
+   "flashes_per_s_9600": 0.18,
+   "flashes_per_s_auto_peak": 0.21,
+   "flashy": false
+  },
+  {
+   "idx": 65,
+   "name": "Event Horizon",
+   "changes": 6,
+   "flashes_per_s_9600": 0.26,
+   "flashes_per_s_auto_peak": 0.31,
+   "flashy": false
+  },
+  {
+   "idx": 66,
+   "name": "Psychedelic Circuit",
+   "changes": 7,
+   "flashes_per_s_9600": 0.31,
+   "flashes_per_s_auto_peak": 0.36,
+   "flashy": false
+  },
+  {
+   "idx": 67,
+   "name": "Desert Mirage",
+   "changes": 6,
+   "flashes_per_s_9600": 0.26,
+   "flashes_per_s_auto_peak": 0.31,
+   "flashy": false
+  },
+  {
+   "idx": 68,
+   "name": "Blood Moon",
+   "changes": 3,
+   "flashes_per_s_9600": 0.13,
+   "flashes_per_s_auto_peak": 0.15,
+   "flashy": false
+  },
+  {
+   "idx": 69,
+   "name": "Quantum Foam",
+   "changes": 6,
+   "flashes_per_s_9600": 0.26,
+   "flashes_per_s_auto_peak": 0.31,
+   "flashy": false
+  },
+  {
+   "idx": 70,
+   "name": "Hypernova Candy",
+   "changes": 6,
+   "flashes_per_s_9600": 0.26,
+   "flashes_per_s_auto_peak": 0.31,
+   "flashy": false
+  },
+  {
+   "idx": 71,
+   "name": "Cyber Dragon",
+   "changes": 4,
+   "flashes_per_s_9600": 0.18,
+   "flashes_per_s_auto_peak": 0.21,
+   "flashy": false
+  },
+  {
+   "idx": 72,
+   "name": "Laser Carnival",
+   "changes": 6,
+   "flashes_per_s_9600": 0.26,
+   "flashes_per_s_auto_peak": 0.31,
+   "flashy": false
+  },
+  {
+   "idx": 73,
+   "name": "Glitch Prism",
+   "changes": 5,
+   "flashes_per_s_9600": 0.22,
+   "flashes_per_s_auto_peak": 0.26,
+   "flashy": false
+  },
+  {
+   "idx": 74,
+   "name": "Plasma Rave",
+   "changes": 5,
+   "flashes_per_s_9600": 0.22,
+   "flashes_per_s_auto_peak": 0.26,
+   "flashy": false
+  },
+  {
+   "idx": 75,
+   "name": "Game Boy",
+   "changes": 128,
+   "flashes_per_s_9600": 5.62,
+   "flashes_per_s_auto_peak": 6.56,
+   "flashy": true
+  },
+  {
+   "idx": 76,
+   "name": "NES Castlevania",
+   "changes": 82,
+   "flashes_per_s_9600": 3.6,
+   "flashes_per_s_auto_peak": 4.2,
+   "flashy": true
+  },
+  {
+   "idx": 77,
+   "name": "Embers",
+   "changes": 33,
+   "flashes_per_s_9600": 1.45,
+   "flashes_per_s_auto_peak": 1.69,
+   "flashy": false
+  },
+  {
+   "idx": 78,
+   "name": "ZX Spectrum",
+   "changes": 65,
+   "flashes_per_s_9600": 2.86,
+   "flashes_per_s_auto_peak": 3.33,
+   "flashy": true
+  },
+  {
+   "idx": 79,
+   "name": "CGA Magenta",
+   "changes": 255,
+   "flashes_per_s_9600": 11.21,
+   "flashes_per_s_auto_peak": 13.07,
+   "flashy": true
+  },
+  {
+   "idx": 80,
+   "name": "Strobe Police",
+   "changes": 82,
+   "flashes_per_s_9600": 3.6,
+   "flashes_per_s_auto_peak": 4.2,
+   "flashy": true
+  },
+  {
+   "idx": 81,
+   "name": "Halloween Strobe",
+   "changes": 65,
+   "flashes_per_s_9600": 2.86,
+   "flashes_per_s_auto_peak": 3.33,
+   "flashy": true
+  },
+  {
+   "idx": 82,
+   "name": "Traffic Lights",
+   "changes": 65,
+   "flashes_per_s_9600": 2.86,
+   "flashes_per_s_auto_peak": 3.33,
+   "flashy": true
+  },
+  {
+   "idx": 83,
+   "name": "SMPTE Color Bars",
+   "changes": 65,
+   "flashes_per_s_9600": 2.86,
+   "flashes_per_s_auto_peak": 3.33,
+   "flashy": true
+  },
+  {
+   "idx": 84,
+   "name": "Pixel Sprite",
+   "changes": 128,
+   "flashes_per_s_9600": 5.62,
+   "flashes_per_s_auto_peak": 6.56,
+   "flashy": true
+  },
+  {
+   "idx": 85,
+   "name": "Vintage Poster",
+   "changes": 17,
+   "flashes_per_s_9600": 0.75,
+   "flashes_per_s_auto_peak": 0.87,
+   "flashy": false
+  },
+  {
+   "idx": 86,
+   "name": "Casino Slots",
+   "changes": 81,
+   "flashes_per_s_9600": 3.56,
+   "flashes_per_s_auto_peak": 4.15,
+   "flashy": true
+  },
+  {
+   "idx": 87,
+   "name": "Neon Tubes",
+   "changes": 129,
+   "flashes_per_s_9600": 5.67,
+   "flashes_per_s_auto_peak": 6.61,
+   "flashy": true
+  },
+  {
+   "idx": 88,
+   "name": "Stained Glass Hard",
+   "changes": 158,
+   "flashes_per_s_9600": 6.94,
+   "flashes_per_s_auto_peak": 8.1,
+   "flashy": true
+  },
+  {
+   "idx": 89,
+   "name": "Disco Floor",
+   "changes": 160,
+   "flashes_per_s_9600": 7.03,
+   "flashes_per_s_auto_peak": 8.2,
+   "flashy": true
+  }
+ ]
+}

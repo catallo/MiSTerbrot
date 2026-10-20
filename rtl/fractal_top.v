@@ -229,6 +229,8 @@ wire       zoom_pacing_mode;
 wire [1:0] zoom_speed_sel;
 wire       attract_zoom_in_enable;
 wire       az_fast_only;
+wire       flash_palettes_enable;
+wire       no_flash_palettes = ~flash_palettes_enable;
 wire       attract_zoom_out_enable;
 wire [15:0] attract_wait_vblanks;
 
@@ -265,7 +267,8 @@ fractal_osd #(
     .attract_zoom_in_enable(attract_zoom_in_enable),
     .attract_zoom_out_enable(attract_zoom_out_enable),
     .attract_wait_vblanks(attract_wait_vblanks),
-    .az_fast_only(az_fast_only)
+    .az_fast_only(az_fast_only),
+    .flash_palettes_enable(flash_palettes_enable)
 );
 
 // ---- Verification-mode overrides (keys force on/off, default = follow OSD) ----
@@ -348,9 +351,6 @@ wire       cycle_speed_auto = (cycle_speed_sel == 4'd0);
 wire [3:0] cycle_speed_eff  = ((attract_randomize || cycle_speed_auto) && auto_zoom_active) ? az_rnd_cycle_speed
                             : cycle_speed_auto ? 4'd0 : (cycle_speed_sel - 4'd1);
 wire [1:0]              az_rnd_cycle_direction;
-reg  [6:0]              az_target_idx_prev;
-reg                     az_enable;
-reg                     az_enable_prev;
 // Colour-cycling direction: OSD 0 = Auto -> the per-POI random draw while
 // auto-zoom drives the view (Forward in manual mode); OSD 1..3 -> fixed
 // Forward/Reverse/Ping-Pong (color_mapper codes 0..2).  Randomize still
@@ -358,6 +358,9 @@ reg                     az_enable_prev;
 wire       cycle_dir_auto = (cycle_direction == 2'd0);
 wire [1:0] cycle_direction_eff = ((attract_randomize || cycle_dir_auto) && auto_zoom_active) ? az_rnd_cycle_direction
                                : cycle_dir_auto ? 2'd0 : (cycle_direction - 2'd1);
+reg  [6:0]              az_target_idx_prev;
+reg                     az_enable;
+reg                     az_enable_prev;
 wire                    auto_zoom_handoff = az_enable_prev & ~az_enable;
 
 // ---- Overlay visibility timer (6s after last input) ----
@@ -385,6 +388,7 @@ input_handler #(
     .osd_iter_sel(osd_iter_sel),
     .osd_iter_changed(osd_iter_changed),
     .sync_clear_palette_override(auto_zoom_active && (az_target_idx != az_target_idx_prev)),
+    .no_flash_palettes(no_flash_palettes),
     .iter_sel(input_iter_sel),
     .overlay_enable(overlay_enable),
     .color_cycle_enable(color_cycle_enable),
@@ -488,6 +492,7 @@ auto_zoom #(
     // snapped (zoom-in Off) or gallery POI is a static image, where the
     // slow path never renders.
     .fast_only(az_fast_only & attract_zoom_in_enable & ~gallery_mode),
+    .no_flash_palettes(no_flash_palettes),
     .attract_zoom_out_enable(attract_zoom_out_enable & ~gallery_mode),
     .attract_wait_vblanks(attract_wait_vblanks),
     // "Wait on POI" counts display time only: gate is forward-declared
@@ -526,10 +531,17 @@ wire                    view_changed = benchmark_active ? benchmark_view_changed
 wire       osd_palette_override = (osd_palette_sel != 7'd0);
 wire [6:0] osd_palette_idx_full = osd_palette_sel - 7'd1;
 wire [6:0] osd_palette_idx = osd_palette_idx_full;
-wire [6:0] palette_sel  = benchmark_active     ? bench_palette :
+wire [6:0] palette_sel_raw = benchmark_active     ? bench_palette :
                           osd_palette_override ? osd_palette_idx :
                           input_palette_override ? input_palette_sel :
                           auto_zoom_active       ? az_palette_idx  : input_palette_sel;
+// Flashing-palette filter (OSD "Flashing Palettes" = Off, photosensitivity):
+// auto_zoom and the P key already avoid the flagged palettes; this final
+// substitution is the safety net that also covers a fixed OSD palette and
+// the palette on screen at the moment the row is switched Off, so the
+// strobing stops immediately (the overlay shows the substitute's name).
+`include "palette_flags.vh"
+wire [6:0] palette_sel  = no_flash_palettes ? pal_safe_at(palette_sel_raw) : palette_sel_raw;
 reg  [11:0] input_max_iter;
 // In benchmark mode, the per-scene `bench_max_iter` from the catalogue
 // is used UNLESS the OSD Iterations setting is anything other than Auto

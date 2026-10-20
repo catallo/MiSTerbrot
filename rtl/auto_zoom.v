@@ -57,6 +57,12 @@ module auto_zoom #(
     // snap/gallery (S_SNAP_LOAD) always serves all POIs.  fractal_top
     // ties it low in gallery mode and when the zoom-in animation is off.
     input  wire                    fast_only,
+    // Flashing-palette filter (OSD "Flashing Palettes" = Off): the palette
+    // draw skips the palettes flagged in rtl/palette_flags.vh (strobing
+    // under color cycling, tools/palette_flash.py).  Only the palette
+    // playlist burns the draw — the POI position stays and the same POI
+    // candidate is re-read.  Applies to S_NEXT and S_SNAP_LOAD alike.
+    input  wire                    no_flash_palettes,
 
     // BRAM framebuffer sampling (held inactive in deterministic zoom mode)
     input  wire [12:0]             fb_rd_data,
@@ -192,12 +198,18 @@ localparam [POI_DEPTH-1:0] GALLERY_ONLY = `POI_GALLERY_ONLY_MASK;
 // every flag were set.
 reg  [IDX_BITS-1:0] skip_run;
 wire cand_skip = fast_only && GALLERY_ONLY[tp_rdata] && (skip_run != {IDX_BITS{1'b1}});
+// Flashing-palette flags (same source as the OSD row / fractal_top
+// substitution).  Same consecutive-skip guard as the POI filter.
+`include "palette_flags.vh"
+localparam [127:0] PAL_FLASHY = `PAL_FLASHY_MASK;
+reg  [PAL_BITS-1:0] pal_skip_run;
+wire pal_skip = no_flash_palettes && PAL_FLASHY[pp_rdata] && (pal_skip_run != {PAL_BITS{1'b1}});
 // Gated on `enable`: if Z/Space drops auto-zoom on the phase-2 edge the
 // FSM leaves for S_IDLE and target_idx keeps its value, so poi_q must
 // not be loaded from the (abandoned) playlist read — the 1-cycle
 // phantom would land in target_max_iter_r (2026-10-12 review fix).
 wire advance_rd = enable && (state == S_NEXT || state == S_SNAP_LOAD) && (adv_ph == 2'd2)
-                  && !(state == S_NEXT && cand_skip);
+                  && !(state == S_NEXT && cand_skip) && !pal_skip;
 always @(posedge clk) poi_q <= poi_rom[advance_rd ? tp_rdata : target_idx];
 
 // Field offsets come from poi_generated.vh (single source: poi_encode.py).
@@ -414,6 +426,9 @@ always @(*) begin
 end
 // Zoom speed pool: Fast(2) and Very Fast(3) only, Fast double-weighted —
 // 4-bit threshold gives 11/16 : 5/16 (~2.2:1, closest binary fit to 2:1).
+// direction: Forward / Reverse only, 50/50 (user spec 2026-10-20: no
+// Ping-Pong in the random pool — it stays a manual OSD choice).
+wire [1:0] rnd_dir_map = {1'b0, rnd_lfsr[3]};
 reg [1:0] rnd_zoom_map;
 always @(*) begin
     rnd_zoom_map = (rnd_lfsr[9:6] < 4'd11) ? 2'd2 : 2'd3;
@@ -441,6 +456,7 @@ always @(posedge clk or negedge rst_n) begin
         target_playlist_pos <= IDX_ONE;
         palette_playlist_pos <= PAL_ONE;
         skip_run <= IDX_ZERO;
+        pal_skip_run <= PAL_ZERO;
         shuffle_phase <= 1'b0;
         shuffle_idx <= TARGET_LAST_IDX;
         zoom_out_final_pending <= 1'b0;
@@ -690,23 +706,31 @@ always @(posedge clk or negedge rst_n) begin
             end
             2'd1: adv_ph <= 2'd2;
             2'd2: begin
-                // Both playlists advance whether or not the candidate is
-                // taken (a skipped POI also burns its palette draw).
-                target_playlist_pos  <= (target_playlist_pos  == TARGET_LAST_IDX)  ? IDX_ZERO : (target_playlist_pos  + IDX_ONE);
+                // The palette playlist advances whether or not the draw is
+                // taken (a skipped POI also burns its palette draw); the POI
+                // playlist holds on a palette-only skip so the same POI
+                // candidate is re-read with the next palette.
                 palette_playlist_pos <= (palette_playlist_pos == PALETTE_LAST_IDX) ? PAL_ZERO : (palette_playlist_pos + PAL_ONE);
                 if (cand_skip) begin
                     // Gallery-only POI under the fast filter: draw again.
                     // target_idx/palette_idx/poi_q stay on the current POI,
                     // so nothing downstream sees the skipped candidate.
+                    target_playlist_pos <= (target_playlist_pos == TARGET_LAST_IDX) ? IDX_ZERO : (target_playlist_pos + IDX_ONE);
                     skip_run <= skip_run + IDX_ONE;
                     adv_ph   <= 2'd0;
+                end else if (pal_skip) begin
+                    // Flashing palette under the filter: redraw the palette.
+                    pal_skip_run <= pal_skip_run + PAL_ONE;
+                    adv_ph       <= 2'd0;
                 end else begin
+                    target_playlist_pos <= (target_playlist_pos == TARGET_LAST_IDX) ? IDX_ZERO : (target_playlist_pos + IDX_ONE);
                     target_idx  <= tp_rdata;
                     palette_idx <= pp_rdata;
                     skip_run    <= IDX_ZERO;
+                    pal_skip_run <= PAL_ZERO;
                     // Attract Randomizer: fresh draws land with the new POI.
                     rnd_cycle_speed     <= rnd_speed_map;
-                    rnd_cycle_direction <= {1'b0, rnd_lfsr[3]};
+                    rnd_cycle_direction <= rnd_dir_map;
                     rnd_zoom_speed      <= rnd_zoom_map;
                     adv_ph <= 2'd3;
                 end
@@ -750,15 +774,23 @@ always @(posedge clk or negedge rst_n) begin
             end
             2'd1: adv_ph <= 2'd2;
             2'd2: begin
-                target_idx  <= tp_rdata;
-                palette_idx <= pp_rdata;
-                target_playlist_pos  <= (target_playlist_pos  == TARGET_LAST_IDX)  ? IDX_ZERO : (target_playlist_pos  + IDX_ONE);
                 palette_playlist_pos <= (palette_playlist_pos == PALETTE_LAST_IDX) ? PAL_ZERO : (palette_playlist_pos + PAL_ONE);
-                // Attract Randomizer: fresh draws land with the new POI.
-                rnd_cycle_speed     <= rnd_speed_map;
-                rnd_cycle_direction <= {1'b0, rnd_lfsr[3]};
-                rnd_zoom_speed      <= rnd_zoom_map;
-                adv_ph <= 2'd3;
+                if (pal_skip) begin
+                    // Flashing palette under the filter: redraw the palette
+                    // (POI position holds, see S_NEXT).
+                    pal_skip_run <= pal_skip_run + PAL_ONE;
+                    adv_ph       <= 2'd0;
+                end else begin
+                    target_idx  <= tp_rdata;
+                    palette_idx <= pp_rdata;
+                    pal_skip_run <= PAL_ZERO;
+                    target_playlist_pos <= (target_playlist_pos == TARGET_LAST_IDX) ? IDX_ZERO : (target_playlist_pos + IDX_ONE);
+                    // Attract Randomizer: fresh draws land with the new POI.
+                    rnd_cycle_speed     <= rnd_speed_map;
+                    rnd_cycle_direction <= rnd_dir_map;
+                    rnd_zoom_speed      <= rnd_zoom_map;
+                    adv_ph <= 2'd3;
+                end
             end
             default: begin
                 center_x <= rom_cx;

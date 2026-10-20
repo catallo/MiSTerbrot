@@ -1,0 +1,149 @@
+#!/usr/bin/env python3
+"""Flash-hazard score for every palette (photosensitivity filter source).
+
+Dumps all 90 palettes (256 entries each) through the real color_mapper with
+Verilator (sim/color_mapper/tb_pal_dump.sv), then walks each palette as
+color cycling does — the entry sequence IS the temporal luminance sequence
+a boundary pixel sees — and counts WCAG 2.3.1 "general flash" events:
+opposing changes of relative luminance >= 0.1 where the darker side is
+below 0.8.  Flashes per second = pairs per 256 entries x entries per
+second; entries/s = cycle_inc / 16 x 60 Hz (color_mapper.v cycle_inc).
+
+A palette is flagged FLASHY when it exceeds 3 flashes/s (the WCAG limit)
+at any speed the Attract Randomizer / Speed=Auto pool can draw (300 baud
+.. 14.4k, auto_zoom.v rnd_speed_map).  Faster manual speeds (28.8k+) push
+every palette past the limit and are the user's own choice.
+
+  tools/palette_flash.py           print the table
+  tools/palette_flash.py --write   also write rtl/palette_flags.vh and
+                                   tools/palette_flash.json
+
+Rerun with --write after ANY palette edit in rtl/color_mapper.v.
+"""
+import argparse, json, os, subprocess, sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SIMDIR = os.path.join(ROOT, "sim", "color_mapper")
+N_PAL = 90
+LIMIT_FLASHES_PER_S = 3.0
+# cycle_inc per vblank (color_mapper.v) for the speeds in the Auto pool
+AUTO_POOL = {"300 baud": 2, "1200 baud": 4, "2400 baud": 5, "9600 baud": 6, "14.4k": 7}
+ALL_SPEEDS = {"Teletype": 1, "300 baud": 2, "1200 baud": 4, "2400 baud": 5, "9600 baud": 6,
+              "14.4k": 7, "28.8k": 8, "33.6k": 16, "ISDN": 32, "DSL": 64, "Fiber": 128}
+ENTRIES_PER_S_PER_INC = 60.0 / 16.0
+
+
+def dump():
+    objdir = os.path.join(SIMDIR, "obj_dir_paldump")
+    subprocess.run(["verilator", "--binary", "--timing", "-Wno-fatal", "-Wno-WIDTH",
+                    "--top", "tb_pal_dump", "tb_pal_dump.sv", os.path.join(ROOT, "rtl", "color_mapper.v"),
+                    "-Mdir", objdir, "-o", "tb_pal_dump", "-j", "8"],
+                   cwd=SIMDIR, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+    out = subprocess.run([os.path.join(objdir, "tb_pal_dump")], cwd=SIMDIR, check=True,
+                         capture_output=True, text=True).stdout
+    pal = {}
+    for line in out.splitlines():
+        if line.startswith("P "):
+            _, p, i, r, g, b = line.split()
+            pal.setdefault(int(p), {})[int(i)] = (int(r), int(g), int(b))
+    assert len(pal) == N_PAL and all(len(v) == 256 for v in pal.values()), "incomplete dump"
+    return pal
+
+
+def lin(c):
+    c /= 255.0
+    return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+
+def luma(rgb):
+    r, g, b = rgb
+    return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+
+
+def luma_changes(seq):
+    """Count monotone luminance runs (cyclic) that qualify as a WCAG change."""
+    cnt, sign, start = 0, 0, seq[0]
+    for a, b in zip(seq, seq[1:] + seq[:1]):
+        s = 1 if b > a else (-1 if b < a else 0)
+        if s == 0:
+            continue
+        if sign and s != sign:
+            if abs(a - start) >= 0.1 and min(a, start) < 0.8:
+                cnt += 1
+            start = a
+        sign = s
+    if abs(seq[0] - start) >= 0.1 and min(seq[0], start) < 0.8:
+        cnt += 1
+    return cnt
+
+
+def flashes_per_s(changes, inc):
+    return changes / 2.0 * inc * ENTRIES_PER_S_PER_INC / 256.0
+
+
+def safe_at(flagged, i):
+    for k in range(N_PAL):
+        c = (i + k) % N_PAL
+        if c not in flagged:
+            return c
+    raise RuntimeError("every palette flagged")
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--write", action="store_true")
+    args = ap.parse_args()
+    names = [l.rstrip("\n") for l in open(os.path.join(ROOT, "tools", "palette_names.txt"))]
+    pal = dump()
+    rows = []
+    for p in range(N_PAL):
+        c = luma_changes([luma(pal[p][i]) for i in range(256)])
+        peak_auto = max(flashes_per_s(c, inc) for inc in AUTO_POOL.values())
+        rows.append({"idx": p, "name": names[p], "changes": c,
+                     "flashes_per_s_9600": round(flashes_per_s(c, 6), 2),
+                     "flashes_per_s_auto_peak": round(peak_auto, 2),
+                     "flashy": peak_auto > LIMIT_FLASHES_PER_S})
+    flagged = sorted(r["idx"] for r in rows if r["flashy"])
+    print(f"{'idx':>3} {'name':26} {'chg':>4} {'9600':>6} {'14.4k':>6} {'Fiber':>7}  flashy")
+    for r in sorted(rows, key=lambda r: -r["changes"]):
+        print(f"{r['idx']:3d} {r['name']:26} {r['changes']:4d} {r['flashes_per_s_9600']:6.2f} "
+              f"{flashes_per_s(r['changes'], 7):6.2f} {flashes_per_s(r['changes'], 128):7.1f}  "
+              f"{'YES' if r['flashy'] else ''}")
+    print(f"flagged {len(flagged)} of {N_PAL}: {flagged}")
+    if not args.write:
+        return
+    mask = sum(1 << i for i in flagged)
+    subst = {i: safe_at(set(flagged), i) for i in flagged}
+    lines = [
+        "// Generated by tools/palette_flash.py — do not edit.",
+        "// Flashing palettes (OSD \"Flashing Palettes\" = Off hides them): palettes",
+        f"// above {LIMIT_FLASHES_PER_S:.0f} luminance flashes/s (WCAG 2.3.1) at any Speed=Auto cycling rate.",
+        "//   " + ", ".join(f"{i} {names[i]} ({[r for r in rows if r['idx']==i][0]['flashes_per_s_auto_peak']:.1f}/s)" for i in flagged),
+        "`ifndef PAL_FLASHY_MASK",
+        f"`define PAL_FLASHY_MASK 128'h{mask:032x}",
+        f"`define PAL_FLASHY_COUNT {len(flagged)}",
+        "`endif",
+        "",
+        "// pal_safe_at(i): i itself when it is not flashy, else the next non-flashy",
+        "// palette above it (cyclic).  Include inside a module body.",
+        "function [6:0] pal_safe_at;",
+        "    input [6:0] i;",
+        "    begin",
+        "        case (i)",
+    ] + [f"            7'd{i}: pal_safe_at = 7'd{subst[i]};  // {names[i]} -> {names[subst[i]]}" for i in flagged] + [
+        "            default: pal_safe_at = i;",
+        "        endcase",
+        "    end",
+        "endfunction",
+        "",
+    ]
+    with open(os.path.join(ROOT, "rtl", "palette_flags.vh"), "w") as f:
+        f.write("\n".join(lines))
+    with open(os.path.join(ROOT, "tools", "palette_flash.json"), "w") as f:
+        json.dump({"limit_flashes_per_s": LIMIT_FLASHES_PER_S, "auto_pool_cycle_inc": AUTO_POOL,
+                   "flagged": flagged, "palettes": rows}, f, indent=1)
+    print("wrote rtl/palette_flags.vh and tools/palette_flash.json")
+
+
+if __name__ == "__main__":
+    main()

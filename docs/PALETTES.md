@@ -310,7 +310,67 @@ Names are not always identical between sources — the OSD list says "Sunset" wh
 | 88 | Stained Glass Hard | 8-LUT | Discrete jewel tones with black lead lines (vs. smooth Cathedral Window at idx 48). |
 | 89 | Disco Floor | smooth + 1-in-2 + 1-in-16 | Rainbow gradient strobed by black voids (1-in-2) with bright white peaks (1-in-16). |
 
-## 10. Adding a new palette
+## 10. Flashing palettes (photosensitivity filter)
+
+Some palettes strobe under color cycling: a hard LUT or a dense flash
+override (section 3 d/e) turns the per-pixel index walk into a high-contrast
+luminance square wave, and at the cycling rates the Attract Randomizer draws
+that is a strobe light on half the screen.  The OSD row **Color Cycling →
+Flashing Palettes** (`O[59]`, default **On** = the whole catalogue) hides
+them when set to **Off**:
+
+- `rtl/auto_zoom.v` redraws the palette playlist entry when it lands on a
+  flagged palette (N advance and M snap alike; the POI position holds, only
+  the palette playlist burns the draw, same skip guard as the POI filter).
+- `rtl/input_handler.v` steps `P` / joy A over the flagged palettes.
+- `rtl/fractal_top.v` substitutes any flagged palette that still reaches the
+  final `palette_sel` mux (a fixed OSD palette, or whatever was on screen the
+  moment the row was switched Off) with `pal_safe_at()`: the next unflagged
+  palette above it.  The switch therefore takes effect immediately and the
+  overlay shows the substitute's name.
+
+The list is **measured, not hand-picked**: `tools/palette_flash.py` dumps all
+90 palettes through the real `color_mapper` (`sim/color_mapper/tb_pal_dump.sv`,
+Verilator), walks each 256-entry palette as cycling does (the entry sequence
+is the temporal luminance sequence a boundary pixel sees) and counts WCAG
+2.3.1 "general flash" events — opposing relative-luminance changes of at
+least 0.1 with the darker side below 0.8.  Flashes per second = pairs per
+256 entries × entries per second, where entries/s = `cycle_inc` / 16 × 60 Hz
+(`color_mapper.v`): 22.5 at 9600 baud, 26.25 at 14.4k, 480 at Fiber.  A
+palette is flagged when it exceeds **3 flashes/s** (the WCAG limit) at any
+speed in the Speed=Auto / Randomizer pool (300 baud .. 14.4k).  Faster
+manual speeds (28.8k and up) push *every* palette over the limit — Rainbow
+reaches 8 flashes/s at Fiber — and remain the user's own choice.
+
+Result (2026-10-20), 14 of 90, with the peak rate inside the Auto pool:
+
+| Idx | Palette | Pattern | flashes/s |
+|---|---|---|---|
+| 79 | CGA Magenta | 4-LUT black/cyan/magenta/white | 13.1 |
+| 19 | C64 | 16-LUT | 11.5 |
+| 89 | Disco Floor | 1-in-2 black void + 1-in-16 white | 8.2 |
+| 88 | Stained Glass Hard | 8-LUT with black lead lines | 8.1 |
+| 87 | Neon Tubes | 1-in-4 cyan flash | 6.6 |
+| 75 | Game Boy | 4-LUT | 6.6 |
+| 84 | Pixel Sprite | 8-LUT | 6.6 |
+| 76 | NES Castlevania | 16-LUT | 4.2 |
+| 80 | Strobe Police | 1-in-8 + 1-in-16 + 1-in-32 | 4.2 |
+| 86 | Casino Slots | 1-in-8 + 1-in-16 | 4.2 |
+| 78 | ZX Spectrum | 16-LUT | 3.3 |
+| 81 | Halloween Strobe | 2-in-8 + 1-in-32 | 3.3 |
+| 82 | Traffic Lights | 1-in-8 | 3.3 |
+| 83 | SMPTE Color Bars | 8-LUT | 3.3 |
+
+Next below the line: Embers (1-in-16 spark) at 1.7/s, Frozen / Milky Way at
+1.1/s, every smooth gradient under 0.6/s.  `tools/palette_flash.py --write`
+regenerates `rtl/palette_flags.vh` (`PAL_FLASHY_MASK`, `PAL_FLASHY_COUNT`,
+`pal_safe_at()`) and `tools/palette_flash.json` (per-palette scores);
+`sim/color_mapper/tb_pal_flags.sv` (in `sim/run_all.sh`) checks the include
+and `sim/auto_zoom/tb_az.sv` the playlist filter.  **Rerun the tool after any
+palette edit in `color_mapper.v`** — the flags are a snapshot of the palette
+math.
+
+## 11. Adding a new palette
 
 The change touches four files. Skipping any one of them ships a broken core (silent palette skip in cycle, wrong name on OSD, etc.).
 
@@ -331,9 +391,11 @@ The change touches four files. Skipping any one of them ships a broken core (sil
 
 5. Rebuild and re-deploy. The OSD list updates immediately on next core load; the palette playlist re-shuffles on reset.
 
+6. **`tools/palette_flash.py --write`** — rescore the flash hazard (section 10) so the new palette is flagged or cleared in `rtl/palette_flags.vh`; `sim/run_all.sh` must still pass.
+
 If `N_PALETTES` ever exceeds 128, all the `7'dN` literals and `PAL_BITS = 7` need to widen to 8, including the playlist array size and the `palette_sel` port widths through `text_overlay.v`, `color_mapper.v`, `fractal_top.v`, `fractal_osd.v`, `input_handler.v`, and `MiSTerbrot.sv` (the OSD bit range too). Currently we have headroom (75/128).
 
-## 11. Why combinational, not ROM
+## 12. Why combinational, not ROM
 
 A 47-entry × 256-step × 24-bit ROM would be `47 × 256 × 3 = 36 KiB` of M10K — about 4 % of total BRAM, on top of the 58 % already used by the framebuffer. Combinational synthesis lets each palette be evaluated only when its `case` arm is selected, and the `palette_rgb` task is called only twice per pixel (for `base_cidx` and `next_cidx`). The LUTs needed for the arithmetic decode are cheaper than the BRAM would be, and the recipe form makes palettes easy to tweak without regenerating tables.
 

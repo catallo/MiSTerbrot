@@ -195,6 +195,12 @@ localparam CONF_STR = {
 	"P2O[43],Blending,Smooth,Hard-step;",
 	"P2O[45:44],Iter Band Mix,Off,Low Slow,Low Fast,Counter;",
 	"P2O[47:46],Palette Transition,Crossfade,Instant,Slow Crossfade;",
+	// Flashing Palettes Off hides the 14 palettes that strobe above 3
+	// luminance flashes/s under color cycling (photosensitivity; scored by
+	// tools/palette_flash.py -> rtl/palette_flags.vh): the auto-zoom draw
+	// and the P key skip them, any other selection is substituted.
+	// Default On = the full catalogue.
+	"P2O[59],Flashing Palettes,On,Off;",
 	"P1,Attract Mode;",
 	"D0P1O[29],Zoom In,On,Off;",
 	"D0P1O[30],Zoom Out,On,Off;",

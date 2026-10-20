@@ -27,6 +27,7 @@ home() { # $1 = out png ; reach the home view with verification
 cmd=$1; shift
 case $cmd in
   deploy)
+    case "$2" in *.rbf) ;; *) echo "deploy: device name must end in .rbf (got '$2') — main only loads what the later load_core names"; exit 1;; esac
     # 2026-10-17: an interrupted scp from the build host left a 0-byte RBF, the
     # chain loaded it, the FPGA ended up uninitialized and the MiSTer main
     # process quit (recovery needed a reboot).  Refuse anything that is not a

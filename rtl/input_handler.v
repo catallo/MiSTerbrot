@@ -28,6 +28,9 @@ module input_handler #(
     input  wire [2:0]              osd_iter_sel,
     input  wire                    osd_iter_changed,
     input  wire                    sync_clear_palette_override,
+    // Flashing-palette filter (OSD "Flashing Palettes" = Off): P / joy A
+    // step over the palettes flagged in rtl/palette_flags.vh.
+    input  wire                    no_flash_palettes,
 
     // Current step (for computing pan speed)
     input  wire signed [WIDTH-1:0] step_in,
@@ -68,6 +71,11 @@ localparam signed [WIDTH-1:0] DEFAULT_CENTER_X = 64'shFF80000000000000; // -0.5
 localparam signed [WIDTH-1:0] DEFAULT_CENTER_Y = 64'sh0000000000000000; //  0.0
 localparam signed [WIDTH-1:0] DEFAULT_STEP     = 64'sh0003333333333333; //  0.0125
 localparam signed [WIDTH-1:0] MIN_STEP         = 64'sh0000000000000010; //  tiny zoom
+`include "palette_flags.vh"
+// Next palette for P / joy A: +1 with wrap, then (filter on) the first
+// non-flashy palette at or above it.
+wire [6:0] palette_next_raw = (palette_sel == 7'd89) ? 7'd0 : palette_sel + 7'd1;
+wire [6:0] palette_next     = no_flash_palettes ? pal_safe_at(palette_next_raw) : palette_next_raw;
 // Manual view bounds (2026-10-11).  The iterator's interior prechecks are
 // 8.56 fixed-point with no overflow guard on the cardioid product
 // q*(q+x): beyond |c| of about 3.4 it wraps and paints false interior
@@ -273,7 +281,7 @@ always @(posedge clk or negedge rst_n) begin
                 if (ps2_pressed) begin
                     case (ps2_scancode)
                         8'h4D: begin // P = Cycle palette (does NOT stop auto-zoom)
-                            palette_sel <= (palette_sel == 7'd89) ? 7'd0 : palette_sel + 7'd1;
+                            palette_sel <= palette_next;
                             palette_override_active <= 1'b1;
                             view_changed <= 1'b1;
                         end
@@ -380,7 +388,7 @@ always @(posedge clk or negedge rst_n) begin
 
         // ---- Face buttons ----
         if (joy_press[4]) begin // A = Cycle palette
-            palette_sel <= (palette_sel == 7'd89) ? 7'd0 : palette_sel + 7'd1;
+            palette_sel <= palette_next;
             palette_override_active <= 1'b1;
             view_changed <= 1'b1;
         end
